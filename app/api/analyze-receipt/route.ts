@@ -2,14 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { DocumentAnalysisClient, AzureKeyCredential } from '@azure/ai-form-recognizer';
 
 // Azure Document Intelligence Configuration
-const AZURE_ENDPOINT = process.env.AZURE_ENDPOINT || '';
-const AZURE_API_KEY = process.env.AZURE_API_KEY || '';
-
-// Initialize Azure Document Intelligence client
-const client = new DocumentAnalysisClient(
-  AZURE_ENDPOINT,
-  new AzureKeyCredential(AZURE_API_KEY)
-);
+// Note: Client is initialized lazily inside the request handler to avoid build-time errors
 
 // Helper function to extract amount from text (SMART ALGORITHM)
 function extractAmount(text: string): number | null {
@@ -123,6 +116,23 @@ function extractDate(text: string): string | null {
 export async function POST(request: NextRequest) {
   try {
     console.log('📸 Analyze receipt API called (Azure Document Intelligence)');
+
+    // Initialize Azure client (lazy initialization to avoid build-time errors)
+    const AZURE_ENDPOINT = process.env.AZURE_ENDPOINT;
+    const AZURE_API_KEY = process.env.AZURE_API_KEY;
+
+    if (!AZURE_ENDPOINT || !AZURE_API_KEY) {
+      console.error('❌ Azure credentials not configured');
+      return NextResponse.json(
+        { error: 'Azure Document Intelligence credentials not configured' },
+        { status: 500 }
+      );
+    }
+
+    const client = new DocumentAnalysisClient(
+      AZURE_ENDPOINT,
+      new AzureKeyCredential(AZURE_API_KEY)
+    );
 
     const formData = await request.formData();
     const file = formData.get('image') as File;
