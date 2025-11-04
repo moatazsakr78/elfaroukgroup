@@ -88,7 +88,7 @@ export default function SignUpPage() {
   return (
     <div className="min-h-screen font-['Cairo',Arial,sans-serif]" dir="rtl" style={{backgroundColor: '#c0c0c0'}}>
       {/* Header */}
-      <header className="border-b border-gray-700 py-0 sticky top-0 z-10" style={{backgroundColor: '#661a1a'}}>
+      <header className="border-b border-gray-700 py-0 sticky top-0 z-10" style={{backgroundColor: 'var(--primary-color)'}}>
         <div className="max-w-[80%] mx-auto px-4 flex items-center justify-between min-h-[80px]">
           <div className="flex items-center gap-8">
             <div className="flex items-center gap-3">

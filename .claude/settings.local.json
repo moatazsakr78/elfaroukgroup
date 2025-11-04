@@ -303,7 +303,8 @@
       "Bash(start http://localhost:3003/settings)",
       "Bash(for:*)",
       "Bash(do sed:*)",
-      "Bash(done)"
+      "Bash(done)",
+      "mcp__supabase__get_publishable_keys"
     ],
     "deny": [],
     "additionalDirectories": [

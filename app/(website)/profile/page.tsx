@@ -356,7 +356,7 @@ export default function ProfilePage() {
           {/* Profile Image */}
           <div className="flex flex-col items-center mb-4">
             <div className="relative">
-              <div className="w-24 h-24 rounded-full overflow-hidden bg-gray-200 border-4 border-[#661a1a]">
+              <div className="w-24 h-24 rounded-full overflow-hidden bg-gray-200 border-4 border-[var(--primary-color)]">
                 {profileData.profile_image_url ? (
                   <img
                     src={profileData.profile_image_url}
@@ -373,7 +373,7 @@ export default function ProfilePage() {
               {/* Upload button */}
               <label
                 htmlFor="profile-image-upload"
-                className={`absolute bottom-0 right-0 bg-[#661a1a] hover:bg-[#7d2222] text-white rounded-full p-1.5 cursor-pointer transition-colors ${
+                className={`absolute bottom-0 right-0 bg-[var(--primary-color)] hover:bg-[var(--primary-hover-color)] text-white rounded-full p-1.5 cursor-pointer transition-colors ${
                   isUploadingImage ? 'opacity-50 cursor-not-allowed' : ''
                 }`}
               >
@@ -407,7 +407,7 @@ export default function ProfilePage() {
                 value={profileData.name}
                 onChange={(e) => handleInputChange('name', e.target.value)}
                 placeholder="أدخل الاسم الكامل"
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#661a1a] focus:border-[#661a1a] transition-colors text-gray-900 bg-white placeholder-gray-400"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary-color)] focus:border-[var(--primary-color)] transition-colors text-gray-900 bg-white placeholder-gray-400"
               />
             </div>
 
@@ -423,7 +423,7 @@ export default function ProfilePage() {
                 placeholder="أدخل رقم الهاتف (يفضل أن يكون عليه واتساب)"
                 maxLength={11}
                 pattern="^01[0-9]{9}$"
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#661a1a] focus:border-[#661a1a] transition-colors text-gray-900 bg-white placeholder-gray-400"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary-color)] focus:border-[var(--primary-color)] transition-colors text-gray-900 bg-white placeholder-gray-400"
               />
               <p className="text-xs text-gray-500 mt-0.5">رقم مصري يبدأ بـ 01 ومكون من 11 رقم</p>
             </div>
@@ -440,7 +440,7 @@ export default function ProfilePage() {
                 placeholder="أدخل رقم هاتف آخر (اختياري)"
                 maxLength={11}
                 pattern="^01[0-9]{9}$"
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#661a1a] focus:border-[#661a1a] transition-colors text-gray-900 bg-white placeholder-gray-400"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary-color)] focus:border-[var(--primary-color)] transition-colors text-gray-900 bg-white placeholder-gray-400"
               />
             </div>
 
@@ -459,7 +459,7 @@ export default function ProfilePage() {
                   }}
                   onFocus={() => setShowGovernorateDropdown(true)}
                   placeholder="ابحث أو اختر المحافظة"
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#661a1a] focus:border-[#661a1a] transition-colors text-gray-900 bg-white placeholder-gray-400"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary-color)] focus:border-[var(--primary-color)] transition-colors text-gray-900 bg-white placeholder-gray-400"
                 />
                 <svg
                   className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
@@ -508,7 +508,7 @@ export default function ProfilePage() {
                 onChange={(e) => handleInputChange('address', e.target.value)}
                 placeholder="أدخل العنوان التفصيلي"
                 rows={3}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#661a1a] focus:border-[#661a1a] transition-colors resize-none text-gray-900 bg-white placeholder-gray-400"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[var(--primary-color)] focus:border-[var(--primary-color)] transition-colors resize-none text-gray-900 bg-white placeholder-gray-400"
               />
             </div>
           </div>
@@ -521,7 +521,7 @@ export default function ProfilePage() {
               className={`w-full py-2.5 px-4 rounded-lg font-medium text-white transition-colors ${
                 isSaving
                   ? 'bg-gray-400 cursor-not-allowed'
-                  : 'bg-[#661a1a] hover:bg-[#7d2222]'
+                  : 'bg-[var(--primary-color)] hover:bg-[var(--primary-hover-color)]'
               }`}
             >
               {isSaving ? 'جاري الحفظ...' : 'حفظ البيانات'}

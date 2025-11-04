@@ -740,7 +740,7 @@ const CartModal = ({ isOpen, onClose, onCartChange }: CartModalProps) => {
         dir="rtl"
       >
         {/* Responsive Header */}
-        <header className="border-b border-gray-600 py-0 flex-shrink-0" style={{backgroundColor: '#661a1a'}}>
+        <header className="border-b border-gray-600 py-0 flex-shrink-0" style={{backgroundColor: 'var(--primary-color)'}}>
           {/* Desktop/Tablet Header */}
           <div className="hidden md:block">
             <div className="px-8 flex items-center justify-between" style={{minHeight: '80px'}}>
@@ -832,7 +832,7 @@ const CartModal = ({ isOpen, onClose, onCartChange }: CartModalProps) => {
                 <div className="xl:hidden mb-6">
                   <div className="bg-white rounded-lg shadow-md overflow-hidden">
                     <div className="p-4 text-center border-b">
-                      <h3 className="text-xl font-semibold" style={{color: '#661a1a'}}>ملخص الطلب</h3>
+                      <h3 className="text-xl font-semibold" style={{color: 'var(--primary-color)'}}>ملخص الطلب</h3>
                     </div>
                     
                     {/* Products Table */}
@@ -1236,7 +1236,7 @@ const CartModal = ({ isOpen, onClose, onCartChange }: CartModalProps) => {
                               ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
                               : 'text-white hover:opacity-90'
                           }`}
-                          style={cartItems.length > 0 ? {backgroundColor: '#661a1a'} : {}}
+                          style={cartItems.length > 0 ? {backgroundColor: 'var(--primary-color)'} : {}}
                         >
                           تأكيد الطلب ({Object.keys(groupedCartItems).length} منتج)
                         </button>
@@ -1260,7 +1260,7 @@ const CartModal = ({ isOpen, onClose, onCartChange }: CartModalProps) => {
                   <div className="xl:col-span-2 xl:order-1 hidden xl:block">
                     <div className="bg-white rounded-lg shadow-md overflow-hidden">
                       <div className="p-4 text-center border-b">
-                        <h3 className="text-xl font-semibold" style={{color: '#661a1a'}}>ملخص الطلب</h3>
+                        <h3 className="text-xl font-semibold" style={{color: 'var(--primary-color)'}}>ملخص الطلب</h3>
                       </div>
                       
                       {/* Products Table */}
@@ -1425,7 +1425,7 @@ const CartModal = ({ isOpen, onClose, onCartChange }: CartModalProps) => {
                 {/* Mobile Products Cards Section */}
                 <div className="bg-white rounded-lg shadow-md">
                   <div className="p-4 text-center border-b">
-                    <h3 className="text-base font-semibold" style={{color: '#661a1a'}}>ملخص الطلب</h3>
+                    <h3 className="text-base font-semibold" style={{color: 'var(--primary-color)'}}>ملخص الطلب</h3>
                   </div>
                   
                   {/* Products as Cards */}
@@ -1782,7 +1782,7 @@ const CartModal = ({ isOpen, onClose, onCartChange }: CartModalProps) => {
                           ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
                           : 'text-white hover:opacity-90'
                       }`}
-                      style={cartItems.length > 0 ? {backgroundColor: '#661a1a'} : {}}
+                      style={cartItems.length > 0 ? {backgroundColor: 'var(--primary-color)'} : {}}
                     >
                       تأكيد الطلب ({Object.keys(groupedCartItems).length} منتج)
                     </button>

@@ -262,7 +262,7 @@ export default function ShippingCompanyDetails() {
   return (
     <div className="min-h-screen bg-gray-100">
       {/* Header */}
-      <header className="border-b border-gray-700 py-0 sticky top-0 z-10" style={{backgroundColor: '#661a1a'}}>
+      <header className="border-b border-gray-700 py-0 sticky top-0 z-10" style={{backgroundColor: 'var(--primary-color)'}}>
         <div className="max-w-[80%] mx-auto px-4 flex items-center justify-between min-h-[80px]">
           <div className="flex items-center gap-8">
             <div className="flex items-center gap-3">
@@ -305,7 +305,7 @@ export default function ShippingCompanyDetails() {
           </div>
           <button
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 bg-[#661a1a] hover:bg-[#4d1414] text-white px-6 py-3 rounded-lg transition-colors shadow-md"
+            className="flex items-center gap-2 bg-[var(--primary-color)] hover:bg-[var(--primary-hover-color)] text-white px-6 py-3 rounded-lg transition-colors shadow-md"
           >
             <PlusIcon className="h-5 w-5" />
             إضافة محافظة
@@ -320,7 +320,7 @@ export default function ShippingCompanyDetails() {
             <p className="text-gray-500 mb-6">ابدأ بإضافة المحافظات وتحديد أسعار الشحن</p>
             <button
               onClick={() => setShowAddModal(true)}
-              className="bg-[#661a1a] hover:bg-[#4d1414] text-white px-8 py-3 rounded-lg transition-colors"
+              className="bg-[var(--primary-color)] hover:bg-[var(--primary-hover-color)] text-white px-8 py-3 rounded-lg transition-colors"
             >
               إضافة أول محافظة
             </button>
@@ -525,7 +525,7 @@ export default function ShippingCompanyDetails() {
                 <button
                   onClick={handleAddGovernorate}
                   disabled={!newGovName.trim() || (govType === 'simple' && !govPrice.trim()) || isSubmitting}
-                  className="flex-1 bg-[#661a1a] hover:bg-[#4d1414] disabled:bg-gray-300 disabled:text-gray-500 text-white px-4 py-3 rounded-lg transition-colors font-medium"
+                  className="flex-1 bg-[var(--primary-color)] hover:bg-[var(--primary-hover-color)] disabled:bg-gray-300 disabled:text-gray-500 text-white px-4 py-3 rounded-lg transition-colors font-medium"
                 >
                   {isSubmitting ? 'جاري الإضافة...' : 'إضافة المحافظة'}
                 </button>

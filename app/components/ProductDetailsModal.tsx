@@ -926,7 +926,7 @@ export default function ProductDetailsModal({
       >
 
       {/* Responsive Header */}
-      <header className="border-b border-gray-600 py-0 flex-shrink-0" style={{backgroundColor: '#661a1a'}}>
+      <header className="border-b border-gray-600 py-0 flex-shrink-0" style={{backgroundColor: 'var(--primary-color)'}}>
         {/* Desktop Header */}
         <div className="hidden lg:block">
           <div className="px-8 flex items-center justify-between" style={{minHeight: '80px'}}>

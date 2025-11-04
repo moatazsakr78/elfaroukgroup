@@ -794,7 +794,7 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
 
       {/* Compact Sticky Header */}
       {isCompactHeaderVisible && (
-        <header className="fixed top-0 left-0 right-0 border-b border-gray-700 py-2 z-40 transition-all duration-300" style={{backgroundColor: '#661a1a'}}>
+        <header className="fixed top-0 left-0 right-0 border-b border-gray-700 py-2 z-40 transition-all duration-300" style={{backgroundColor: 'var(--primary-color)'}}>
           <div className="max-w-[90%] mx-auto px-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <img src="/assets/logo/El Farouk Group2.png" alt="الفاروق" className="h-10 w-10 object-contain" />
@@ -828,7 +828,7 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
       )}
 
       {/* Main Header */}
-      <header className="border-b border-gray-700 py-0 relative z-40" style={{backgroundColor: '#661a1a'}}>
+      <header className="border-b border-gray-700 py-0 relative z-40" style={{backgroundColor: 'var(--primary-color)'}}>
         <div className="max-w-[80%] mx-auto px-4 flex items-center justify-between min-h-[80px]">
           <div className="flex items-center gap-8">
             <div className="flex items-center gap-3">

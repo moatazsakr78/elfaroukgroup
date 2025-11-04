@@ -37,10 +37,10 @@ pos-sys/
 ```
 
 ## Database Schema
-- **Supabase Project ID**: `hecedrbnbknohssgaoso`
+- **Supabase Project ID**: `qtixpwjpothwrosgorkn` (omelarosa)
 - **Region**: eu-central-1
 - **Status**: ACTIVE_HEALTHY
-- **Database Version**: PostgreSQL 17.6.1.021
+- **Database Version**: PostgreSQL 17.6.1.032
 
 ### Key Tables (27 total):
 - `products` - Product catalog with pricing, barcodes, categories
