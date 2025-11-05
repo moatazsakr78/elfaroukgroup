@@ -503,7 +503,7 @@ export default function DesktopHome({
             <div className="max-w-[90%] mx-auto px-4 flex items-center justify-between w-full min-h-[50px]">
               <div className="flex items-center gap-3">
                 <img src={logoUrl || '/assets/logo/El Farouk Group2.png'} alt={companyName} className="h-10 w-10 object-contain" />
-                <h1 className="text-base font-bold text-green-400">{companyName}</h1>
+                <h1 className="text-base font-bold text-purple-400">{companyName}</h1>
               </div>
             
             {/* Compact Search Bar */}
@@ -592,7 +592,7 @@ export default function DesktopHome({
             <div className="flex items-center gap-8">
               <div className="flex items-center gap-3">
                 <img src={logoUrl || '/assets/logo/El Farouk Group2.png'} alt={companyName} className="h-20 w-20 object-contain" />
-                <h1 className="text-xl font-bold text-green-400">{companyName}</h1>
+                <h1 className="text-xl font-bold text-purple-400">{companyName}</h1>
               </div>
             </div>
           
@@ -734,7 +734,7 @@ export default function DesktopHome({
             <div>
               <div className="flex items-center gap-3 mb-4">
                 <img src={logoUrl || '/assets/logo/El Farouk Group2.png'} alt={companyName} className="h-8 w-8 object-contain" />
-                <h5 className="font-bold text-lg text-green-400">{companyName}</h5>
+                <h5 className="font-bold text-lg text-purple-400">{companyName}</h5>
               </div>
               <p className="text-gray-400">متجرك المتكامل للحصول على أفضل المنتجات بأسعار مميزة وجودة عالية</p>
             </div>

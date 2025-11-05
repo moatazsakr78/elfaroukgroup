@@ -521,7 +521,7 @@ export default function TabletHome({
                 {/* Logo and Title - Left Side */}
                 <div className="flex items-center gap-3 flex-shrink-0">
                   <img src={logoUrl || '/assets/logo/El Farouk Group2.png'} alt={companyName} className="h-12 w-12 object-contain" />
-                  <h1 className="text-lg font-bold text-green-400">{companyName}</h1>
+                  <h1 className="text-lg font-bold text-purple-400">{companyName}</h1>
                 </div>
               
                 {/* Search Bar - Expanded Width */}
@@ -608,7 +608,7 @@ export default function TabletHome({
               <div className="flex items-center gap-3 flex-shrink-0">
                 <img src={logoUrl || '/assets/logo/El Farouk Group2.png'} alt={companyName} className="h-16 w-16 object-contain" />
                 <div className="flex flex-col">
-                  <h1 className="text-lg font-bold text-green-400 leading-tight">{companyName}</h1>
+                  <h1 className="text-lg font-bold text-purple-400 leading-tight">{companyName}</h1>
                 </div>
               </div>
             
@@ -771,7 +771,7 @@ export default function TabletHome({
             <div>
               <div className="flex items-center gap-3 mb-4">
                 <img src={logoUrl || '/assets/logo/El Farouk Group2.png'} alt={companyName} className="h-7 w-7 object-contain" />
-                <h5 className="font-bold text-lg text-green-400">{companyName}</h5>
+                <h5 className="font-bold text-lg text-purple-400">{companyName}</h5>
               </div>
               <p className="text-gray-400 mb-4">متجرك المتكامل للحصول على أفضل المنتجات بأسعار مميزة وجودة عالية</p>
               <div className="space-y-2 text-gray-400">
