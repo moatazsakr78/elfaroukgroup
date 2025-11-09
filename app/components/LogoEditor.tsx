@@ -230,7 +230,7 @@ export default function LogoEditor({ imageFile, onSave, onCancel }: LogoEditorPr
               </label>
               <div className="flex items-center gap-4">
                 <button
-                  onClick={() => handleZoomChange(Math.max(0.1, zoom - 0.1))}
+                  onClick={() => handleZoomChange(Math.max(0.1, zoom - 0.01))}
                   className="px-3 py-2 bg-[#374151] hover:bg-gray-600 rounded text-white font-bold text-lg"
                 >
                   -
@@ -239,13 +239,13 @@ export default function LogoEditor({ imageFile, onSave, onCancel }: LogoEditorPr
                   type="range"
                   min="0.1"
                   max="3"
-                  step="0.1"
+                  step="0.01"
                   value={zoom}
                   onChange={(e) => handleZoomChange(parseFloat(e.target.value))}
                   className="flex-1 accent-blue-500"
                 />
                 <button
-                  onClick={() => handleZoomChange(Math.min(3, zoom + 0.1))}
+                  onClick={() => handleZoomChange(Math.min(3, zoom + 0.01))}
                   className="px-3 py-2 bg-[#374151] hover:bg-gray-600 rounded text-white font-bold text-lg"
                 >
                   +
