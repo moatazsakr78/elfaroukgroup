@@ -502,7 +502,9 @@ export default function DesktopHome({
             {/* Main Compact Content Container */}
             <div className="max-w-[90%] mx-auto px-4 flex items-center justify-between w-full min-h-[50px]">
               <div className="flex items-center gap-3">
-                <img src={logoUrl || '/assets/logo/El Farouk Group2.png'} alt={companyName} className="h-10 w-10 object-contain" />
+                <div className="h-10 w-10 rounded-full overflow-hidden bg-transparent flex items-center justify-center">
+                  <img src={logoUrl || '/assets/logo/El Farouk Group2.png'} alt={companyName} className="h-full w-full object-cover" />
+                </div>
                 <h1 className="text-base font-bold text-white">{companyName}</h1>
               </div>
             
@@ -591,7 +593,9 @@ export default function DesktopHome({
           <div className="max-w-[80%] mx-auto px-4 flex items-center justify-between min-h-[80px] w-full">
             <div className="flex items-center gap-8">
               <div className="flex items-center gap-3">
-                <img src={logoUrl || '/assets/logo/El Farouk Group2.png'} alt={companyName} className="h-20 w-20 object-contain" />
+                <div className="h-20 w-20 rounded-full overflow-hidden bg-transparent flex items-center justify-center">
+                  <img src={logoUrl || '/assets/logo/El Farouk Group2.png'} alt={companyName} className="h-full w-full object-cover" />
+                </div>
                 <h1 className="text-xl font-bold text-white">{companyName}</h1>
               </div>
             </div>

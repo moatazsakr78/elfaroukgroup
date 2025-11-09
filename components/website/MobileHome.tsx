@@ -495,7 +495,9 @@ export default function MobileHome({
               </button>
               
               {/* Logo */}
-              <img src={logoUrl || '/assets/logo/El Farouk Group2.png'} alt={companyName} className="h-14 w-14 object-contain" />
+              <div className="h-14 w-14 rounded-full overflow-hidden bg-transparent flex items-center justify-center">
+                <img src={logoUrl || '/assets/logo/El Farouk Group2.png'} alt={companyName} className="h-full w-full object-cover" />
+              </div>
 
               {/* Logo Text */}
               <div className="flex flex-col leading-tight">

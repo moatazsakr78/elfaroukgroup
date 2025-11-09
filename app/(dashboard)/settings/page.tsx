@@ -19,6 +19,7 @@ import { useRatingsDisplay } from '@/lib/hooks/useRatingSettings';
 import { useCompanySettings } from '@/lib/hooks/useCompanySettings';
 import { useStoreThemes } from '@/lib/hooks/useStoreTheme';
 import { supabase } from '@/app/lib/supabase/client';
+import LogoEditor from '@/app/components/LogoEditor';
 
 // Custom dropdown component with delete buttons
 const CurrencyDropdownWithDelete = ({
@@ -284,6 +285,10 @@ export default function SettingsPage() {
   const [newPrimaryHoverColor, setNewPrimaryHoverColor] = useState('#4A1616');
   const [newButtonColor, setNewButtonColor] = useState('#5d1f1f');
   const [newButtonHoverColor, setNewButtonHoverColor] = useState('#4A1616');
+
+  // Logo Editor State
+  const [isLogoEditorOpen, setIsLogoEditorOpen] = useState(false);
+  const [selectedLogoFile, setSelectedLogoFile] = useState<File | null>(null);
 
   // Update pending state when database values change
   useEffect(() => {
@@ -1149,13 +1154,21 @@ export default function SettingsPage() {
         return;
       }
 
-      // Convert to base64
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setLogoUrl(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      // Open logo editor instead of directly setting the URL
+      setSelectedLogoFile(file);
+      setIsLogoEditorOpen(true);
     }
+  };
+
+  const handleLogoSave = (croppedImage: string) => {
+    setLogoUrl(croppedImage);
+    setIsLogoEditorOpen(false);
+    setSelectedLogoFile(null);
+  };
+
+  const handleLogoCancel = () => {
+    setIsLogoEditorOpen(false);
+    setSelectedLogoFile(null);
   };
 
   const renderCompanySettings = () => {
@@ -1399,6 +1412,15 @@ export default function SettingsPage() {
 
   return (
     <>
+      {/* Logo Editor Modal */}
+      {isLogoEditorOpen && selectedLogoFile && (
+        <LogoEditor
+          imageFile={selectedLogoFile}
+          onSave={handleLogoSave}
+          onCancel={handleLogoCancel}
+        />
+      )}
+
       {/* Add Theme Modal */}
       {isAddThemeModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]">

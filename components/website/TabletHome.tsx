@@ -520,7 +520,9 @@ export default function TabletHome({
                 
                 {/* Logo and Title - Left Side */}
                 <div className="flex items-center gap-3 flex-shrink-0">
-                  <img src={logoUrl || '/assets/logo/El Farouk Group2.png'} alt={companyName} className="h-12 w-12 object-contain" />
+                  <div className="h-12 w-12 rounded-full overflow-hidden bg-transparent flex items-center justify-center">
+                    <img src={logoUrl || '/assets/logo/El Farouk Group2.png'} alt={companyName} className="h-full w-full object-cover" />
+                  </div>
                   <h1 className="text-lg font-bold text-white">{companyName}</h1>
                 </div>
               
@@ -606,7 +608,9 @@ export default function TabletHome({
               
               {/* Logo and Title - Left Side */}
               <div className="flex items-center gap-3 flex-shrink-0">
-                <img src={logoUrl || '/assets/logo/El Farouk Group2.png'} alt={companyName} className="h-16 w-16 object-contain" />
+                <div className="h-16 w-16 rounded-full overflow-hidden bg-transparent flex items-center justify-center">
+                  <img src={logoUrl || '/assets/logo/El Farouk Group2.png'} alt={companyName} className="h-full w-full object-cover" />
+                </div>
                 <div className="flex flex-col">
                   <h1 className="text-lg font-bold text-white leading-tight">{companyName}</h1>
                 </div>
