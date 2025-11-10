@@ -17,6 +17,7 @@ import { useCart } from '@/lib/contexts/CartContext';
 import { useCartBadge } from '@/lib/hooks/useCartBadge';
 import { useCompanySettings } from '@/lib/hooks/useCompanySettings';
 import { useProductDisplaySettings } from '@/lib/hooks/useProductDisplaySettings';
+import { useStoreTheme } from '@/lib/hooks/useStoreTheme';
 
 interface MobileHomeProps {
   userInfo: UserInfo;
@@ -56,10 +57,16 @@ export default function MobileHome({
   const isAdminOrStaff = profile?.role === 'أدمن رئيسي' || profile?.role === 'موظف';
 
   // Get company settings
-  const { companyName, logoUrl, socialMedia } = useCompanySettings();
+  const { companyName, logoUrl, logoShape, socialMedia } = useCompanySettings();
 
   // Get product display settings
   const { settings: displaySettings } = useProductDisplaySettings();
+
+  // Get store theme colors
+  const { primaryColor, primaryHoverColor, interactiveColor } = useStoreTheme();
+
+  // Get logo rounding class based on shape
+  const logoRoundingClass = logoShape === 'circle' ? 'rounded-full' : 'rounded-lg';
 
   // Get cart badge count and cart functions
   const { cartBadgeCount } = useCartBadge();
@@ -381,6 +388,15 @@ export default function MobileHome({
     setIsClient(true);
   }, []);
 
+  // Set CSS variables for colors
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.style.setProperty('--primary-color', primaryColor);
+      document.documentElement.style.setProperty('--primary-hover-color', primaryHoverColor);
+      document.documentElement.style.setProperty('--interactive-color', interactiveColor);
+    }
+  }, [primaryColor, primaryHoverColor, interactiveColor]);
+
   // Handle menu toggle with animation
   const toggleMenu = () => {
     if (isMenuOpen) {
@@ -495,7 +511,7 @@ export default function MobileHome({
               </button>
               
               {/* Logo */}
-              <div className="h-14 w-14 rounded-full overflow-hidden bg-transparent flex items-center justify-center">
+              <div className={`h-14 w-14 ${logoRoundingClass} overflow-hidden bg-transparent flex items-center justify-center`}>
                 <img src={logoUrl || '/assets/logo/El Farouk Group2.png'} alt={companyName} className="h-full w-full object-cover" />
               </div>
 
@@ -520,7 +536,7 @@ export default function MobileHome({
               {/* Cart Button */}
               <button 
                 onClick={() => setIsCartModalOpen(true)}
-                className="relative p-2 hover:bg-red-600 rounded-lg transition-colors"
+                className="relative p-2 hover:bg-[var(--interactive-color)] rounded-lg transition-colors"
               >
                 <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4m0 0L7 13m0 0l-1.5 6H19" />
@@ -573,7 +589,7 @@ export default function MobileHome({
                         }}
                         className="flex items-center gap-3 w-full p-3 text-black hover:bg-gray-300 rounded-lg transition-colors text-right group"
                       >
-                        <div className="p-2 bg-[var(--primary-color)] rounded-full group-hover:bg-red-700 transition-colors">
+                        <div className="p-2 bg-[var(--primary-color)] rounded-full group-hover:bg-[var(--interactive-color)] transition-colors">
                           <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                           </svg>
@@ -592,7 +608,7 @@ export default function MobileHome({
                         }}
                         className="flex items-center gap-3 w-full p-3 text-black hover:bg-gray-300 rounded-lg transition-colors text-right group"
                       >
-                        <div className="p-2 bg-[var(--primary-color)] rounded-full group-hover:bg-red-700 transition-colors">
+                        <div className="p-2 bg-[var(--primary-color)] rounded-full group-hover:bg-[var(--interactive-color)] transition-colors">
                           <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                           </svg>
@@ -611,7 +627,7 @@ export default function MobileHome({
                         }}
                         className="flex items-center gap-3 w-full p-3 text-black hover:bg-gray-300 rounded-lg transition-colors text-right group"
                       >
-                        <div className="p-2 bg-[var(--primary-color)] rounded-full group-hover:bg-red-700 transition-colors">
+                        <div className="p-2 bg-[var(--primary-color)] rounded-full group-hover:bg-[var(--interactive-color)] transition-colors">
                           <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                           </svg>
@@ -630,7 +646,7 @@ export default function MobileHome({
                         }}
                         className="flex items-center gap-3 w-full p-3 text-black hover:bg-gray-300 rounded-lg transition-colors text-right group"
                       >
-                        <div className="p-2 bg-[var(--primary-color)] rounded-full group-hover:bg-red-700 transition-colors">
+                        <div className="p-2 bg-[var(--primary-color)] rounded-full group-hover:bg-[var(--interactive-color)] transition-colors">
                           <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -655,7 +671,7 @@ export default function MobileHome({
                         }}
                         className="flex items-center gap-3 w-full p-3 text-black hover:bg-gray-300 rounded-lg transition-colors text-right group"
                       >
-                        <div className="p-2 bg-[var(--primary-color)] rounded-full group-hover:bg-red-700 transition-colors">
+                        <div className="p-2 bg-[var(--primary-color)] rounded-full group-hover:bg-[var(--interactive-color)] transition-colors">
                           <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                           </svg>
@@ -674,7 +690,7 @@ export default function MobileHome({
                         }}
                         className="flex items-center gap-3 w-full p-3 text-black hover:bg-gray-300 rounded-lg transition-colors text-right group"
                       >
-                        <div className="p-2 bg-[var(--primary-color)] rounded-full group-hover:bg-red-700 transition-colors">
+                        <div className="p-2 bg-[var(--primary-color)] rounded-full group-hover:bg-[var(--interactive-color)] transition-colors">
                           <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                           </svg>
@@ -693,7 +709,7 @@ export default function MobileHome({
                         }}
                         className="flex items-center gap-3 w-full p-3 text-black hover:bg-gray-300 rounded-lg transition-colors text-right group"
                       >
-                        <div className="p-2 bg-[var(--primary-color)] rounded-full group-hover:bg-red-700 transition-colors">
+                        <div className="p-2 bg-[var(--primary-color)] rounded-full group-hover:bg-[var(--interactive-color)] transition-colors">
                           <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                           </svg>
@@ -821,7 +837,7 @@ export default function MobileHome({
                     </div>
                     {/* منطقة صغيرة للنص في الأسفل */}
                     <div className="bg-white p-2 border-t border-gray-100">
-                      <h4 className="font-semibold text-xs text-gray-800 group-hover:text-red-500 transition-colors truncate">{category.name}</h4>
+                      <h4 className="font-semibold text-xs text-gray-800 group-hover:text-[var(--interactive-color)] transition-colors truncate">{category.name}</h4>
                     </div>
                   </div>
                 </div>

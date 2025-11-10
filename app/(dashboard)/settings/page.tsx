@@ -251,6 +251,7 @@ export default function SettingsPage() {
   const {
     companyName: dbCompanyName,
     logoUrl: dbLogoUrl,
+    logoShape: dbLogoShape,
     socialMedia: dbSocialMedia,
     branches: dbBranches,
     updateCompanySettings,
@@ -270,6 +271,7 @@ export default function SettingsPage() {
   // Local state for pending changes (not saved until user clicks save)
   const [companyName, setCompanyName] = useState(dbCompanyName);
   const [logoUrl, setLogoUrl] = useState(dbLogoUrl);
+  const [logoShape, setLogoShape] = useState<'square' | 'circle'>(dbLogoShape);
   const [socialMedia, setSocialMedia] = useState(dbSocialMedia);
   const [branches, setBranches] = useState(dbBranches);
 
@@ -283,6 +285,7 @@ export default function SettingsPage() {
   const [newThemeName, setNewThemeName] = useState('');
   const [newPrimaryColor, setNewPrimaryColor] = useState('#5d1f1f');
   const [newPrimaryHoverColor, setNewPrimaryHoverColor] = useState('#4A1616');
+  const [newInteractiveColor, setNewInteractiveColor] = useState('#EF4444');
   const [newButtonColor, setNewButtonColor] = useState('#5d1f1f');
   const [newButtonHoverColor, setNewButtonHoverColor] = useState('#4A1616');
 
@@ -678,6 +681,7 @@ export default function SettingsPage() {
         await updateCompanySettings({
           name: companyName,
           logoUrl: logoUrl,
+          logoShape: logoShape,
           socialMedia: socialMedia,
           branches: branches
         });
@@ -1078,6 +1082,7 @@ export default function SettingsPage() {
                             setNewThemeName(theme.name);
                             setNewPrimaryColor(theme.primary_color);
                             setNewPrimaryHoverColor(theme.primary_hover_color);
+                            setNewInteractiveColor(theme.interactive_color || '#EF4444');
                             setNewButtonColor(theme.button_color || theme.primary_color);
                             setNewButtonHoverColor(theme.button_hover_color || theme.primary_hover_color);
                             setIsEditThemeModalOpen(true);
@@ -1120,6 +1125,7 @@ export default function SettingsPage() {
                 setNewThemeName('');
                 setNewPrimaryColor('#5d1f1f');
                 setNewPrimaryHoverColor('#4A1616');
+                setNewInteractiveColor('#EF4444');
                 setNewButtonColor('#5d1f1f');
                 setNewButtonHoverColor('#4A1616');
                 setIsAddThemeModalOpen(true);
@@ -1160,8 +1166,9 @@ export default function SettingsPage() {
     }
   };
 
-  const handleLogoSave = (croppedImage: string) => {
+  const handleLogoSave = (croppedImage: string, shape: 'square' | 'circle') => {
     setLogoUrl(croppedImage);
+    setLogoShape(shape);
     setIsLogoEditorOpen(false);
     setSelectedLogoFile(null);
   };
@@ -1480,6 +1487,26 @@ export default function SettingsPage() {
                 </div>
               </div>
 
+              {/* Interactive Color */}
+              <div>
+                <label className="block text-white text-sm font-medium mb-2">لون التفاعل (الأزرار والأيقونات)</label>
+                <div className="flex gap-2 items-center">
+                  <input
+                    type="color"
+                    value={newInteractiveColor}
+                    onChange={(e) => setNewInteractiveColor(e.target.value)}
+                    className="w-20 h-10 rounded border border-gray-600 cursor-pointer"
+                  />
+                  <input
+                    type="text"
+                    value={newInteractiveColor}
+                    onChange={(e) => setNewInteractiveColor(e.target.value)}
+                    className="flex-1 px-3 py-2 bg-[#374151] border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    style={{ direction: 'ltr' }}
+                  />
+                </div>
+              </div>
+
               {/* Preview */}
               <div className="mt-6 p-4 bg-[#374151] rounded-lg border border-gray-600">
                 <p className="text-white text-sm mb-3">معاينة اللون:</p>
@@ -1510,7 +1537,7 @@ export default function SettingsPage() {
                   }
 
                   try {
-                    await addTheme(newThemeName, newPrimaryColor, newPrimaryHoverColor, newButtonColor, newButtonHoverColor);
+                    await addTheme(newThemeName, newPrimaryColor, newPrimaryHoverColor, newInteractiveColor, newButtonColor, newButtonHoverColor);
                     alert('تم إضافة اللون بنجاح!');
                     setIsAddThemeModalOpen(false);
                   } catch (error) {
@@ -1586,6 +1613,26 @@ export default function SettingsPage() {
                 </div>
               </div>
 
+              {/* Interactive Color */}
+              <div>
+                <label className="block text-white text-sm font-medium mb-2">لون التفاعل (الأزرار والأيقونات)</label>
+                <div className="flex gap-2 items-center">
+                  <input
+                    type="color"
+                    value={newInteractiveColor}
+                    onChange={(e) => setNewInteractiveColor(e.target.value)}
+                    className="w-20 h-10 rounded border border-gray-600 cursor-pointer"
+                  />
+                  <input
+                    type="text"
+                    value={newInteractiveColor}
+                    onChange={(e) => setNewInteractiveColor(e.target.value)}
+                    className="flex-1 px-3 py-2 bg-[#374151] border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    style={{ direction: 'ltr' }}
+                  />
+                </div>
+              </div>
+
               {/* Preview */}
               <div className="mt-6 p-4 bg-[#374151] rounded-lg border border-gray-600">
                 <p className="text-white text-sm mb-3">معاينة اللون:</p>
@@ -1614,7 +1661,7 @@ export default function SettingsPage() {
               <button
                 onClick={async () => {
                   try {
-                    await updateTheme(editingTheme.id, newPrimaryColor, newPrimaryHoverColor, newButtonColor, newButtonHoverColor);
+                    await updateTheme(editingTheme.id, newPrimaryColor, newPrimaryHoverColor, newInteractiveColor, newButtonColor, newButtonHoverColor);
                     alert('تم تحديث اللون بنجاح!');
                     setIsEditThemeModalOpen(false);
                     setEditingTheme(null);

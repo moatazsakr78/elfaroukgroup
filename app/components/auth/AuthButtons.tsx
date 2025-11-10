@@ -94,7 +94,7 @@ export default function AuthButtons({ onAuthSuccess, compact = false, mobileIcon
         {/* User Avatar & Name - Clickable */}
         <button
           onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-          className={`flex items-center hover:bg-red-700 p-2 rounded-lg transition-colors ${mobileIconOnly || imageOnly ? 'gap-0' : (compact ? 'gap-1' : 'gap-2')}`}
+          className={`flex items-center hover:bg-[var(--interactive-color)] p-2 rounded-lg transition-colors ${mobileIconOnly || imageOnly ? 'gap-0' : (compact ? 'gap-1' : 'gap-2')}`}
         >
           {user.avatar ? (
             <img
@@ -250,7 +250,7 @@ export default function AuthButtons({ onAuthSuccess, compact = false, mobileIcon
       {/* Sign Up Button */}
       <button
         onClick={() => window.location.href = '/auth/signup'}
-        className={`bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium ${
+        className={`bg-[var(--primary-color)] hover:bg-[var(--interactive-color)] text-white rounded-lg transition-colors font-medium ${
           compact ? 'px-3 py-1.5 text-sm' : 'px-4 py-2'
         }`}
       >

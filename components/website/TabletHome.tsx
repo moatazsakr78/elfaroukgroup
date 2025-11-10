@@ -20,6 +20,7 @@ import { useCart } from '@/lib/contexts/CartContext';
 import { useCartBadge } from '@/lib/hooks/useCartBadge';
 import { useCompanySettings } from '@/lib/hooks/useCompanySettings';
 import { useProductDisplaySettings } from '@/lib/hooks/useProductDisplaySettings';
+import { useStoreTheme } from '@/lib/hooks/useStoreTheme';
 
 interface TabletHomeProps {
   userInfo: UserInfo;
@@ -57,10 +58,16 @@ export default function TabletHome({
   const { isAdmin } = useUserProfile();
 
   // Get company settings
-  const { companyName, logoUrl, socialMedia } = useCompanySettings();
+  const { companyName, logoUrl, logoShape, socialMedia } = useCompanySettings();
 
   // Get product display settings
   const { settings: displaySettings } = useProductDisplaySettings();
+
+  // Get store theme colors
+  const { primaryColor, primaryHoverColor, interactiveColor } = useStoreTheme();
+
+  // Get logo rounding class based on shape
+  const logoRoundingClass = logoShape === 'circle' ? 'rounded-full' : 'rounded-lg';
 
   // Get cart badge count and cart functions
   const { cartBadgeCount } = useCartBadge();
@@ -391,6 +398,15 @@ export default function TabletHome({
     setIsClient(true);
   }, []);
 
+  // Set CSS variables for colors
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.style.setProperty('--primary-color', primaryColor);
+      document.documentElement.style.setProperty('--primary-hover-color', primaryHoverColor);
+      document.documentElement.style.setProperty('--interactive-color', interactiveColor);
+    }
+  }, [primaryColor, primaryHoverColor, interactiveColor]);
+
   // Handle scroll for compact header
   useEffect(() => {
     if (!isClient) return;
@@ -520,7 +536,7 @@ export default function TabletHome({
                 
                 {/* Logo and Title - Left Side */}
                 <div className="flex items-center gap-3 flex-shrink-0">
-                  <div className="h-12 w-12 rounded-full overflow-hidden bg-transparent flex items-center justify-center">
+                  <div className={`h-12 w-12 ${logoRoundingClass} overflow-hidden bg-transparent flex items-center justify-center`}>
                     <img src={logoUrl || '/assets/logo/El Farouk Group2.png'} alt={companyName} className="h-full w-full object-cover" />
                   </div>
                   <h1 className="text-lg font-bold text-white">{companyName}</h1>
@@ -545,7 +561,7 @@ export default function TabletHome({
                     />
                     <button
                       onClick={() => setIsSearchOverlayOpen(true)}
-                      className="absolute right-4 top-1/2 transform -translate-y-1/2 p-1 text-gray-400 hover:text-red-600 transition-colors"
+                      className="absolute right-4 top-1/2 transform -translate-y-1/2 p-1 text-gray-400 hover:text-[var(--interactive-color)] transition-colors"
                       title="فتح البحث المتقدم"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -608,7 +624,7 @@ export default function TabletHome({
               
               {/* Logo and Title - Left Side */}
               <div className="flex items-center gap-3 flex-shrink-0">
-                <div className="h-16 w-16 rounded-full overflow-hidden bg-transparent flex items-center justify-center">
+                <div className={`h-16 w-16 ${logoRoundingClass} overflow-hidden bg-transparent flex items-center justify-center`}>
                   <img src={logoUrl || '/assets/logo/El Farouk Group2.png'} alt={companyName} className="h-full w-full object-cover" />
                 </div>
                 <div className="flex flex-col">
@@ -635,7 +651,7 @@ export default function TabletHome({
                   />
                   <button
                     onClick={() => setIsSearchOverlayOpen(true)}
-                    className="absolute right-5 top-1/2 transform -translate-y-1/2 p-1.5 text-gray-400 hover:text-red-600 transition-colors"
+                    className="absolute right-5 top-1/2 transform -translate-y-1/2 p-1.5 text-gray-400 hover:text-[var(--interactive-color)] transition-colors"
                     title="فتح البحث المتقدم"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -738,7 +754,7 @@ export default function TabletHome({
                     </div>
                     {/* منطقة صغيرة للنص في الأسفل */}
                     <div className="bg-white p-3 border-t border-gray-100">
-                      <h4 className="font-semibold text-sm text-gray-800 group-hover:text-red-500 transition-colors truncate">{category.name}</h4>
+                      <h4 className="font-semibold text-sm text-gray-800 group-hover:text-[var(--interactive-color)] transition-colors truncate">{category.name}</h4>
                     </div>
                   </div>
                 </div>

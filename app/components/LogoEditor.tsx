@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 
 interface LogoEditorProps {
   imageFile: File;
-  onSave: (croppedImage: string) => void;
+  onSave: (croppedImage: string, shape: 'square' | 'circle') => void;
   onCancel: () => void;
 }
 
@@ -118,7 +118,7 @@ export default function LogoEditor({ imageFile, onSave, onCancel }: LogoEditorPr
     if (!canvasRef.current) return;
 
     const croppedImage = canvasRef.current.toDataURL('image/png');
-    onSave(croppedImage);
+    onSave(croppedImage, shape);
   };
 
   const handleZoomChange = (newZoom: number) => {

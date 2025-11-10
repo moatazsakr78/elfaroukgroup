@@ -6,6 +6,7 @@ export interface StoreThemeColors {
   name: string;
   primary_color: string;
   primary_hover_color: string;
+  interactive_color: string;
   button_color: string;
   button_hover_color: string;
   is_active: boolean;
@@ -18,6 +19,7 @@ const DEFAULT_THEME: StoreThemeColors = {
   name: 'أحمر كلاسيكي',
   primary_color: '#5d1f1f',
   primary_hover_color: '#4A1616',
+  interactive_color: '#EF4444',
   button_color: '#5d1f1f',
   button_hover_color: '#4A1616',
   is_active: true,
@@ -27,6 +29,7 @@ const DEFAULT_THEME: StoreThemeColors = {
 export function useStoreTheme() {
   const [primaryColor, setPrimaryColor] = useState(DEFAULT_THEME.primary_color);
   const [primaryHoverColor, setPrimaryHoverColor] = useState(DEFAULT_THEME.primary_hover_color);
+  const [interactiveColor, setInteractiveColor] = useState(DEFAULT_THEME.interactive_color);
   const [buttonColor, setButtonColor] = useState(DEFAULT_THEME.button_color);
   const [buttonHoverColor, setButtonHoverColor] = useState(DEFAULT_THEME.button_hover_color);
   const [themeName, setThemeName] = useState(DEFAULT_THEME.name);
@@ -47,12 +50,14 @@ export function useStoreTheme() {
           // Use default theme on error
           setPrimaryColor(DEFAULT_THEME.primary_color);
           setPrimaryHoverColor(DEFAULT_THEME.primary_hover_color);
+          setInteractiveColor(DEFAULT_THEME.interactive_color);
           setButtonColor(DEFAULT_THEME.button_color);
           setButtonHoverColor(DEFAULT_THEME.button_hover_color);
           setThemeName(DEFAULT_THEME.name);
         } else if (data) {
           setPrimaryColor(data.primary_color);
           setPrimaryHoverColor(data.primary_hover_color);
+          setInteractiveColor(data.interactive_color || DEFAULT_THEME.interactive_color);
           setButtonColor(data.button_color);
           setButtonHoverColor(data.button_hover_color);
           setThemeName(data.name);
@@ -62,6 +67,7 @@ export function useStoreTheme() {
         // Use default theme on error
         setPrimaryColor(DEFAULT_THEME.primary_color);
         setPrimaryHoverColor(DEFAULT_THEME.primary_hover_color);
+        setInteractiveColor(DEFAULT_THEME.interactive_color);
         setButtonColor(DEFAULT_THEME.button_color);
         setButtonHoverColor(DEFAULT_THEME.button_hover_color);
         setThemeName(DEFAULT_THEME.name);
@@ -97,6 +103,7 @@ export function useStoreTheme() {
   return {
     primaryColor,
     primaryHoverColor,
+    interactiveColor,
     buttonColor,
     buttonHoverColor,
     themeName,
@@ -154,7 +161,7 @@ export function useStoreThemes() {
     };
   }, []);
 
-  const addTheme = async (name: string, primaryColor: string, primaryHoverColor: string, buttonColor: string, buttonHoverColor: string) => {
+  const addTheme = async (name: string, primaryColor: string, primaryHoverColor: string, interactiveColor: string, buttonColor: string, buttonHoverColor: string) => {
     try {
       const { data, error } = await (supabase as any)
         .from('store_theme_colors')
@@ -162,6 +169,7 @@ export function useStoreThemes() {
           name,
           primary_color: primaryColor,
           primary_hover_color: primaryHoverColor,
+          interactive_color: interactiveColor,
           button_color: buttonColor,
           button_hover_color: buttonHoverColor,
           is_active: false,
@@ -233,13 +241,14 @@ export function useStoreThemes() {
     }
   };
 
-  const updateTheme = async (themeId: string, primaryColor: string, primaryHoverColor: string, buttonColor: string, buttonHoverColor: string) => {
+  const updateTheme = async (themeId: string, primaryColor: string, primaryHoverColor: string, interactiveColor: string, buttonColor: string, buttonHoverColor: string) => {
     try {
       const { error } = await (supabase as any)
         .from('store_theme_colors')
         .update({
           primary_color: primaryColor,
           primary_hover_color: primaryHoverColor,
+          interactive_color: interactiveColor,
           button_color: buttonColor,
           button_hover_color: buttonHoverColor,
         })

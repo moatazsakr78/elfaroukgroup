@@ -21,6 +21,7 @@ import { useCart } from '@/lib/contexts/CartContext';
 import { useCartBadge } from '@/lib/hooks/useCartBadge';
 import { useCompanySettings } from '@/lib/hooks/useCompanySettings';
 import { useProductDisplaySettings } from '@/lib/hooks/useProductDisplaySettings';
+import { useStoreTheme } from '@/lib/hooks/useStoreTheme';
 
 interface DesktopHomeProps {
   userInfo: UserInfo;
@@ -58,7 +59,7 @@ export default function DesktopHome({
   const { isAdmin } = useUserProfile();
 
   // Get company settings
-  const { companyName, logoUrl, socialMedia } = useCompanySettings();
+  const { companyName, logoUrl, logoShape, socialMedia } = useCompanySettings();
 
   // Get cart badge count and cart functions
   const { cartBadgeCount } = useCartBadge();
@@ -66,6 +67,12 @@ export default function DesktopHome({
 
   // Get product display settings
   const { settings: displaySettings } = useProductDisplaySettings();
+
+  // Get store theme colors
+  const { primaryColor, primaryHoverColor, interactiveColor } = useStoreTheme();
+
+  // Get logo rounding class based on shape
+  const logoRoundingClass = logoShape === 'circle' ? 'rounded-full' : 'rounded-lg';
 
   // Get store categories with their products
   const { categoriesWithProducts, isLoading: isCategoriesLoading } = useStoreCategoriesWithProducts();
@@ -280,6 +287,15 @@ export default function DesktopHome({
   useEffect(() => {
     setIsClient(true);
   }, []);
+
+  // Set CSS variables for colors
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.style.setProperty('--primary-color', primaryColor);
+      document.documentElement.style.setProperty('--primary-hover-color', primaryHoverColor);
+      document.documentElement.style.setProperty('--interactive-color', interactiveColor);
+    }
+  }, [primaryColor, primaryHoverColor, interactiveColor]);
 
   // Load raw sections data immediately on mount
   useEffect(() => {
@@ -502,7 +518,7 @@ export default function DesktopHome({
             {/* Main Compact Content Container */}
             <div className="max-w-[90%] mx-auto px-4 flex items-center justify-between w-full min-h-[50px]">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full overflow-hidden bg-transparent flex items-center justify-center">
+                <div className={`h-10 w-10 ${logoRoundingClass} overflow-hidden bg-transparent flex items-center justify-center`}>
                   <img src={logoUrl || '/assets/logo/El Farouk Group2.png'} alt={companyName} className="h-full w-full object-cover" />
                 </div>
                 <h1 className="text-base font-bold text-white">{companyName}</h1>
@@ -593,7 +609,7 @@ export default function DesktopHome({
           <div className="max-w-[80%] mx-auto px-4 flex items-center justify-between min-h-[80px] w-full">
             <div className="flex items-center gap-8">
               <div className="flex items-center gap-3">
-                <div className="h-20 w-20 rounded-full overflow-hidden bg-transparent flex items-center justify-center">
+                <div className={`h-20 w-20 ${logoRoundingClass} overflow-hidden bg-transparent flex items-center justify-center`}>
                   <img src={logoUrl || '/assets/logo/El Farouk Group2.png'} alt={companyName} className="h-full w-full object-cover" />
                 </div>
                 <h1 className="text-xl font-bold text-white">{companyName}</h1>

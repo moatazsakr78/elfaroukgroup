@@ -112,7 +112,7 @@ export default function RightSidebar({ isOpen, onClose }: RightSidebarProps) {
                   }}
                   className="flex items-center gap-3 w-full p-3 text-black hover:bg-gray-300 rounded-lg transition-colors text-right group"
                 >
-                  <div className="p-2 bg-[var(--primary-color)] rounded-full group-hover:bg-red-700 transition-colors">
+                  <div className="p-2 bg-[var(--primary-color)] rounded-full group-hover:bg-[var(--interactive-color)] transition-colors">
                     <UsersIcon className="h-5 w-5 text-white" />
                   </div>
                   <div className="flex-1 text-right">
@@ -130,7 +130,7 @@ export default function RightSidebar({ isOpen, onClose }: RightSidebarProps) {
                   }}
                   className="flex items-center gap-3 w-full p-3 text-black hover:bg-gray-300 rounded-lg transition-colors text-right group"
                 >
-                  <div className="p-2 bg-[var(--primary-color)] rounded-full group-hover:bg-red-700 transition-colors">
+                  <div className="p-2 bg-[var(--primary-color)] rounded-full group-hover:bg-[var(--interactive-color)] transition-colors">
                     <BuildingStorefrontIcon className="h-5 w-5 text-white" />
                   </div>
                   <div className="flex-1 text-right">
@@ -147,7 +147,7 @@ export default function RightSidebar({ isOpen, onClose }: RightSidebarProps) {
                   }}
                   className="flex items-center gap-3 w-full p-3 text-black hover:bg-gray-300 rounded-lg transition-colors text-right group"
                 >
-                  <div className="p-2 bg-[var(--primary-color)] rounded-full group-hover:bg-red-700 transition-colors">
+                  <div className="p-2 bg-[var(--primary-color)] rounded-full group-hover:bg-[var(--interactive-color)] transition-colors">
                     <CubeIcon className="h-5 w-5 text-white" />
                   </div>
                   <div className="flex-1 text-right">
@@ -164,7 +164,7 @@ export default function RightSidebar({ isOpen, onClose }: RightSidebarProps) {
                   }}
                   className="flex items-center gap-3 w-full p-3 text-black hover:bg-gray-300 rounded-lg transition-colors text-right group"
                 >
-                  <div className="p-2 bg-[var(--primary-color)] rounded-full group-hover:bg-red-700 transition-colors">
+                  <div className="p-2 bg-[var(--primary-color)] rounded-full group-hover:bg-[var(--interactive-color)] transition-colors">
                     <MapIcon className="h-5 w-5 text-white" />
                   </div>
                   <div className="flex-1 text-right">
@@ -188,7 +188,7 @@ export default function RightSidebar({ isOpen, onClose }: RightSidebarProps) {
                   }}
                   className="flex items-center gap-3 w-full p-3 text-black hover:bg-gray-300 rounded-lg transition-colors text-right group"
                 >
-                  <div className="p-2 bg-[var(--primary-color)] rounded-full group-hover:bg-red-700 transition-colors">
+                  <div className="p-2 bg-[var(--primary-color)] rounded-full group-hover:bg-[var(--interactive-color)] transition-colors">
                     <UserIcon className="h-5 w-5 text-white" />
                   </div>
                   <div className="flex-1 text-right">
@@ -206,7 +206,7 @@ export default function RightSidebar({ isOpen, onClose }: RightSidebarProps) {
                   }}
                   className="flex items-center gap-3 w-full p-3 text-black hover:bg-gray-300 rounded-lg transition-colors text-right group"
                 >
-                  <div className="p-2 bg-[var(--primary-color)] rounded-full group-hover:bg-red-700 transition-colors">
+                  <div className="p-2 bg-[var(--primary-color)] rounded-full group-hover:bg-[var(--interactive-color)] transition-colors">
                     <HeartIcon className="h-5 w-5 text-white" />
                   </div>
                   <div className="flex-1 text-right">
@@ -224,7 +224,7 @@ export default function RightSidebar({ isOpen, onClose }: RightSidebarProps) {
                   }}
                   className="flex items-center gap-3 w-full p-3 text-black hover:bg-gray-300 rounded-lg transition-colors text-right group"
                 >
-                  <div className="p-2 bg-[var(--primary-color)] rounded-full group-hover:bg-red-700 transition-colors">
+                  <div className="p-2 bg-[var(--primary-color)] rounded-full group-hover:bg-[var(--interactive-color)] transition-colors">
                     <ClipboardDocumentListIcon className="h-5 w-5 text-white" />
                   </div>
                   <div className="flex-1 text-right">

@@ -24,6 +24,7 @@ export function useCompanySettings() {
   return {
     companyName: companySettings.name,
     logoUrl: companySettings.logoUrl,
+    logoShape: companySettings.logoShape,
     socialMedia: companySettings.socialMedia,
     branches: companySettings.branches,
     updateCompanySettings,

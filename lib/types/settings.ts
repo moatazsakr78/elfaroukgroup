@@ -33,6 +33,7 @@ export interface UISettings {
   theme: 'dark' | 'light';
   primary_color: string;
   secondary_color: string;
+  hover_color: string;
   font_family: string;
   font_size: number;
   enable_animations: boolean;
@@ -110,6 +111,7 @@ export interface Branch {
 export interface CompanySettings {
   name: string;
   logoUrl: string;
+  logoShape: 'square' | 'circle';
   socialMedia: SocialMedia[];
   branches: Branch[];
 }
@@ -156,6 +158,7 @@ export const DEFAULT_SETTINGS: SystemSettingsObject = {
     theme: 'dark',
     primary_color: '#3B82F6',
     secondary_color: '#10B981',
+    hover_color: '#EF4444',
     font_family: 'Cairo',
     font_size: 100,
     enable_animations: true,
@@ -207,6 +210,7 @@ export const DEFAULT_SETTINGS: SystemSettingsObject = {
   company: {
     name: 'El Farouk Group',
     logoUrl: '',
+    logoShape: 'square',
     socialMedia: [{ platform: '', link: '' }],
     branches: []
   },
