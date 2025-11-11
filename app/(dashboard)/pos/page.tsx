@@ -97,6 +97,7 @@ import WarehouseSelectionModal from "../../components/WarehouseSelectionModal";
 import TransferLocationModal from "../../components/TransferLocationModal";
 import QuickAddProductModal from "../../components/QuickAddProductModal";
 import ColumnsControlModal from "../../components/ColumnsControlModal";
+import PaymentSplit from "../../components/PaymentSplit";
 import { useProducts, Product } from "../../lib/hooks/useProductsOptimized";
 import { usePersistentSelections } from "../../lib/hooks/usePersistentSelections";
 import { usePOSTabs } from "@/lib/hooks/usePOSTabs";
@@ -210,6 +211,10 @@ function POSPageContent() {
   // Add Tab Modal States
   const [showAddTabModal, setShowAddTabModal] = useState(false);
   const [newTabName, setNewTabName] = useState("");
+
+  // Payment Split States
+  const [paymentSplitData, setPaymentSplitData] = useState<any[]>([]);
+  const [creditAmount, setCreditAmount] = useState<number>(0);
 
   // Use persistent selections hook
   const {
@@ -1009,6 +1014,8 @@ function POSPageContent() {
             ? `مرتجع بيع - ${cartItems.length} منتج`
             : `فاتورة بيع - ${cartItems.length} منتج`,
           isReturn: isReturnMode, // Pass return mode flag
+          paymentSplitData: paymentSplitData, // Pass payment split data
+          creditAmount: creditAmount, // Pass credit amount
         });
 
         // Store invoice data for printing
@@ -2288,6 +2295,17 @@ function POSPageContent() {
 
                   {/* Cart Footer */}
                   <div className="p-4 border-t border-gray-600 bg-[#2B3544] flex-shrink-0">
+                    {/* Payment Split Component - Only show in sales mode (not transfer or purchase) */}
+                    {!isTransferMode && !isPurchaseMode && !isReturnMode && (
+                      <PaymentSplit
+                        totalAmount={cartTotal}
+                        onPaymentsChange={(payments, credit) => {
+                          setPaymentSplitData(payments);
+                          setCreditAmount(credit);
+                        }}
+                      />
+                    )}
+
                     {/* Single row layout for total and button */}
                     <div className="flex items-center justify-between gap-3">
                       {/* Total/Transfer info section */}
@@ -2704,6 +2722,17 @@ function POSPageContent() {
 
             {/* Cart Footer */}
             <div className="p-4 border-t border-gray-600 bg-[#2B3544] flex-shrink-0">
+              {/* Payment Split Component - Only show in sales mode (not transfer or purchase) */}
+              {!isTransferMode && !isPurchaseMode && !isReturnMode && (
+                <PaymentSplit
+                  totalAmount={cartTotal}
+                  onPaymentsChange={(payments, credit) => {
+                    setPaymentSplitData(payments);
+                    setCreditAmount(credit);
+                  }}
+                />
+              )}
+
               {/* Single row layout for total and button */}
               <div className="flex items-center justify-between gap-3">
                 {/* Total/Transfer info section */}

@@ -17,12 +17,20 @@ export interface InvoiceSelections {
   record: any
 }
 
+export interface PaymentEntry {
+  id: string
+  amount: number
+  paymentMethodId: string
+}
+
 export interface CreateSalesInvoiceParams {
   cartItems: CartItem[]
   selections: InvoiceSelections
   paymentMethod?: string
   notes?: string
   isReturn?: boolean
+  paymentSplitData?: PaymentEntry[]
+  creditAmount?: number
 }
 
 export async function createSalesInvoice({
@@ -30,7 +38,9 @@ export async function createSalesInvoice({
   selections,
   paymentMethod = 'cash',
   notes,
-  isReturn = false
+  isReturn = false,
+  paymentSplitData = [],
+  creditAmount = 0
 }: CreateSalesInvoiceParams) {
   if (!selections.branch || !selections.record) {
     throw new Error('يجب تحديد الفرع والسجل قبل إنشاء الفاتورة')
@@ -296,6 +306,44 @@ export async function createSalesInvoice({
         }
       }
     }
+
+    // Save payment split data to customer_payments table
+    if (!isReturn && paymentSplitData && paymentSplitData.length > 0) {
+      for (const payment of paymentSplitData) {
+        if (payment.amount > 0 && payment.paymentMethodId) {
+          // Get payment method name from ID
+          const { data: paymentMethodData } = await supabase
+            .from('payment_methods')
+            .select('name')
+            .eq('id', payment.paymentMethodId)
+            .single()
+
+          const paymentMethodName = paymentMethodData?.name || 'cash'
+
+          const { error: paymentError } = await supabase
+            .from('customer_payments')
+            .insert({
+              customer_id: customerId,
+              amount: payment.amount,
+              payment_method: paymentMethodName,
+              notes: `دفعة من فاتورة رقم ${invoiceNumber}`,
+              payment_date: new Date().toISOString().split('T')[0]
+            })
+
+          if (paymentError) {
+            console.warn('Failed to save payment entry:', paymentError.message)
+            console.error('Payment error details:', paymentError)
+          } else {
+            console.log(`✅ Payment saved: ${payment.amount} via ${paymentMethodName}`)
+          }
+        }
+      }
+    }
+
+    // Note: Customer balance is calculated dynamically as:
+    // Balance = (Total Sales) - (Total Payments)
+    // No need to update account_balance in customers table
+    // The balance is computed in real-time from sales and customer_payments tables
 
     return {
       success: true,

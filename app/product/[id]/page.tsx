@@ -8,6 +8,7 @@ import { supabase } from '../../lib/supabase/client';
 import { useRatingsDisplay } from '../../../lib/hooks/useRatingSettings';
 import { useCart } from '../../../lib/contexts/CartContext';
 import { useFormatPrice } from '../../../lib/hooks/useCurrency';
+import { useCompanySettings } from '../../../lib/hooks/useCompanySettings';
 import CartModal from '../../components/CartModal';
 
 interface DatabaseProduct {

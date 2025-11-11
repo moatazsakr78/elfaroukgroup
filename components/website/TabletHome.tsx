@@ -352,7 +352,7 @@ export default function TabletHome({
           colors: [],
           shapes: [],
           sizes: [],
-          brand: 'El Farouk Group',
+          brand: companyName,
           stock: 0,
           rating: product.rating || 0,
           reviews: product.rating_count || 0,

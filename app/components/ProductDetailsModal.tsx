@@ -226,7 +226,7 @@ export default function ProductDetailsModal({
 }: ProductDetailsModalProps) {
   const router = useRouter();
   const formatPrice = useFormatPrice();
-  const { logoUrl } = useCompanySettings();
+  const { logoUrl, companyName } = useCompanySettings();
   const { showRatings } = useRatingsDisplay();
   const { cartItems, addToCart } = useCart();
   const [productDetails, setProductDetails] = useState<ProductDetail | null>(null);
@@ -948,13 +948,12 @@ export default function ProductDetailsModal({
               <div className="h-14 w-14 rounded-lg flex items-center justify-center">
                 <img
                   src={logoUrl || '/assets/logo/El Farouk Group2.png'}
-                  alt="El Farouk Group Logo"
+                  alt={`${companyName} Logo`}
                   className="h-full w-full object-contain rounded-lg"
                 />
               </div>
               <div className="flex flex-col leading-tight">
-                <span className="text-white text-lg font-bold">El Farouk</span>
-                <span className="text-white text-lg font-bold">Group</span>
+                <span className="text-white text-lg font-bold">{companyName}</span>
               </div>
             </div>
           </div>
@@ -976,13 +975,12 @@ export default function ProductDetailsModal({
               <div className="h-10 w-10 rounded-lg flex items-center justify-center">
                 <img
                   src={logoUrl || '/assets/logo/El Farouk Group2.png'}
-                  alt="El Farouk Group Logo"
+                  alt={`${companyName} Logo`}
                   className="h-full w-full object-contain rounded-lg"
                 />
               </div>
               <div className="flex flex-col leading-tight">
-                <span className="text-white text-sm font-bold">El Farouk</span>
-                <span className="text-white text-sm font-bold">Group</span>
+                <span className="text-white text-sm font-bold">{companyName}</span>
               </div>
             </div>
 
