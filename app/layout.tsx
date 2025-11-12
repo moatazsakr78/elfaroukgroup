@@ -9,13 +9,13 @@ import { UserProfileProvider } from '@/lib/contexts/UserProfileContext'
 import { ThemeProvider } from '@/lib/contexts/ThemeContext'
 
 export const metadata: Metadata = {
-  title: 'El Farouk Group Store',
-  description: 'El Farouk Group Store - أفضل المنتجات بأسعار مميزة',
-  applicationName: 'El Farouk Group',
+  title: 'She & Only Store',
+  description: 'She & Only Store - أفضل المنتجات بأسعار مميزة',
+  applicationName: 'She & Only',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'El Farouk Group',
+    title: 'She & Only',
   },
   manifest: '/manifest.json',
   icons: {

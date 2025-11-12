@@ -208,7 +208,7 @@ export const DEFAULT_SETTINGS: SystemSettingsObject = {
     lockout_duration_minutes: 30
   },
   company: {
-    name: 'El Farouk Group',
+    name: 'She & Only',
     logoUrl: '',
     logoShape: 'square',
     socialMedia: [{ platform: '', link: '' }],
