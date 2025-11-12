@@ -4,11 +4,15 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/useAuth';
 import { useCompanySettings } from '@/lib/hooks/useCompanySettings';
+import { useStoreTheme } from '@/lib/hooks/useStoreTheme';
 
 export default function SignUpPage() {
   const router = useRouter();
   const { signUpWithEmail, signInWithGoogle } = useAuth();
-  const { companyName, logoUrl } = useCompanySettings();
+  const { companyName, logoUrl, isLoading: isCompanyLoading } = useCompanySettings();
+
+  // Get store theme colors
+  const { primaryColor, primaryHoverColor, isLoading: isThemeLoading } = useStoreTheme();
   
   const [formData, setFormData] = useState({
     name: '',
@@ -84,6 +88,17 @@ export default function SignUpPage() {
       setIsGoogleLoading(false);
     }
   };
+
+  if (isCompanyLoading || isThemeLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{backgroundColor: '#c0c0c0'}}>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-400 mx-auto mb-4"></div>
+          <p className="text-gray-600">جاري التحميل...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen font-['Cairo',Arial,sans-serif]" dir="rtl" style={{backgroundColor: '#c0c0c0'}}>

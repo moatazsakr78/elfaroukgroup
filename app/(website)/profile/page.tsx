@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabase/client';
 import { useCompanySettings } from '@/lib/hooks/useCompanySettings';
+import { useStoreTheme } from '@/lib/hooks/useStoreTheme';
 
 interface CustomerProfile {
   id?: string;
@@ -17,7 +18,10 @@ interface CustomerProfile {
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { logoUrl } = useCompanySettings();
+  const { logoUrl, isLoading: isCompanyLoading } = useCompanySettings();
+
+  // Get store theme colors
+  const { primaryColor, primaryHoverColor, isLoading: isThemeLoading } = useStoreTheme();
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [user, setUser] = useState<any>(null);
@@ -308,7 +312,7 @@ export default function ProfilePage() {
     }
   };
 
-  if (isLoading) {
+  if (isLoading || isCompanyLoading || isThemeLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center" dir="rtl">
         <div className="text-gray-600 text-lg">جاري التحميل...</div>

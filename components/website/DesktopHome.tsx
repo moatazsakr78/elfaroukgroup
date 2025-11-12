@@ -59,7 +59,7 @@ export default function DesktopHome({
   const { isAdmin } = useUserProfile();
 
   // Get company settings
-  const { companyName, logoUrl, logoShape, socialMedia } = useCompanySettings();
+  const { companyName, logoUrl, logoShape, socialMedia, isLoading: isCompanyLoading } = useCompanySettings();
 
   // Get cart badge count and cart functions
   const { cartBadgeCount } = useCartBadge();
@@ -69,7 +69,7 @@ export default function DesktopHome({
   const { settings: displaySettings } = useProductDisplaySettings();
 
   // Get store theme colors
-  const { primaryColor, primaryHoverColor, interactiveColor } = useStoreTheme();
+  const { primaryColor, primaryHoverColor, interactiveColor, isLoading: isThemeLoading } = useStoreTheme();
 
   // Get logo rounding class based on shape
   const logoRoundingClass = logoShape === 'circle' ? 'rounded-full' : 'rounded-lg';
@@ -474,11 +474,11 @@ export default function DesktopHome({
   };
 
   // Show loading state during hydration or while loading data
-  if (!isClient || isLoading) {
+  if (!isClient || isLoading || isThemeLoading || isCompanyLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{backgroundColor: '#c0c0c0'}}>
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 mx-auto mb-4" style={{borderBottomColor: 'var(--primary-color)'}}></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-400 mx-auto mb-4"></div>
           <p className="text-gray-600">جاري تحميل التطبيق...</p>
         </div>
       </div>

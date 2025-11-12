@@ -5,6 +5,7 @@ import { ArrowRightIcon, PlusIcon, PencilIcon, TrashIcon, MapPinIcon } from '@he
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/app/lib/supabase/client'
 import { useCompanySettings } from '@/lib/hooks/useCompanySettings'
+import { useStoreTheme } from '@/lib/hooks/useStoreTheme'
 
 interface Area {
   id: string
@@ -37,7 +38,10 @@ export default function ShippingCompanyDetails() {
   const params = useParams()
   const router = useRouter()
   const companyId = params?.id as string
-  const { companyName, logoUrl } = useCompanySettings()
+  const { companyName, logoUrl, isLoading: isCompanyLoading } = useCompanySettings()
+
+  // Get store theme colors
+  const { primaryColor, primaryHoverColor, isLoading: isThemeLoading } = useStoreTheme()
 
   const [company, setCompany] = useState<ShippingCompany | null>(null)
   const [governorates, setGovernorates] = useState<Governorate[]>([])
@@ -251,7 +255,7 @@ export default function ShippingCompanyDetails() {
     gov => !governorates.some(g => g.name === gov)
   )
 
-  if (isLoading || !company) {
+  if (isLoading || !company || isCompanyLoading || isThemeLoading) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="text-gray-600">جاري التحميل...</div>

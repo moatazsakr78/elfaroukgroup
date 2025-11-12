@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useFormatPrice } from '@/lib/hooks/useCurrency';
 import { useCompanySettings } from '@/lib/hooks/useCompanySettings';
+import { useStoreTheme } from '@/lib/hooks/useStoreTheme';
 import PaymentModal from '@/app/components/PaymentModal';
 import ImageViewerModal from '@/app/components/ImageViewerModal';
 import { paymentService, PaymentReceipt } from '@/lib/services/paymentService';
@@ -64,7 +65,10 @@ const statusColors: Record<OrderStatus, string> = {
 export default function OrdersPage() {
   const router = useRouter();
   const formatPrice = useFormatPrice();
-  const { logoUrl } = useCompanySettings();
+  const { logoUrl, isLoading: isCompanyLoading } = useCompanySettings();
+
+  // Get store theme colors
+  const { primaryColor, primaryHoverColor, isLoading: isThemeLoading } = useStoreTheme();
   const [activeTab, setActiveTab] = useState<'completed' | 'pending'>('completed');
   const [orders, setOrders] = useState<Order[]>([]);
   const [filteredOrders, setFilteredOrders] = useState<Order[]>([]);
@@ -422,11 +426,11 @@ export default function OrdersPage() {
 
 
 
-  if (loading) {
+  if (loading || isCompanyLoading || isThemeLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{backgroundColor: '#c0c0c0'}}>
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 mx-auto mb-4" style={{borderBottomColor: 'var(--primary-color)'}}></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-400 mx-auto mb-4"></div>
           <p className="text-gray-600">جاري تحميل الطلبات...</p>
         </div>
       </div>

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { ArrowRightIcon, PlusIcon, PencilIcon, TrashIcon, EyeIcon } from '@heroicons/react/24/outline'
 import { supabase } from '@/app/lib/supabase/client'
 import { useCompanySettings } from '@/lib/hooks/useCompanySettings'
+import { useStoreTheme } from '@/lib/hooks/useStoreTheme'
 
 interface ShippingCompany {
   id: string
@@ -20,7 +21,10 @@ export default function ShippingPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Get company settings
-  const { companyName, logoUrl } = useCompanySettings()
+  const { companyName, logoUrl, isLoading: isCompanyLoading } = useCompanySettings()
+
+  // Get store theme colors
+  const { primaryColor, primaryHoverColor, isLoading: isThemeLoading } = useStoreTheme()
 
   // Load companies from database
   useEffect(() => {
@@ -92,7 +96,7 @@ export default function ShippingPage() {
     }
   }
 
-  if (isLoading) {
+  if (isLoading || isCompanyLoading || isThemeLoading) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="text-gray-600">جاري التحميل...</div>

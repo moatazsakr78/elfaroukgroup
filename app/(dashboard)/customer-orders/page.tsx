@@ -6,6 +6,7 @@ import OrderPaymentReceipts from '../../components/OrderPaymentReceipts';
 import { useFormatPrice } from '@/lib/hooks/useCurrency';
 import { supabase } from '../../lib/supabase/client';
 import { useCompanySettings } from '@/lib/hooks/useCompanySettings';
+import { useStoreTheme } from '@/lib/hooks/useStoreTheme';
 import { paymentService, PaymentReceipt } from '@/lib/services/paymentService';
 
 // Order status type
@@ -78,7 +79,10 @@ const statusIcons: Record<OrderStatus, string> = {
 
 export default function CustomerOrdersPage() {
   const formatPrice = useFormatPrice();
-  const { companyName, logoUrl } = useCompanySettings();
+  const { companyName, logoUrl, isLoading: isCompanyLoading } = useCompanySettings();
+
+  // Get store theme colors
+  const { primaryColor, primaryHoverColor, isLoading: isThemeLoading } = useStoreTheme();
   const [activeTab, setActiveTab] = useState<'all' | 'preparation' | 'followup' | 'completed' | 'issues'>('all');
   const [orders, setOrders] = useState<Order[]>([]);
   const [filteredOrders, setFilteredOrders] = useState<Order[]>([]);
@@ -1254,11 +1258,11 @@ export default function CustomerOrdersPage() {
     }
   };
 
-  if (loading) {
+  if (loading || isCompanyLoading || isThemeLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{backgroundColor: '#c0c0c0'}}>
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 mx-auto mb-4" style={{borderBottomColor: 'var(--primary-color)'}}></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-400 mx-auto mb-4"></div>
           <p className="text-gray-600">جاري تحميل طلبات العملاء...</p>
         </div>
       </div>

@@ -57,13 +57,13 @@ export default function MobileHome({
   const isAdminOrStaff = profile?.role === 'أدمن رئيسي' || profile?.role === 'موظف';
 
   // Get company settings
-  const { companyName, logoUrl, logoShape, socialMedia } = useCompanySettings();
+  const { companyName, logoUrl, logoShape, socialMedia, isLoading: isCompanyLoading } = useCompanySettings();
 
   // Get product display settings
   const { settings: displaySettings } = useProductDisplaySettings();
 
   // Get store theme colors
-  const { primaryColor, primaryHoverColor, interactiveColor } = useStoreTheme();
+  const { primaryColor, primaryHoverColor, interactiveColor, isLoading: isThemeLoading } = useStoreTheme();
 
   // Get logo rounding class based on shape
   const logoRoundingClass = logoShape === 'circle' ? 'rounded-full' : 'rounded-lg';
@@ -480,11 +480,11 @@ export default function MobileHome({
   };
 
   // Show loading state during hydration or while loading data
-  if (!isClient || isLoading) {
+  if (!isClient || isLoading || isThemeLoading || isCompanyLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-custom-gray">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-400 mx-auto mb-4"></div>
           <p className="text-gray-800">جاري تحميل التطبيق...</p>
         </div>
       </div>
