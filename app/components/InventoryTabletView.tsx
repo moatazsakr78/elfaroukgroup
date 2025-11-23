@@ -922,9 +922,9 @@ export default function InventoryTabletView({
                   }}
                 />
               ) : (
-                // Grid View - Tablet Optimized (2 columns like products page)
-                <div className="h-full overflow-y-auto scrollbar-hide p-3">
-                  <div className="grid grid-cols-2 gap-3">
+                // Grid View - Responsive columns (tablet gets more columns)
+                <div className="h-full overflow-y-auto scrollbar-hide p-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                     {filteredProducts.map((product, index) => (
                       <div
                         key={product.id}
@@ -941,32 +941,58 @@ export default function InventoryTabletView({
                             : 'border-transparent hover:border-gray-500 hover:bg-[#434E61]'
                         }`}
                       >
-                        {/* Product Image - OPTIMIZED */}
-                        <div className="mb-2">
-                          <ProductGridImage
-                            src={product.main_image_url}
-                            alt={product.name}
-                            priority={index < 6}
-                          />
+                        {/* Hover Button */}
+                        <div className="absolute top-2 right-2 z-10">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setModalProduct(product)
+                              const firstImage = product.main_image_url || null
+                              setSelectedImage(firstImage)
+                              setShowProductModal(true)
+                            }}
+                            className="bg-black/70 hover:bg-black/90 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200 shadow-lg"
+                          >
+                            <EyeIcon className="h-4 w-4" />
+                          </button>
+                        </div>
+
+                        {/* Product Image - Larger on tablets */}
+                        <div className="w-full h-36 sm:h-44 md:h-48 bg-[#2B3544] rounded-md mb-3 flex items-center justify-center overflow-hidden">
+                          {product.main_image_url ? (
+                            <img
+                              src={product.main_image_url}
+                              alt={product.name}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement
+                                target.style.display = 'none'
+                                target.nextElementSibling?.classList.remove('hidden')
+                              }}
+                            />
+                          ) : null}
+                          <div className={`w-16 h-16 bg-yellow-400 rounded-full flex items-center justify-center ${product.main_image_url ? 'hidden' : ''}`}>
+                            <span className="text-2xl">📦</span>
+                          </div>
                         </div>
 
                         {/* Product Name */}
-                        <h3 className="text-white font-medium text-sm text-center mb-2 line-clamp-2">
+                        <h3 className="text-white font-medium text-xs text-center mb-2 line-clamp-2">
                           {product.name}
                         </h3>
 
                         {/* Product Details */}
                         <div className="space-y-1 text-xs">
                           {/* Selling Price */}
-                          <div className="flex justify-center mb-1">
-                            <span className="text-blue-400 font-medium text-sm">
+                          <div className="flex justify-center mb-2">
+                            <span className="text-blue-400 font-medium text-xs">
                               {(product.price || 0).toFixed(2)}
                             </span>
                           </div>
-                          
+
                           {/* Total Quantity */}
                           <div className="flex justify-between items-center">
-                            <span className={`font-medium ${
+                            <span className={`font-medium text-xs ${
                               (() => {
                                 const stockStatus = getStockStatus(product)
                                 if (stockStatus === 'zero') return 'text-red-400'
@@ -976,7 +1002,7 @@ export default function InventoryTabletView({
                             }`}>
                               {calculateTotalQuantity(product)}
                             </span>
-                            <span className="text-gray-400">الكمية الإجمالية</span>
+                            <span className="text-gray-400 text-xs">الكمية الإجمالية</span>
                           </div>
                         </div>
                       </div>
