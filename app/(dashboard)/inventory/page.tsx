@@ -159,10 +159,10 @@ export default function InventoryPage() {
       const isMobileDevice = /mobile|android(?=.*mobile)|iphone|ipod|blackberry|opera mini/i.test(userAgent) ||
                             windowWidth < 768
 
-      // Check for tablet devices - only actual tablets use tablet view, not desktop
+      // Check for tablet devices - use tablet view for tablets and medium screens
       const isTabletDevice = (/tablet|ipad|playbook|silk|android(?!.*mobile)/i.test(userAgent) ||
-                            (windowWidth >= 768 && windowWidth <= 1024)) &&
-                            !/windows|macintosh|linux/i.test(userAgent)
+                            (windowWidth >= 768 && windowWidth <= 1280)) &&
+                            !isMobileDevice
 
       setIsMobile(isMobileDevice)
       setIsTablet(isTabletDevice)
