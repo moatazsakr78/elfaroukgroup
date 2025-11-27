@@ -10,18 +10,18 @@ import { ThemeProvider } from '@/lib/contexts/ThemeContext'
 import { Providers } from './providers'
 
 export const metadata: Metadata = {
-  title: 'omelarosa Store',
-  description: 'omelarosa Store - أفضل المنتجات بأسعار مميزة',
-  applicationName: 'omelarosa',
+  title: 'El Farouk Group Store',
+  description: 'El Farouk Group Store - أفضل المنتجات بأسعار مميزة',
+  applicationName: 'elfaroukgroup',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'omelarosa',
+    title: 'elfaroukgroup',
   },
   manifest: '/manifest.json',
   icons: {
-    icon: '/assets/logo/omelarosa.png',
-    apple: '/assets/logo/omelarosa.png',
+    icon: '/assets/logo/El Farouk Group2.png',
+    apple: '/assets/logo/El Farouk Group2.png',
   },
   other: {
     'theme-color': '#DC2626',

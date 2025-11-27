@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'omelarosa Store',
+  title: 'El Farouk Group Store',
   description: 'أفضل المنتجات بأسعار مميزة',
 }
 

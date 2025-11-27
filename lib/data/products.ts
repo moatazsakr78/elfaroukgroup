@@ -10,9 +10,9 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 // Create a server-side Supabase client
-const supabase = createClient<Database, 'om_elarosa'>(supabaseUrl, supabaseAnonKey, {
+const supabase = createClient<Database, 'elfaroukgroup'>(supabaseUrl, supabaseAnonKey, {
   db: {
-    schema: 'om_elarosa' // Use om_elarosa schema for multi-tenant architecture
+    schema: 'elfaroukgroup' // Use elfaroukgroup schema for multi-tenant architecture
   },
   auth: {
     persistSession: false, // Don't persist sessions on server

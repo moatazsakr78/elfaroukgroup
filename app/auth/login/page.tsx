@@ -95,8 +95,8 @@ export default function LoginPage() {
             <div className="flex items-center gap-3">
               <div className="h-20 w-20 rounded-lg flex items-center justify-center">
                 <img 
-                  src={logoUrl || '/assets/logo/omelarosa.png'} 
-                  alt="omelarosa Logo" 
+                  src={logoUrl || '/assets/logo/El Farouk Group2.png'} 
+                  alt="El Farouk Group Logo" 
                   className="h-full w-full object-contain rounded-lg"
                 />
               </div>

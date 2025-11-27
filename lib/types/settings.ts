@@ -208,7 +208,7 @@ export const DEFAULT_SETTINGS: SystemSettingsObject = {
     lockout_duration_minutes: 30
   },
   company: {
-    name: 'omelarosa',
+    name: 'elfaroukgroup',
     logoUrl: '',
     logoShape: 'square',
     socialMedia: [{ platform: '', link: '' }],
