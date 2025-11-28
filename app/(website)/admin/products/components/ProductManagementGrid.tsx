@@ -24,6 +24,8 @@ interface ProductManagementGridProps {
   onToggleVisibility: (productId: string) => void;
   onToggleFeatured: (productId: string) => void;
   onUpdateSuggestedProducts: (productId: string, suggestedIds: string[]) => void;
+  selectedProductId?: string | null;
+  onProductSelect?: (productId: string) => void;
 }
 
 export default function ProductManagementGrid({
@@ -33,6 +35,8 @@ export default function ProductManagementGrid({
   onToggleVisibility,
   onToggleFeatured,
   onUpdateSuggestedProducts,
+  selectedProductId,
+  onProductSelect,
 }: ProductManagementGridProps) {
   const [draggedItem, setDraggedItem] = useState<string | null>(null);
   const [selectedProductForSuggestions, setSelectedProductForSuggestions] = useState<string | null>(null);
@@ -100,6 +104,7 @@ export default function ProductManagementGrid({
             product={product}
             isDragMode={isDragMode}
             isDragging={draggedItem === product.id}
+            isSelected={selectedProductId === product.id}
             onDragStart={(e) => handleDragStart(e, product.id)}
             onDragOver={handleDragOver}
             onDrop={(e) => handleDrop(e, product.id)}
@@ -107,6 +112,7 @@ export default function ProductManagementGrid({
             onToggleVisibility={() => onToggleVisibility(product.id)}
             onToggleFeatured={() => onToggleFeatured(product.id)}
             onManageSuggestions={() => openSuggestionsModal(product.id)}
+            onSelect={onProductSelect ? () => onProductSelect(product.id) : undefined}
           />
         ))}
       </div>

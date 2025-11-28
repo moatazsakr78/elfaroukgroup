@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { ArrowRightIcon, LockClosedIcon } from '@heroicons/react/24/outline'
 import { supabase } from '../lib/supabase/client'
-import { ShapeManagement } from './products/ShapeManagement'
 import { useShapes } from '../lib/hooks/useShapes'
 import { uploadProductImage, PRODUCT_STORAGE_BUCKETS, getProductImageUrl } from '../lib/supabase/storage'
 import { uploadAndSetMainImage, uploadAndSetSubImage, addAdditionalVersionedImage, uploadVersionedProductImage } from '../lib/services/simpleImageVersioning'
@@ -124,10 +123,20 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
   const [colorName, setColorName] = useState('')
   const [selectedColor, setSelectedColor] = useState('#000000')
   const [editingColorId, setEditingColorId] = useState<string | null>(null)
+  const [colorBarcode, setColorBarcode] = useState('')
+  const [colorImageFile, setColorImageFile] = useState<File | null>(null)
+  const [colorImagePreview, setColorImagePreview] = useState<string | null>(null)
+  const [colorImageDragActive, setColorImageDragActive] = useState(false)
 
   // Product shapes state (shapes linked to current product)
   const [productShapes, setProductShapes] = useState<any[]>([])
   const [isLoadingShapes, setIsLoadingShapes] = useState(false)
+  const [shapeName, setShapeName] = useState('')
+  const [shapeBarcode, setShapeBarcode] = useState('')
+  const [shapeImageFile, setShapeImageFile] = useState<File | null>(null)
+  const [shapeImagePreview, setShapeImagePreview] = useState<string | null>(null)
+  const [shapeImageDragActive, setShapeImageDragActive] = useState(false)
+  const [editingShapeId, setEditingShapeId] = useState<string | null>(null)
   
   // New states for location variant management
   const [selectedLocation, setSelectedLocation] = useState<SelectedLocation | null>(null)
@@ -880,14 +889,23 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
 
   // Color management functions
   const addColor = () => {
-    if (!colorName.trim()) return
-    
+    if (!colorName.trim()) {
+      alert('يرجى إدخال اسم اللون')
+      return
+    }
+
     if (editingColorId) {
       // Update existing color
-      setProductColors(prev => 
-        prev.map(color => 
-          color.id === editingColorId 
-            ? { ...color, name: colorName.trim(), color: selectedColor }
+      setProductColors(prev =>
+        prev.map(color =>
+          color.id === editingColorId
+            ? {
+                ...color,
+                name: colorName.trim(),
+                color: selectedColor,
+                barcode: colorBarcode.trim() || undefined,
+                image: colorImagePreview || color.image
+              }
             : color
         )
       )
@@ -897,20 +915,27 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
       const newColor: ProductColor = {
         id: Date.now().toString(),
         name: colorName.trim(),
-        color: selectedColor
+        color: selectedColor,
+        barcode: colorBarcode.trim() || undefined,
+        image: colorImagePreview || undefined
       }
       setProductColors(prev => [...prev, newColor])
     }
-    
+
     // Reset form
     setColorName('')
     setSelectedColor('#000000')
+    setColorBarcode('')
+    setColorImageFile(null)
+    setColorImagePreview(null)
   }
 
   const editColor = (color: ProductColor) => {
     setColorName(color.name)
     setSelectedColor(color.color)
     setEditingColorId(color.id)
+    setColorBarcode(color.barcode || '')
+    setColorImagePreview(color.image || null)
   }
 
   const deleteColor = (colorId: string) => {
@@ -920,6 +945,9 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
       setColorName('')
       setSelectedColor('#000000')
       setEditingColorId(null)
+      setColorBarcode('')
+      setColorImageFile(null)
+      setColorImagePreview(null)
     }
   }
 
@@ -927,6 +955,77 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
     setColorName('')
     setSelectedColor('#000000')
     setEditingColorId(null)
+    setColorBarcode('')
+    setColorImageFile(null)
+    setColorImagePreview(null)
+  }
+
+  // Shape management functions
+  const addShape = () => {
+    // At least one of name or image must be present
+    if (!shapeName.trim() && !shapeImagePreview) {
+      alert('يرجى إدخال اسم الشكل أو رفع صورة على الأقل')
+      return
+    }
+
+    if (editingShapeId) {
+      // Update existing shape
+      setProductShapes(prev =>
+        prev.map(shape =>
+          shape.id === editingShapeId
+            ? {
+                ...shape,
+                name: shapeName.trim() || shape.name,
+                barcode: shapeBarcode.trim() || undefined,
+                image: shapeImagePreview || shape.image
+              }
+            : shape
+        )
+      )
+      setEditingShapeId(null)
+    } else {
+      // Add new shape
+      const newShape: any = {
+        id: Date.now().toString(),
+        name: shapeName.trim() || undefined,
+        barcode: shapeBarcode.trim() || undefined,
+        image: shapeImagePreview || undefined
+      }
+      setProductShapes(prev => [...prev, newShape])
+    }
+
+    // Reset form
+    setShapeName('')
+    setShapeBarcode('')
+    setShapeImageFile(null)
+    setShapeImagePreview(null)
+  }
+
+  const editShape = (shape: any) => {
+    setShapeName(shape.name || '')
+    setEditingShapeId(shape.id)
+    setShapeBarcode(shape.barcode || '')
+    setShapeImagePreview(shape.image || null)
+  }
+
+  const deleteShape = (shapeId: string) => {
+    setProductShapes(prev => prev.filter(shape => shape.id !== shapeId))
+    // If we were editing this shape, reset the form
+    if (editingShapeId === shapeId) {
+      setShapeName('')
+      setEditingShapeId(null)
+      setShapeBarcode('')
+      setShapeImageFile(null)
+      setShapeImagePreview(null)
+    }
+  }
+
+  const cancelShapeEdit = () => {
+    setShapeName('')
+    setEditingShapeId(null)
+    setShapeBarcode('')
+    setShapeImageFile(null)
+    setShapeImagePreview(null)
   }
 
 
@@ -2436,15 +2535,15 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
                   )}
                 </button>
                 <button
-                  onClick={() => setActiveShapeColorTab('شكل صورة')}
+                  onClick={() => setActiveShapeColorTab('الكميه')}
                   className={`px-6 py-3 text-sm font-medium transition-colors relative ${
-                    activeShapeColorTab === 'شكل صورة'
+                    activeShapeColorTab === 'الكميه'
                       ? 'text-[#5DADE2]'
                       : 'text-gray-300 hover:text-white'
                   }`}
                 >
-                  شكل صورة
-                  {activeShapeColorTab === 'شكل صورة' && (
+                  الكميه
+                  {activeShapeColorTab === 'الكميه' && (
                     <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#5DADE2]"></div>
                   )}
                 </button>
@@ -2454,12 +2553,197 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
             {/* Sub-tab Content */}
             <div className="flex-1 pt-4">
             {activeShapeColorTab === 'شكل وصف' && (
-              <div>
-                <ShapeManagement
-                  productShapes={productShapes}
-                  setProductShapes={setProductShapes}
-                  isEditMode={!!editProduct}
-                />
+              <div className="space-y-4">
+                {/* Shape Name Section */}
+                <div>
+                  <label className="block text-white text-sm font-medium mb-2 text-right">
+                    اسم الشكل
+                  </label>
+                  <input
+                    type="text"
+                    value={shapeName}
+                    onChange={(e) => setShapeName(e.target.value)}
+                    placeholder="مثال: دائري، مربع، بيضاوي..."
+                    className="w-full px-3 py-2 bg-[#2B3441] border border-[#4A5568] rounded text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-[#5DADE2] focus:border-[#5DADE2] text-right text-sm"
+                  />
+                </div>
+
+                {/* Barcode Section */}
+                <div>
+                  <label className="block text-white text-sm font-medium mb-2 text-right">
+                    الباركود
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={shapeBarcode}
+                      onChange={(e) => setShapeBarcode(e.target.value)}
+                      placeholder="الباركود الخاص بالشكل"
+                      className="flex-1 px-3 py-2 bg-[#2B3441] border border-[#4A5568] rounded text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-[#5DADE2] focus:border-[#5DADE2] text-right text-sm"
+                    />
+                    <button
+                      onClick={() => setShapeBarcode(generateBarcode())}
+                      className="bg-[#5DADE2] hover:bg-[#4A9DD5] text-white px-3 py-2 rounded transition-colors flex items-center gap-1"
+                      title="توليد باركود تلقائي"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Image Upload Section with Drag & Drop */}
+                <div>
+                  <label className="block text-white text-sm font-medium mb-2 text-right">
+                    صورة الشكل
+                  </label>
+                  <div
+                    className={`border-2 border-dashed rounded-lg p-4 text-center transition-all duration-200 ${
+                      shapeImageDragActive
+                        ? 'border-[#5DADE2] bg-[#5DADE2]/10'
+                        : 'border-[#4A5568] hover:border-[#5DADE2]/50'
+                    }`}
+                    onDragOver={(e) => {
+                      e.preventDefault()
+                      setShapeImageDragActive(true)
+                    }}
+                    onDragLeave={(e) => {
+                      e.preventDefault()
+                      setShapeImageDragActive(false)
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      setShapeImageDragActive(false)
+                      const file = e.dataTransfer.files[0]
+                      if (file && file.type.startsWith('image/')) {
+                        setShapeImageFile(file)
+                        setShapeImagePreview(URL.createObjectURL(file))
+                      }
+                    }}
+                  >
+                    {shapeImagePreview ? (
+                      <div className="space-y-2">
+                        <img
+                          src={shapeImagePreview}
+                          alt="معاينة"
+                          className="w-24 h-24 object-cover rounded mx-auto border border-[#4A5568]"
+                        />
+                        <p className="text-green-400 text-xs">{shapeImageFile?.name}</p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShapeImageFile(null)
+                            setShapeImagePreview(null)
+                          }}
+                          className="text-red-400 hover:text-red-300 text-xs"
+                        >
+                          إزالة الصورة
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <svg className="w-8 h-8 text-gray-400 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                        <p className="text-gray-400 text-sm">اسحب وأفلت الصورة هنا</p>
+                        <p className="text-gray-500 text-xs">أو</p>
+                        <label className="inline-block bg-[#5DADE2] hover:bg-[#4A9DD5] text-white px-4 py-2 rounded cursor-pointer transition-colors text-sm">
+                          اختر صورة
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0]
+                              if (file) {
+                                setShapeImageFile(file)
+                                setShapeImagePreview(URL.createObjectURL(file))
+                              }
+                            }}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Add/Update Button */}
+                <div className="flex justify-end gap-2">
+                  {editingShapeId && (
+                    <button
+                      onClick={cancelShapeEdit}
+                      className="bg-[#6B7280] hover:bg-[#4B5563] text-white px-4 py-2 rounded text-sm font-medium transition-colors"
+                    >
+                      إلغاء
+                    </button>
+                  )}
+                  <button
+                    onClick={addShape}
+                    className="bg-[#10B981] hover:bg-[#059669] text-white px-4 py-2 rounded text-sm font-medium transition-colors"
+                  >
+                    {editingShapeId ? 'تحديث الشكل' : 'إضافة الشكل'}
+                  </button>
+                </div>
+
+                {/* Added Shapes Display */}
+                {productShapes.length > 0 && (
+                  <div className="space-y-3 mt-4">
+                    <h4 className="text-white text-sm font-medium text-right">الأشكال المضافة:</h4>
+                    <div className="space-y-2">
+                      {productShapes.map((shape) => (
+                        <div
+                          key={shape.id}
+                          className="bg-[#2B3441] border border-[#4A5568] rounded p-3 flex items-center gap-3"
+                        >
+                          {/* Shape Image */}
+                          {shape.image && (
+                            <img
+                              src={shape.image}
+                              alt={shape.name || 'شكل'}
+                              className="w-12 h-12 object-cover rounded border border-[#4A5568]"
+                            />
+                          )}
+
+                          {/* Shape Info */}
+                          <div className="flex-1 text-right">
+                            {shape.name && (
+                              <p className="text-white font-medium text-sm">{shape.name}</p>
+                            )}
+                            {shape.barcode && (
+                              <p className="text-gray-400 text-xs">باركود: {shape.barcode}</p>
+                            )}
+                            {!shape.name && !shape.barcode && shape.image && (
+                              <p className="text-gray-400 text-xs">شكل بصورة فقط</p>
+                            )}
+                          </div>
+
+                          {/* Action Buttons */}
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => editShape(shape)}
+                              className="text-blue-400 hover:text-blue-300 transition-colors p-1"
+                              title="تعديل"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => deleteShape(shape.id)}
+                              className="text-red-400 hover:text-red-300 transition-colors p-1"
+                              title="حذف"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -2484,7 +2768,7 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
                   <span className="text-white text-sm">اللون</span>
                   <div className="flex items-center gap-2">
                     <label className="relative cursor-pointer">
-                      <div 
+                      <div
                         className="w-8 h-8 border border-[#4A5568] rounded cursor-pointer hover:border-[#5DADE2] transition-colors"
                         style={{ backgroundColor: selectedColor }}
                       />
@@ -2495,421 +2779,324 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                       />
                     </label>
-                    <button 
-                      onClick={addColor}
-                      className="bg-[#10B981] hover:bg-[#059669] text-white w-8 h-8 rounded flex items-center justify-center text-sm font-bold transition-colors"
+                  </div>
+                </div>
+
+                {/* Barcode Section */}
+                <div>
+                  <label className="block text-white text-sm font-medium mb-2 text-right">
+                    الباركود
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={colorBarcode}
+                      onChange={(e) => setColorBarcode(e.target.value)}
+                      placeholder="الباركود الخاص باللون"
+                      className="flex-1 px-3 py-2 bg-[#2B3441] border border-[#4A5568] rounded text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-[#5DADE2] focus:border-[#5DADE2] text-right text-sm"
+                    />
+                    <button
+                      onClick={() => setColorBarcode(generateBarcode())}
+                      className="bg-[#5DADE2] hover:bg-[#4A9DD5] text-white px-3 py-2 rounded transition-colors flex items-center gap-1"
+                      title="توليد باركود تلقائي"
                     >
-                      +
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
                     </button>
-                    {editingColorId && (
-                      <button 
-                        onClick={cancelEdit}
-                        className="bg-[#6B7280] hover:bg-[#4B5563] text-white w-8 h-8 rounded flex items-center justify-center text-sm font-bold transition-colors"
-                      >
-                        ×
-                      </button>
+                  </div>
+                </div>
+
+                {/* Image Upload Section with Drag & Drop */}
+                <div>
+                  <label className="block text-white text-sm font-medium mb-2 text-right">
+                    صورة اللون
+                  </label>
+                  <div
+                    className={`border-2 border-dashed rounded-lg p-4 text-center transition-all duration-200 ${
+                      colorImageDragActive
+                        ? 'border-[#5DADE2] bg-[#5DADE2]/10'
+                        : 'border-[#4A5568] hover:border-[#5DADE2]/50'
+                    }`}
+                    onDragOver={(e) => {
+                      e.preventDefault()
+                      setColorImageDragActive(true)
+                    }}
+                    onDragLeave={(e) => {
+                      e.preventDefault()
+                      setColorImageDragActive(false)
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      setColorImageDragActive(false)
+                      const file = e.dataTransfer.files[0]
+                      if (file && file.type.startsWith('image/')) {
+                        setColorImageFile(file)
+                        setColorImagePreview(URL.createObjectURL(file))
+                      }
+                    }}
+                  >
+                    {colorImagePreview ? (
+                      <div className="space-y-2">
+                        <img
+                          src={colorImagePreview}
+                          alt="معاينة"
+                          className="w-24 h-24 object-cover rounded mx-auto border border-[#4A5568]"
+                        />
+                        <p className="text-green-400 text-xs">{colorImageFile?.name}</p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setColorImageFile(null)
+                            setColorImagePreview(null)
+                          }}
+                          className="text-red-400 hover:text-red-300 text-xs"
+                        >
+                          إزالة الصورة
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <svg className="w-8 h-8 text-gray-400 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                        <p className="text-gray-400 text-sm">اسحب وأفلت الصورة هنا</p>
+                        <p className="text-gray-500 text-xs">أو</p>
+                        <label className="inline-block bg-[#5DADE2] hover:bg-[#4A9DD5] text-white px-4 py-2 rounded cursor-pointer transition-colors text-sm">
+                          اختر صورة
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0]
+                              if (file) {
+                                setColorImageFile(file)
+                                setColorImagePreview(URL.createObjectURL(file))
+                              }
+                            }}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
                     )}
                   </div>
                 </div>
 
+                {/* Add/Update Button */}
+                <div className="flex justify-end gap-2">
+                  {editingColorId && (
+                    <button
+                      onClick={cancelEdit}
+                      className="bg-[#6B7280] hover:bg-[#4B5563] text-white px-4 py-2 rounded text-sm font-medium transition-colors"
+                    >
+                      إلغاء
+                    </button>
+                  )}
+                  <button
+                    onClick={addColor}
+                    className="bg-[#10B981] hover:bg-[#059669] text-white px-4 py-2 rounded text-sm font-medium transition-colors"
+                  >
+                    {editingColorId ? 'تحديث اللون' : 'إضافة اللون'}
+                  </button>
+                </div>
+
                 {/* Added Colors Display */}
                 {productColors.length > 0 && (
-                  <div className="space-y-3">
-                    <div className="flex flex-wrap gap-2 justify-end">
-                      {productColors.map((color) => {
-                        console.log('🎨 Rendering color:', color.name, 'with color value:', color.color)
-                        return (
-                          <div 
-                            key={color.id}
-                            className="bg-[#10B981] text-white px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2 transition-colors"
-                          >
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => deleteColor(color.id)}
-                                className="text-white hover:text-red-200 transition-colors"
-                              >
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                              </button>
-                              <button
-                                onClick={() => editColor(color)}
-                                className="text-white hover:text-blue-200 transition-colors"
-                              >
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                </svg>
-                              </button>
-                            </div>
-                            <span>{color.name}</span>
-                            {/* Always show color swatch instead of image */}
-                            <div 
-                              className="w-6 h-6 rounded-full border border-white/20"
-                              style={{ backgroundColor: color.color || '#000000' }}
-                              title={`Color: ${color.color}`}
+                  <div className="space-y-3 mt-4">
+                    <h4 className="text-white text-sm font-medium text-right">الألوان المضافة:</h4>
+                    <div className="space-y-2">
+                      {productColors.map((color) => (
+                        <div
+                          key={color.id}
+                          className="bg-[#2B3441] border border-[#4A5568] rounded p-3 flex items-center gap-3"
+                        >
+                          {/* Color Image */}
+                          {color.image && (
+                            <img
+                              src={color.image}
+                              alt={color.name}
+                              className="w-12 h-12 object-cover rounded border border-[#4A5568]"
                             />
+                          )}
+
+                          {/* Color Swatch */}
+                          <div
+                            className="w-8 h-8 rounded border border-[#4A5568] flex-shrink-0"
+                            style={{ backgroundColor: color.color || '#000000' }}
+                          />
+
+                          {/* Color Info */}
+                          <div className="flex-1 text-right">
+                            <p className="text-white font-medium text-sm">{color.name}</p>
+                            {color.barcode && (
+                              <p className="text-gray-400 text-xs">باركود: {color.barcode}</p>
+                            )}
                           </div>
-                        )
-                      })}
+
+                          {/* Action Buttons */}
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => editColor(color)}
+                              className="text-blue-400 hover:text-blue-300 transition-colors p-1"
+                              title="تعديل"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => deleteColor(color.id)}
+                              className="text-red-400 hover:text-red-300 transition-colors p-1"
+                              title="حذف"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
               </div>
             )}
 
-            {activeShapeColorTab === 'شكل صورة' && (
-              <div className="h-full flex flex-col">
-                {loading ? (
-                  <div className="flex items-center justify-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#5DADE2]"></div>
+            {activeShapeColorTab === 'الكميه' && (
+              <div className="space-y-6">
+                {/* Check if colors or shapes are added */}
+                {productColors.length === 0 && productShapes.length === 0 ? (
+                  <div className="text-center py-12">
+                    <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                    </svg>
+                    <p className="text-gray-400 text-sm">
+                      يرجى إضافة ألوان أو أشكال أولاً من التبويبات السابقة
+                    </p>
+                    <p className="text-gray-500 text-xs mt-2">
+                      انتقل إلى تبويب "لون المنتج" أو "شكل وصف" لإضافة الألوان والأشكال أولاً
+                    </p>
                   </div>
                 ) : (
-                  <div className="space-y-6 pb-8">
-                    <label className="block text-white text-sm font-medium mb-4 text-right">
-                      اختر المخزن أو الفرع:
-                    </label>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Display branches */}
-                      {branches.map((branch) => (
-                        <div 
-                          key={branch.id} 
-                          className={`bg-[#2B3441] border rounded p-4 text-center hover:border-[#5DADE2] transition-colors cursor-pointer ${
-                            selectedLocation?.id === branch.id ? 'border-[#5DADE2] bg-[#3B4A5A]' : 'border-[#4A5568]'
-                          }`}
-                          onClick={() => handleLocationSelect(branch, 'branch')}
-                        >
-                          <div className="flex items-center justify-center gap-2 mb-2">
-                            <div className="p-1 rounded bg-blue-600/20 text-blue-400">
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                              </svg>
-                            </div>
-                            <h3 className="text-white font-medium">{branch.name}</h3>
-                          </div>
-                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-600/20 text-blue-300 border border-blue-600/30">
-                            فرع
-                          </span>
-                          <p className="text-blue-400 text-sm mt-2 font-medium">
-                            كمية: {locationThresholds.find(t => t.locationId === branch.id)?.quantity ?? 0} قطعة
-                          </p>
-                        </div>
-                      ))}
-                      
-                      {/* Display warehouses */}
-                      {warehouses.map((warehouse) => (
-                        <div 
-                          key={warehouse.id} 
-                          className={`bg-[#2B3441] border rounded p-4 text-center hover:border-[#5DADE2] transition-colors cursor-pointer ${
-                            selectedLocation?.id === warehouse.id ? 'border-[#5DADE2] bg-[#3B4A5A]' : 'border-[#4A5568]'
-                          }`}
-                          onClick={() => handleLocationSelect(warehouse, 'warehouse')}
-                        >
-                          <div className="flex items-center justify-center gap-2 mb-2">
-                            <div className="p-1 rounded bg-green-600/20 text-green-400">
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                              </svg>
-                            </div>
-                            <h3 className="text-white font-medium">{warehouse.name}</h3>
-                          </div>
-                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-600/20 text-green-300 border border-green-600/30">
-                            مخزن
-                          </span>
-                          <p className="text-green-400 text-sm mt-2 font-medium">
-                            كمية: {locationThresholds.find(t => t.locationId === warehouse.id)?.quantity ?? 0} قطعة
-                          </p>
-                        </div>
-                      ))}
-                      
-                      {/* Empty state if no locations */}
-                      {branches.length === 0 && warehouses.length === 0 && (
-                        <div className="col-span-2 text-center py-8">
-                          <div className="text-gray-400 text-sm">
-                            لا توجد فروع أو مخازن متاحة
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Inline Form - appears when location is selected */}
-                    {selectedLocation && (
-                      <div className="bg-[#3A4553] border border-[#4A5568] rounded-lg p-3 space-y-2">
-                        {/* Header */}
-                        <div className="flex items-center justify-between pb-3 border-b border-[#4A5568]">
-                          <h4 className="text-white font-medium text-right text-sm">
-                            {selectedLocation.name} المحدد - {selectedLocation.type === 'branch' ? 'فرع' : 'مخزن'}
-                          </h4>
-                          <button
-                            onClick={() => setSelectedLocation(null)}
-                            className="text-gray-400 hover:text-white transition-colors"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
-                        </div>
-
-                        <div className="text-right">
-                          <p className="text-gray-300 text-xs">
-                            الكمية الإجمالية: {selectedLocation.totalQuantity} قطعة
-                          </p>
-                          {getRemainingQuantity(editingVariant?.id) < selectedLocation.totalQuantity && (
-                            <p className="text-green-400 text-xs mt-1">
-                              متبقي {getRemainingQuantity(editingVariant?.id)} قطعة
-                            </p>
-                          )}
-                        </div>
-
-                        {/* Form Fields */}
-                        <div className="grid grid-cols-2 gap-3">
-                          {/* Element Type Selection */}
-                          <div>
-                            <label className="block text-white text-xs font-medium mb-1 text-right">
-                              العنصر المراد ربطه
-                            </label>
-                            <select
-                              value={variantForm.elementType}
-                              onChange={(e) => setVariantForm(prev => ({ 
-                                ...prev, 
-                                elementType: e.target.value as 'color' | 'shape',
-                                elementId: '' 
-                              }))}
-                              className="w-full px-2 py-1.5 bg-[#2B3441] border border-[#4A5568] rounded text-white focus:outline-none focus:ring-1 focus:ring-[#5DADE2] focus:border-[#5DADE2] text-right text-xs"
-                            >
-                              <option value="color">لون المنتج</option>
-                              <option value="shape">شكل وصف</option>
-                            </select>
-                          </div>
-
-                          {/* Element Selection */}
-                          <div>
-                            <label className="block text-white text-xs font-medium mb-1 text-right">
-                              نوع الربط
-                            </label>
-                            <select
-                              value={variantForm.elementId}
-                              onChange={(e) => setVariantForm(prev => ({ ...prev, elementId: e.target.value }))}
-                              className="w-full px-2 py-1.5 bg-[#2B3441] border border-[#4A5568] rounded text-white focus:outline-none focus:ring-1 focus:ring-[#5DADE2] focus:border-[#5DADE2] text-right text-xs"
-                            >
-                              <option value="">-- اختر القيمة --</option>
-                              {getAvailableElements().map((element) => (
-                                <option key={element.id} value={element.id}>
-                                  {element.name}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-
-                          {/* Quantity */}
-                          <div>
-                            <label className="block text-white text-xs font-medium mb-1 text-right">
-                              الكمية
-                            </label>
-                            <input
-                              type="number"
-                              value={variantForm.quantity}
-                              onChange={(e) => setVariantForm(prev => ({ ...prev, quantity: parseInt(e.target.value) || 0 }))}
-                              placeholder="0"
-                              min="0"
-                              max={getRemainingQuantity(editingVariant?.id)}
-                              className="w-full px-2 py-1.5 bg-[#2B3441] border border-[#4A5568] rounded text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-[#5DADE2] focus:border-[#5DADE2] text-right text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                            />
-                          </div>
-
-                          {/* Barcode */}
-                          <div>
-                            <label className="block text-white text-xs font-medium mb-1 text-right">
-                              الباركود
-                            </label>
-                            <div className="flex gap-1">
-                              <input
-                                type="text"
-                                value={variantForm.barcode}
-                                onChange={(e) => setVariantForm(prev => ({ ...prev, barcode: e.target.value }))}
-                                placeholder="الباركود"
-                                className="flex-1 px-2 py-1.5 bg-[#2B3441] border border-[#4A5568] rounded text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-[#5DADE2] focus:border-[#5DADE2] text-right text-xs"
-                              />
-                              <button 
-                                onClick={() => setVariantForm(prev => ({ ...prev, barcode: generateBarcode() }))}
-                                className="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1.5 rounded transition-colors"
-                              >
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  <>
+                    {/* Display branches */}
+                    {branches.length === 0 ? (
+                      <div className="text-center py-8">
+                        <p className="text-gray-400 text-sm">
+                          لا توجد فروع متاحة. يرجى إضافة فروع أولاً.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        {branches.map((branch) => (
+                          <div key={branch.id} className="bg-[#2B3441] border border-[#4A5568] rounded-lg p-4">
+                            {/* Branch Header */}
+                            <div className="flex items-center gap-3 mb-4 pb-3 border-b border-[#4A5568]">
+                              <div className="p-2 rounded bg-blue-600/20 text-blue-400">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                                 </svg>
-                              </button>
+                              </div>
+                              <div>
+                                <h3 className="text-white font-medium text-lg">{branch.name}</h3>
+                                <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-600/20 text-blue-300 border border-blue-600/30">
+                                  فرع
+                                </span>
+                              </div>
                             </div>
-                          </div>
-                        </div>
 
-                        {/* Image Upload with Drag & Drop */}
-                        <div>
-                          <label className="block text-white text-xs font-medium mb-1 text-right">
-                            رفع صورة
-                          </label>
-                          <div 
-                            className="border border-dashed border-gray-600 p-2 text-center bg-[#4A5568]/30 rounded transition-all duration-200 hover:border-blue-400"
-                            onDragOver={(e) => {
-                              e.preventDefault()
-                              e.currentTarget.classList.add('border-blue-400', 'bg-blue-400/10')
-                            }}
-                            onDragLeave={(e) => {
-                              e.preventDefault()
-                              e.currentTarget.classList.remove('border-blue-400', 'bg-blue-400/10')
-                            }}
-                            onDrop={(e) => {
-                              e.preventDefault()
-                              e.currentTarget.classList.remove('border-blue-400', 'bg-blue-400/10')
-                              const files = Array.from(e.dataTransfer.files).filter(file => 
-                                file.type.startsWith('image/')
-                              )
-                              if (files.length > 0) {
-                                setVariantForm(prev => ({ ...prev, image: files[0] }))
-                              }
-                            }}
-                          >
-                            <div className="flex flex-col items-center gap-1">
-                              <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                              </svg>
-                              <p className="text-gray-400 text-xs">اسحب وأفلت الصورة هنا أو</p>
-                              <label className="bg-[#4A5568] hover:bg-[#5A6478] text-white px-2 py-1 text-xs border border-gray-600 transition-colors cursor-pointer rounded">
-                                اختر الصورة
-                                <input
-                                  type="file"
-                                  accept="image/*"
-                                  onChange={(e) => setVariantForm(prev => ({ ...prev, image: e.target.files?.[0] || null }))}
-                                  className="hidden"
-                                />
-                              </label>
-                              {(variantForm.image || variantFormImageUrl) && (
-                                <div className="mt-2 flex flex-col items-center gap-1">
-                                  <img 
-                                    src={variantForm.image ? URL.createObjectURL(variantForm.image) : variantFormImageUrl!} 
-                                    alt="معاينة الصورة"
-                                    className="w-12 h-12 object-cover rounded border border-gray-600"
-                                  />
-                                  <p className="text-green-400 text-xs">
-                                    {variantForm.image ? variantForm.image.name : 'صورة موجودة'}
-                                  </p>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setVariantForm(prev => ({ ...prev, image: null }))
-                                      setVariantFormImageUrl(null)
-                                    }}
-                                    className="text-red-400 hover:text-red-300 text-xs"
-                                  >
-                                    إزالة الصورة
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Submit Button */}
-                        <div className="flex justify-end gap-2">
-                          {editingVariant && (
-                            <button
-                              onClick={() => {
-                                setEditingVariant(null)
-                                setVariantFormImageUrl(null)
-                                setVariantForm({
-                                  elementType: 'color',
-                                  elementId: '',
-                                  quantity: 0,
-                                  barcode: generateBarcode(),
-                                  image: null
-                                })
-                              }}
-                              className="px-3 py-1.5 rounded transition-colors text-xs bg-gray-600 hover:bg-gray-700 text-white"
-                            >
-                              إلغاء
-                            </button>
-                          )}
-                          <button
-                            onClick={handleVariantSubmit}
-                            disabled={!variantForm.elementId || variantForm.quantity <= 0}
-                            className={`px-3 py-1.5 rounded transition-colors text-xs ${
-                              !variantForm.elementId || variantForm.quantity <= 0
-                                ? 'bg-gray-600/50 text-gray-400 cursor-not-allowed'
-                                : editingVariant 
-                                  ? 'bg-orange-600 hover:bg-orange-700 text-white'
-                                  : 'bg-blue-600 hover:bg-blue-700 text-white'
-                            }`}
-                          >
-                            {editingVariant ? '🔄 تحديث' : '+ إدراج'}
-                          </button>
-                        </div>
-
-                        {/* Added Variants Display - Hide purchase variants for security */}
-                        {(() => {
-                          const allVariants = locationVariants.filter(v => v.locationId === selectedLocation.id)
-                          const visibleVariants = allVariants.filter(v => !isPurchaseVariant(v))
-                          const hiddenVariants = allVariants.filter(v => isPurchaseVariant(v))
-                          
-                          // Log for debugging
-                          if (hiddenVariants.length > 0) {
-                            console.log(`🔒 Hidden ${hiddenVariants.length} purchase variants from UI:`, hiddenVariants.map(v => v.elementName))
-                          }
-                          
-                          return visibleVariants.length > 0
-                        })() && (
-                          <div className="pt-3 border-t border-[#4A5568] pb-4">
-                            <h5 className="text-white font-medium mb-2 text-right text-xs">الأشكال المضافة:</h5>
-                            <div className="space-y-2">
-                              {locationVariants
-                                .filter(v => v.locationId === selectedLocation.id && !isPurchaseVariant(v))
-                                .map((variant) => (
-                                  <div key={variant.id} className="bg-[#2B3441] rounded p-2 flex items-center justify-between">
-                                    <div className="flex items-center gap-1">
-                                      <button
-                                        onClick={() => handleVariantDelete(variant.id)}
-                                        className="text-red-400 hover:text-red-300 transition-colors"
-                                      >
-                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                        </svg>
-                                      </button>
-                                      <button
-                                        onClick={() => handleVariantEdit(variant)}
-                                        className="text-blue-400 hover:text-blue-300 transition-colors"
-                                      >
-                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                        </svg>
-                                      </button>
-                                    </div>
-                                    
-                                    <div className="flex items-center gap-1 text-right">
-                                      <div className="text-white text-xs">
-                                        <div className="font-medium">{variant.elementName}</div>
-                                        <div className="text-xs text-gray-400">
-                                          {variant.elementType === 'color' ? 'لون المنتج' : 'شكل وصف'} | {variant.barcode}
-                                        </div>
-                                      </div>
-                                      
-                                      <div className="bg-blue-600/20 text-blue-300 px-1.5 py-0.5 rounded text-xs font-medium">
-                                        {variant.quantity}
-                                      </div>
-                                      
-                                      {variant.image && (
-                                        <img 
-                                          src={variant.image} 
-                                          alt={variant.elementName}
-                                          className="w-6 h-6 rounded object-cover"
+                            {/* Colors Section */}
+                            {productColors.length > 0 && (
+                              <div className="mb-4">
+                                <h4 className="text-white text-sm font-medium mb-3 text-right">الألوان:</h4>
+                                <div className="space-y-2">
+                                  {productColors.map((color) => (
+                                    <div key={color.id} className="bg-[#374151] rounded p-3 flex items-center gap-3">
+                                      {/* Color Image */}
+                                      {color.image && (
+                                        <img
+                                          src={color.image}
+                                          alt={color.name}
+                                          className="w-12 h-12 object-cover rounded border border-[#4A5568]"
                                         />
                                       )}
+
+                                      {/* Color Swatch */}
+                                      <div
+                                        className="w-8 h-8 rounded border border-[#4A5568] flex-shrink-0"
+                                        style={{ backgroundColor: color.color || '#000000' }}
+                                      />
+
+                                      {/* Color Name */}
+                                      <div className="flex-1 text-right">
+                                        <p className="text-white font-medium text-sm">{color.name}</p>
+                                        {color.barcode && (
+                                          <p className="text-gray-400 text-xs">باركود: {color.barcode}</p>
+                                        )}
+                                      </div>
+
+                                      {/* Quantity Input */}
+                                      <div className="w-32">
+                                        <input
+                                          type="number"
+                                          placeholder="الكمية"
+                                          min="0"
+                                          className="w-full px-3 py-2 bg-[#2B3441] border border-[#4A5568] rounded text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-[#5DADE2] focus:border-[#5DADE2] text-center text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                        />
+                                      </div>
                                     </div>
-                                  </div>
-                                ))}
-                            </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Shapes Section */}
+                            {productShapes.length > 0 && (
+                              <div>
+                                <h4 className="text-white text-sm font-medium mb-3 text-right">الأشكال:</h4>
+                                <div className="space-y-2">
+                                  {productShapes.map((shape) => (
+                                    <div key={shape.id} className="bg-[#374151] rounded p-3 flex items-center gap-3">
+                                      {/* Shape Image */}
+                                      {shape.image && (
+                                        <img
+                                          src={shape.image}
+                                          alt={shape.name || 'شكل'}
+                                          className="w-12 h-12 object-cover rounded border border-[#4A5568]"
+                                        />
+                                      )}
+
+                                      {/* Shape Name */}
+                                      <div className="flex-1 text-right">
+                                        {shape.name ? (
+                                          <p className="text-white font-medium text-sm">{shape.name}</p>
+                                        ) : (
+                                          <p className="text-gray-400 text-sm italic">شكل بدون اسم</p>
+                                        )}
+                                        {shape.barcode && (
+                                          <p className="text-gray-400 text-xs">باركود: {shape.barcode}</p>
+                                        )}
+                                      </div>
+
+                                      {/* Quantity Input */}
+                                      <div className="w-32">
+                                        <input
+                                          type="number"
+                                          placeholder="الكمية"
+                                          min="0"
+                                          className="w-full px-3 py-2 bg-[#2B3441] border border-[#4A5568] rounded text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-[#5DADE2] focus:border-[#5DADE2] text-center text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                        />
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
-                        )}
+                        ))}
                       </div>
                     )}
-                  </div>
+                  </>
                 )}
               </div>
             )}

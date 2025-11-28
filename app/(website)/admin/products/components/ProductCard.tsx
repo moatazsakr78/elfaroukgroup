@@ -17,6 +17,7 @@ interface ProductCardProps {
   product: ProductManagementItem;
   isDragMode: boolean;
   isDragging: boolean;
+  isSelected?: boolean;
   onDragStart: (e: React.DragEvent) => void;
   onDragOver: (e: React.DragEvent) => void;
   onDrop: (e: React.DragEvent) => void;
@@ -24,12 +25,14 @@ interface ProductCardProps {
   onToggleVisibility: () => void;
   onToggleFeatured: () => void;
   onManageSuggestions: () => void;
+  onSelect?: () => void;
 }
 
 export default function ProductCard({
   product,
   isDragMode,
   isDragging,
+  isSelected,
   onDragStart,
   onDragOver,
   onDrop,
@@ -37,6 +40,7 @@ export default function ProductCard({
   onToggleVisibility,
   onToggleFeatured,
   onManageSuggestions,
+  onSelect,
 }: ProductCardProps) {
   return (
     <div
@@ -45,18 +49,21 @@ export default function ProductCard({
       onDragOver={onDragOver}
       onDrop={onDrop}
       onDragEnd={onDragEnd}
+      onClick={onSelect && !isDragMode ? onSelect : undefined}
       className={`bg-white rounded-lg p-4 border shadow-md transition-all duration-200 ${
-        isDragMode 
-          ? 'cursor-move hover:shadow-lg' 
-          : 'cursor-default'
+        isDragMode
+          ? 'cursor-move hover:shadow-lg'
+          : onSelect ? 'cursor-pointer hover:shadow-lg' : 'cursor-default'
       } ${
-        isDragging 
-          ? 'opacity-50 scale-95 rotate-2' 
+        isDragging
+          ? 'opacity-50 scale-95 rotate-2'
           : 'opacity-100 scale-100'
       } ${
-        product.isHidden 
-          ? 'border-red-300 bg-red-50' 
-          : 'border-gray-300 bg-white'
+        isSelected
+          ? 'border-green-500 border-4 ring-4 ring-green-200'
+          : product.isHidden
+            ? 'border-red-300 bg-red-50'
+            : 'border-gray-300 bg-white'
       }`}
     >
       {/* Drag Indicator */}

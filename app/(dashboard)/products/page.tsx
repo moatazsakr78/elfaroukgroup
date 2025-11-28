@@ -11,6 +11,7 @@ import CategorySidebar from '../../components/CategorySidebar'
 import ProductSidebar from '../../components/ProductSidebar'
 import CategoriesTreeView from '../../components/CategoriesTreeView'
 import ColorAssignmentModal from '../../components/ColorAssignmentModal'
+import ColorAssignmentModalNew from '../../components/ColorAssignmentModalNew'
 import ColorChangeModal from '../../components/ColorChangeModal'
 import ColumnsControlModal from '../../components/ColumnsControlModal'
 import ProductExportModal from '../../components/ProductExportModal'
@@ -79,6 +80,7 @@ export default function ProductsPage() {
   const [modalProduct, setModalProduct] = useState<Product | null>(null)
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
   const [showColorAssignmentModal, setShowColorAssignmentModal] = useState(false)
+  const [showColorAssignmentModalNew, setShowColorAssignmentModalNew] = useState(false)
   const [showColorChangeModal, setShowColorChangeModal] = useState(false)
   const [showColumnsModal, setShowColumnsModal] = useState(false)
   const [visibleColumns, setVisibleColumns] = useState<{[key: string]: boolean}>({})
@@ -922,17 +924,17 @@ export default function ProductsPage() {
               <span className="text-sm">الأعمدة</span>
             </button>
 
-            <button 
-              onClick={() => selectedProduct && setShowColorAssignmentModal(true)}
+            <button
+              onClick={() => selectedProduct && setShowColorAssignmentModalNew(true)}
               className={`flex flex-col items-center p-2 cursor-pointer min-w-[80px] ${
                 selectedProduct
-                  ? 'text-gray-300 hover:text-white' 
+                  ? 'text-gray-300 hover:text-white'
                   : 'text-gray-500 cursor-not-allowed'
               }`}
               disabled={!selectedProduct}
             >
               <TagIcon className="h-5 w-5 mb-1" />
-              <span className="text-sm">تحديد اللون</span>
+              <span className="text-sm">الألوان والأشكال</span>
             </button>
 
             <button 
@@ -1678,9 +1680,23 @@ export default function ProductsPage() {
         </>
       )}
 
-      {/* Color Assignment Modal */}
+      {/* New Color Assignment Modal */}
+      {showColorAssignmentModalNew && selectedProduct && (
+        <ColorAssignmentModalNew
+          product={selectedProduct}
+          branches={branches}
+          isOpen={showColorAssignmentModalNew}
+          onClose={() => setShowColorAssignmentModalNew(false)}
+          onAssignmentComplete={() => {
+            fetchProducts() // Refresh products after assignment
+            setShowColorAssignmentModalNew(false)
+          }}
+        />
+      )}
+
+      {/* Color Assignment Modal (Old - Backup) */}
       {showColorAssignmentModal && selectedProduct && (
-        <ColorAssignmentModal 
+        <ColorAssignmentModal
           product={selectedProduct}
           branches={branches}
           isOpen={showColorAssignmentModal}
