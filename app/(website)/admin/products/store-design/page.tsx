@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useProducts } from '../../../../lib/hooks/useProducts';
+import { useProductsAdmin } from '../../../../lib/hooks/useProductsAdmin';
 import { useCustomSections } from '../../../../../lib/hooks/useCustomSections';
 import { DragDropProvider } from '../components/DragDropProvider';
 import CustomSectionManagementGrid from './components/CustomSectionManagementGrid';
@@ -21,7 +21,7 @@ interface CustomSectionItem {
 
 export default function StoreDesignPage() {
   const router = useRouter();
-  const { products: databaseProducts, isLoading: isProductsLoading, fetchProducts } = useProducts();
+  const { products: databaseProducts, isLoading: isProductsLoading, fetchProducts } = useProductsAdmin();
   const { sections: customSections, isLoading: isSectionsLoading, fetchSections, deleteSection, reorderSections } = useCustomSections();
   const [sections, setSections] = useState<CustomSectionItem[]>([]);
   const [originalSections, setOriginalSections] = useState<CustomSectionItem[]>([]);
