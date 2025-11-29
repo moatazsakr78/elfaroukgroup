@@ -624,7 +624,7 @@ export default function CustomerOrdersPage() {
     try {
 
       // Use database function to create invoice - bypasses RLS policies
-      const { data: result, error: functionError } = await supabase
+      const { data: result, error: functionError } = await (supabase as any)
         .rpc('create_invoice', {
           p_order_number: selectedOrderForInvoice.id,
           p_paid_amount: invoiceData.paidAmount,

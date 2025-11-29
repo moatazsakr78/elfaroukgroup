@@ -617,7 +617,7 @@ export function useProducts() {
       cache.invalidatePattern('products:')
       cache.delete(CacheKeys.productById(productId))
 
-      return data
+      return data as Product
     } catch (err) {
       console.error('Error updating product:', err)
       throw err
@@ -692,7 +692,7 @@ export function useProducts() {
       // OPTIMIZATION: Invalidate cache
       cache.invalidatePattern('products:')
 
-      return data
+      return data as Product
     } catch (err) {
       console.error('Error creating product:', err)
       throw err
@@ -801,7 +801,7 @@ export function useProducts() {
                 discountLabel: ''
               }
               
-              setProducts(prev => [enrichedProduct, ...prev])
+              setProducts(prev => [enrichedProduct, ...prev] as Product[])
             }
           } else if (payload.eventType === 'UPDATE') {
             // Handle UPDATE events more efficiently for specific fields

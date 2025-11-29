@@ -125,7 +125,7 @@ export async function createTransferInvoice({
         // Branch to Branch transfer - use the transfer_stock function
         console.log(`نقل بين الفروع: ${transferFromLocation.id} → ${transferToLocation.id}`)
         
-        const { data, error: transferStockError } = await supabase
+        const { data, error: transferStockError } = await (supabase as any)
           .rpc('transfer_stock', {
             p_product_id: item.product.id,
             p_from_branch_id: transferFromLocation.id.toString(),

@@ -106,7 +106,7 @@ export default function ColorAssignmentModalNew({
       const { data: defs, error: defsError } = await query
 
       if (defsError) throw defsError
-      setDefinitions(defs || [])
+      setDefinitions((defs || []) as any)
 
       // Load quantities if in quantities tab
       if (activeTab === 'quantities' && defs && defs.length > 0) {

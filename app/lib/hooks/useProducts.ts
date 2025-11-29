@@ -531,7 +531,7 @@ export function useProducts() {
 
       if (error) throw error
 
-      return data
+      return data as any
     } catch (err) {
       console.error('Error updating product:', err)
       throw err
@@ -603,7 +603,7 @@ export function useProducts() {
 
       if (error) throw error
 
-      return data
+      return data as any
     } catch (err) {
       console.error('Error creating product:', err)
       throw err
@@ -771,7 +771,7 @@ export function useProducts() {
                 if (exists) {
                   return prev // Don't add duplicate
                 }
-                return [enrichedProduct, ...prev]
+                return [enrichedProduct as any, ...prev]
               })
             }
           } else if (payload.eventType === 'UPDATE') {
@@ -869,7 +869,7 @@ export function useProducts() {
                       totalQuantity: product.totalQuantity
                     }
                   : product
-              ))
+              ) as Product[])
             }
           } else if (payload.eventType === 'DELETE') {
             setProducts(prev => prev.filter(product => product.id !== payload.old.id))

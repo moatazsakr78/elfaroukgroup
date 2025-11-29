@@ -72,7 +72,7 @@ export default function ProductVariantDefinitionsModal({
         .order('sort_order', { ascending: true })
 
       if (error) throw error
-      setDefinitions(data || [])
+      setDefinitions((data || []) as any)
     } catch (error) {
       console.error('Error loading definitions:', error)
       alert('حدث خطأ أثناء تحميل البيانات')

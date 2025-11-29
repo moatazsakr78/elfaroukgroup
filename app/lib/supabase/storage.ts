@@ -14,7 +14,7 @@ if (!supabaseAnonKey) {
 // Singleton instance for storage client
 let supabaseStorageInstance: SupabaseClient | null = null
 
-// Get singleton storage client instance
+// Get singleton storage client instance (for client-side and storage operations)
 export const getSupabaseAdmin = (): SupabaseClient => {
   if (!supabaseStorageInstance) {
     supabaseStorageInstance = createClient(supabaseUrl, supabaseAnonKey, {

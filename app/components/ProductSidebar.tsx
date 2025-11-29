@@ -469,6 +469,103 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editProduct, isOpen, branches, warehouses, selectedCategory])
 
+  // ✅ NEW: Load colors/shapes from product_color_shape_definitions
+  useEffect(() => {
+    const loadVariantDefinitions = async () => {
+      if (!editProduct || !isOpen) return
+
+      console.log('🔄 Loading variant definitions from database...')
+      console.log('📦 Product ID for loading:', editProduct.id)
+
+      // Fetch color/shape definitions
+      const { data: definitions, error } = await supabase
+        .from('product_color_shape_definitions')
+        .select('*')
+        .eq('product_id', editProduct.id)
+        .order('sort_order')
+
+      console.log('📥 Query result - definitions:', definitions)
+      console.log('📥 Query result - error:', error)
+
+      if (error) {
+        console.error('❌ Error loading variant definitions:', error)
+        return
+      }
+
+      if (definitions && definitions.length > 0) {
+        console.log('✅ Loaded variant definitions:', definitions)
+
+        // Separate colors and shapes
+        const colors = definitions
+          .filter(d => d.variant_type === 'color')
+          .map(d => ({
+            id: d.id,
+            name: d.name,
+            color: d.color_hex || '#000000',
+            image: d.image_url || undefined,
+            barcode: d.barcode || undefined
+          }))
+
+        const shapes = definitions
+          .filter(d => d.variant_type === 'shape')
+          .map(d => ({
+            id: d.id,
+            name: d.name || '',
+            image_url: d.image_url || undefined,
+            barcode: d.barcode || undefined
+          }))
+
+        console.log('🎨 Setting colors:', colors)
+        console.log('🔶 Setting shapes:', shapes)
+
+        setProductColors(colors as any)
+        setProductShapes(shapes as any)
+
+        // Now load quantities
+        if (branches.length > 0) {
+          console.log('💾 Loading variant quantities...')
+
+          const { data: quantities, error: qtyError } = await supabase
+            .from('product_variant_quantities')
+            .select('*')
+            .in('variant_definition_id', definitions.map(d => d.id))
+
+          if (qtyError) {
+            console.error('❌ Error loading variant quantities:', qtyError)
+          } else if (quantities && quantities.length > 0) {
+            console.log('✅ Loaded variant quantities:', quantities)
+
+            // Build locationVariants from quantities and definitions
+            const variants = quantities.map(qty => {
+              const definition = definitions.find(d => d.id === qty.variant_definition_id)
+              if (!definition) return null
+
+              const branch = branches.find(b => b.id === qty.branch_id)
+              if (!branch) return null
+
+              return {
+                id: qty.id,
+                locationId: qty.branch_id,
+                locationType: 'branch' as const,
+                elementType: definition.variant_type as 'color' | 'shape',
+                elementId: definition.id,
+                elementName: definition.name || '',
+                quantity: qty.quantity || 0,
+                barcode: definition.barcode || '',
+                image: definition.image_url || undefined
+              }
+            }).filter(v => v !== null)
+
+            console.log('✅ Built locationVariants:', variants)
+            setLocationVariants(variants as any)
+          }
+        }
+      }
+    }
+
+    loadVariantDefinitions()
+  }, [editProduct, isOpen, branches, supabase])
+
   const tabs = [
     'تفاصيل المنتج',
     'السعر', 
@@ -1079,6 +1176,81 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
     setProductVideos(videos)
   }
 
+  // Helper functions for variant quantities management
+  const getVariantQuantity = (branchId: string, elementId: string, elementType: 'color' | 'shape'): number => {
+    const variant = locationVariants.find(v =>
+      v.locationId === branchId &&
+      v.elementId === elementId &&
+      v.elementType === elementType
+    )
+    return variant?.quantity || 0
+  }
+
+  // Get total allocated quantity for a branch
+  const getTotalAllocatedQuantity = (branchId: string, excludeElementId?: string): number => {
+    return locationVariants
+      .filter(v => v.locationId === branchId && v.elementId !== excludeElementId)
+      .reduce((sum, v) => sum + v.quantity, 0)
+  }
+
+  // Get total quantity for a branch from locationThresholds
+  const getBranchTotalQuantity = (branchId: string): number => {
+    const threshold = locationThresholds.find(t => t.locationId === branchId)
+    return threshold?.quantity || 0
+  }
+
+  const updateVariantQuantity = (branchId: string, elementId: string, elementType: 'color' | 'shape', quantity: number) => {
+    const elementData = elementType === 'color'
+      ? productColors.find(c => c.id === elementId)
+      : productShapes.find(s => s.id === elementId)
+
+    if (!elementData) return
+
+    // Validation: Check if total allocated quantity doesn't exceed branch total
+    const branchTotal = getBranchTotalQuantity(branchId)
+    const currentAllocated = getTotalAllocatedQuantity(branchId, elementId)
+    const newTotal = currentAllocated + quantity
+
+    if (newTotal > branchTotal) {
+      const maxAllowed = branchTotal - currentAllocated
+      alert(`⚠️ تحذير!\n\nالكمية الإجمالية المتاحة في هذا الفرع: ${branchTotal} قطعة\nالكمية المخصصة حالياً: ${currentAllocated} قطعة\nالحد الأقصى المسموح: ${maxAllowed} قطعة\n\nلا يمكن تخصيص ${quantity} قطعة لأن المجموع سيتجاوز الكمية المتاحة.`)
+      return
+    }
+
+    const existingVariantIndex = locationVariants.findIndex(v =>
+      v.locationId === branchId &&
+      v.elementId === elementId &&
+      v.elementType === elementType
+    )
+
+    if (quantity > 0) {
+      const variantData: LocationVariant = {
+        id: existingVariantIndex >= 0 ? locationVariants[existingVariantIndex].id : `variant-${Date.now()}-${Math.random()}`,
+        locationId: branchId,
+        locationType: 'branch',
+        elementType: elementType,
+        elementId: elementId,
+        elementName: elementType === 'color' ? elementData.name : (elementData.name || 'شكل'),
+        quantity: quantity,
+        barcode: elementData.barcode || generateBarcode(),
+        image: elementData.image
+      }
+
+      if (existingVariantIndex >= 0) {
+        // Update existing variant
+        setLocationVariants(prev => prev.map((v, idx) => idx === existingVariantIndex ? variantData : v))
+      } else {
+        // Add new variant
+        setLocationVariants(prev => [...prev, variantData])
+      }
+    } else {
+      // Remove variant if quantity is 0
+      if (existingVariantIndex >= 0) {
+        setLocationVariants(prev => prev.filter((_, idx) => idx !== existingVariantIndex))
+      }
+    }
+  }
+
   // Handle pending video upload for new products
   const handlePendingVideoUpload = (files: FileList) => {
     const videoFiles = Array.from(files).filter(file => file.type.startsWith('video/'))
@@ -1499,6 +1671,65 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
   }
 
 
+  // Upload color and shape images to Supabase Storage
+  const uploadColorAndShapeImages = async (productId: string) => {
+    console.log('📤 Uploading color and shape images...')
+
+    // Upload color images
+    const updatedColors = await Promise.all(
+      productColors.map(async (color) => {
+        if (color.image && color.image.startsWith('blob:')) {
+          console.log(`📤 Uploading image for color: ${color.name}`)
+          try {
+            // Convert blob URL to File
+            const response = await fetch(color.image)
+            const blob = await response.blob()
+            const file = new File([blob], `color-${color.name}.jpg`, { type: 'image/jpeg' })
+
+            // Upload to Supabase Storage
+            const result = await uploadVersionedProductImage(file, productId, 'variant')
+
+            if (result.success && result.publicUrl) {
+              console.log(`✅ Uploaded image for color ${color.name}:`, result.publicUrl)
+              return { ...color, image: result.publicUrl }
+            }
+          } catch (error) {
+            console.error(`❌ Failed to upload image for color ${color.name}:`, error)
+          }
+        }
+        return color
+      })
+    )
+
+    // Upload shape images
+    const updatedShapes = await Promise.all(
+      productShapes.map(async (shape) => {
+        if (shape.image && shape.image.startsWith('blob:')) {
+          console.log(`📤 Uploading image for shape: ${shape.name || 'شكل'}`)
+          try {
+            // Convert blob URL to File
+            const response = await fetch(shape.image)
+            const blob = await response.blob()
+            const file = new File([blob], `shape-${shape.name || 'shape'}.jpg`, { type: 'image/jpeg' })
+
+            // Upload to Supabase Storage
+            const result = await uploadVersionedProductImage(file, productId, 'variant')
+
+            if (result.success && result.publicUrl) {
+              console.log(`✅ Uploaded image for shape ${shape.name || 'شكل'}:`, result.publicUrl)
+              return { ...shape, image: result.publicUrl }
+            }
+          } catch (error) {
+            console.error(`❌ Failed to upload image for shape ${shape.name || 'شكل'}:`, error)
+          }
+        }
+        return shape
+      })
+    )
+
+    return { updatedColors, updatedShapes }
+  }
+
   const handleSave = async () => {
     if (!formData.name.trim()) {
       alert('يرجى إدخال اسم المنتج')
@@ -1565,115 +1796,11 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
         }
       }
 
-      // Store standalone colors in description field as JSON
-      // CRITICAL FIX: Always preserve existing colors during edit mode
-      let colorsToSave = productColors
-      if (isEditMode && editProduct) {
-        console.log('🎨 SAVE: Edit mode detected, preserving existing colors')
-        console.log('🎨 SAVE: Current productColors in interface:', productColors)
-        
-        let existingColors: any[] = []
-        
-        // Try to get existing colors from description field first
-        if (editProduct.description) {
-          try {
-            if (editProduct.description.startsWith('{')) {
-              const existingDescriptionData = JSON.parse(editProduct.description)
-              if (existingDescriptionData.colors && Array.isArray(existingDescriptionData.colors)) {
-                existingColors = existingDescriptionData.colors
-                console.log('🎨 SAVE: Found existing colors in description:', existingColors)
-              }
-            }
-          } catch (e) {
-            console.warn('Failed to parse description colors:', e)
-          }
-        }
-        
-        // If no colors in description, try to get them from variants data
-        if (existingColors.length === 0 && editProduct.variantsData) {
-          console.log('🎨 SAVE: No colors in description, checking variants data')
-          const colorMap = new Map<string, any>()
-          
-          Object.values(editProduct.variantsData).forEach((variants: any) => {
-            if (Array.isArray(variants)) {
-              variants.forEach((variant: any) => {
-                if (variant.variant_type === 'color' && variant.name) {
-                  let colorValue = '#6B7280'
-                  let imageUrl: string | undefined
-                  
-                  try {
-                    if (variant.value && variant.value.startsWith('{')) {
-                      const valueData = JSON.parse(variant.value)
-                      if (valueData.color) colorValue = valueData.color
-                      if (valueData.image) imageUrl = valueData.image
-                    }
-                  } catch (e) {
-                    // ignore
-                  }
-                  
-                  if (!imageUrl && variant.image_url) {
-                    imageUrl = variant.image_url
-                  }
-                  
-                  if (!colorMap.has(variant.name)) {
-                    colorMap.set(variant.name, {
-                      id: `existing-${variant.name}-${Date.now()}`,
-                      name: variant.name,
-                      color: colorValue,
-                      image: imageUrl
-                    })
-                  }
-                }
-              })
-            }
-          })
-          
-          existingColors = Array.from(colorMap.values())
-          console.log('🎨 SAVE: Extracted colors from variants:', existingColors)
-        }
-        
-        // Now merge existing colors with current interface colors
-        if (existingColors.length > 0) {
-          const colorMap = new Map<string, any>()
-          
-          // Add all existing colors first
-          existingColors.forEach((color: any) => {
-            colorMap.set(color.name, {
-              id: color.id || `preserved-${color.name}-${Date.now()}`,
-              name: color.name,
-              color: color.color || '#6B7280',
-              image: color.image
-            })
-          })
-          
-          // Add/update with current interface colors (new or modified colors)
-          productColors.forEach((color: any) => {
-            const existing = colorMap.get(color.name)
-            colorMap.set(color.name, {
-              id: color.id || `new-${color.name}-${Date.now()}`,
-              name: color.name,
-              color: color.color,
-              image: color.image || (existing ? existing.image : undefined)
-            })
-          })
-          
-          colorsToSave = Array.from(colorMap.values())
-          console.log('🎨 SAVE: Final merged colors:', colorsToSave)
-        } else if (productColors.length > 0) {
-          // No existing colors found, just save current interface colors
-          colorsToSave = productColors
-          console.log('🎨 SAVE: No existing colors, saving interface colors:', colorsToSave)
-        }
-      } else {
-        // New product mode: just use the colors from the interface
-        colorsToSave = productColors
-        console.log('🎨 SAVE: New product mode, using interface colors:', colorsToSave)
-      }
-
-      // ✅ حفظ الوصف كنص عادي فقط (بدون JSON)
+      // ✅ حفظ الوصف كنص عادي فقط (الألوان والأشكال في product_variants)
       const descriptionToSave = formData.description.trim() || ''
-      console.log('✅ Saving description as plain text:', descriptionToSave)
-      console.log('🎨 Colors will be saved separately:', colorsToSave)
+      console.log('✅ Saving description as plain text (colors/shapes stored in product_variants)')
+      console.log('🎨 Current productColors to be saved in variants:', productColors.length, 'colors')
+      console.log('🔶 Current productShapes to be saved in variants:', productShapes.length, 'shapes')
 
       // Prepare product data
       const productData: Partial<Product> = {
@@ -1702,8 +1829,34 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
       if (isEditMode && editProduct && updateProduct) {
         // Update existing product
         savedProduct = await updateProduct(editProduct.id, productData)
-        
+
         if (savedProduct) {
+          // Upload color and shape images first
+          const { updatedColors, updatedShapes } = await uploadColorAndShapeImages(savedProduct.id)
+
+          // Update productColors and productShapes with uploaded image URLs
+          setProductColors(updatedColors)
+          setProductShapes(updatedShapes)
+
+          // Create updated locationVariants with new image URLs
+          const updatedLocationVariants = locationVariants.map(variant => {
+            if (variant.elementType === 'color') {
+              const color = updatedColors.find(c => c.id === variant.elementId)
+              if (color) {
+                return { ...variant, image: color.image }
+              }
+            } else if (variant.elementType === 'shape') {
+              const shape = updatedShapes.find(s => s.id === variant.elementId)
+              if (shape) {
+                return { ...variant, image: shape.image }
+              }
+            }
+            return variant
+          })
+
+          // Update state for future use
+          setLocationVariants(updatedLocationVariants)
+
           // Update inventory entries
           const inventoryPromises = locationThresholds
             .filter(threshold => (threshold.quantity !== undefined && threshold.quantity > 0) || (threshold.minStockThreshold !== undefined && threshold.minStockThreshold > 0))
@@ -1734,90 +1887,33 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
 
           await Promise.all(inventoryPromises)
 
-          // Update product variants - delete all existing variants and re-create
-          const { error: deleteError } = await supabase
-            .from('product_variants')
-            .delete()
-            .eq('product_id', savedProduct.id)
+          // ✅ NEW: Save colors/shapes using API route (with service_role_key)
+          console.log('💾 Saving color/shape definitions...')
+          console.log('🎨 updatedColors to save:', updatedColors)
+          console.log('🔶 updatedShapes to save:', updatedShapes)
+          console.log('📦 productId:', savedProduct.id)
 
-          if (deleteError) {
-            console.error('Error deleting existing variants:', deleteError)
-          }
-
-          // Create new variants
-          const variantPromises = locationVariants.map(async (variant) => {
-            // Get additional data based on variant type and encode in the value field
-            let valueData: any = {
-              barcode: variant.barcode
-            }
-            
-            if (variant.elementType === 'color') {
-              const color = productColors.find(c => c.id === variant.elementId)
-              valueData.color = color?.color || '#000000'
-            }
-            
-            if (variant.image) {
-              valueData.image = variant.image
-            }
-            
-            // For variant images, we need to upload them first
-            let editVariantValue = variant.barcode
-            let editVariantImageUrl = null
-            
-            // Check if image is existing (not a blob URL) and preserve it
-            if (variant.image && !variant.image.startsWith('blob:')) {
-              editVariantImageUrl = variant.image
-              editVariantValue = JSON.stringify({
-                barcode: variant.barcode,
-                image: variant.image
-              })
-            } else if (variant.image) {
-              try {
-                // Upload the variant image
-                const imageFile = variant.image.startsWith('blob:') 
-                  ? await fetch(variant.image).then(r => r.blob()).then(blob => new File([blob], 'variant.jpg', { type: 'image/jpeg' }))
-                  : null
-                
-                if (imageFile) {
-                  const productId = editProduct?.id
-                  if (productId) {
-                    const result = await uploadVersionedProductImage(
-                      imageFile,
-                      productId,
-                      'variant'
-                    )
-                    
-                    if (result.success && result.publicUrl) {
-                      editVariantImageUrl = result.publicUrl
-                      // Store barcode and image URL as JSON in value field
-                      editVariantValue = JSON.stringify({
-                        barcode: variant.barcode,
-                        image: result.publicUrl
-                      })
-                    }
-                  }
-                }
-              } catch (error) {
-                console.error('Error uploading variant image:', error)
-              }
-            }
-
-            const editVariantData = {
-              product_id: savedProduct!.id,
-              branch_id: variant.locationId, // Use branch_id for all locations
-              variant_type: variant.elementType,
-              name: variant.elementName,
-              barcode: variant.barcode, // Store barcode directly in barcode field
-              quantity: variant.quantity,
-              image_url: editVariantImageUrl, // Store image URL in dedicated field
-              color_hex: variant.elementType === 'color' ? (productColors.find(c => c.id === variant.elementId)?.color || null) : null,
-              color_name: variant.elementType === 'color' ? variant.elementName : null
-            }
-            
-            return supabase.from('product_variants').insert(editVariantData)
+          const saveVariantsResponse = await fetch('/api/products/save-variants', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              productId: savedProduct.id,
+              colors: updatedColors,
+              shapes: updatedShapes,
+              quantities: locationVariants // ✅ Send quantities too!
+            })
           })
 
-          await Promise.all(variantPromises)
+          const saveVariantsResult = await saveVariantsResponse.json()
+
+          if (!saveVariantsResult.success) {
+            console.error('❌ Error saving variant definitions:', saveVariantsResult.error)
+            alert('فشل في حفظ الألوان والأشكال: ' + saveVariantsResult.error)
+          } else {
+            console.log('✅ Saved variant definitions and quantities via API')
+          }
           
           // Trigger refresh and close
           onProductCreated?.()
@@ -1829,11 +1925,37 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
       } else {
         // Create new product
         savedProduct = await createProduct(productData)
-        
+
         if (savedProduct) {
+          // Upload color and shape images first
+          const { updatedColors, updatedShapes } = await uploadColorAndShapeImages(savedProduct.id)
+
+          // Update productColors and productShapes with uploaded image URLs
+          setProductColors(updatedColors)
+          setProductShapes(updatedShapes)
+
+          // Create updated locationVariants with new image URLs
+          const updatedLocationVariants = locationVariants.map(variant => {
+            if (variant.elementType === 'color') {
+              const color = updatedColors.find(c => c.id === variant.elementId)
+              if (color) {
+                return { ...variant, image: color.image }
+              }
+            } else if (variant.elementType === 'shape') {
+              const shape = updatedShapes.find(s => s.id === variant.elementId)
+              if (shape) {
+                return { ...variant, image: shape.image }
+              }
+            }
+            return variant
+          })
+
+          // Update state for future use
+          setLocationVariants(updatedLocationVariants)
+
           console.log('🔄 Creating inventory entries for new product:', savedProduct.name)
           console.log('📦 Location thresholds to save:', locationThresholds)
-          
+
           // Create inventory entries for each location with quantities
           const inventoryEntriesToSave = locationThresholds
             .filter(threshold => (threshold.quantity !== undefined && threshold.quantity > 0) || (threshold.minStockThreshold !== undefined && threshold.minStockThreshold > 0))
@@ -1860,88 +1982,31 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
           const inventoryResults = await Promise.all(inventoryPromises)
           console.log('✅ Inventory save results:', inventoryResults)
 
-          // Create product variants if any
-          console.log('🎨 Creating product variants for new product:', savedProduct.name)
-          console.log('📦 Location variants to save:', locationVariants)
-          console.log('🎨 Product colors available:', productColors)
-          
-          const variantPromises = locationVariants.map(async (variant) => {
-            console.log('🔄 Processing variant for save:', variant)
-            
-            // Get additional data based on variant type and encode in the value field
-            let valueData: any = {
-              barcode: variant.barcode
-            }
-            
-            if (variant.elementType === 'color') {
-              const color = productColors.find(c => c.id === variant.elementId)
-              valueData.color = color?.color || '#000000'
-              console.log('🎨 Found color for variant:', color)
-            }
-            
-            if (variant.image) {
-              valueData.image = variant.image
-              console.log('🖼️ Variant has image:', variant.image)
-            }
-            
-            // For variant images, we need to upload them first
-            let variantValue = variant.barcode
-            let variantImageUrl = null
-            
-            // Check if image is existing (not a blob URL) and preserve it
-            if (variant.image && !variant.image.startsWith('blob:')) {
-              variantImageUrl = variant.image
-              variantValue = JSON.stringify({
-                barcode: variant.barcode,
-                image: variant.image
-              })
-            } else if (variant.image) {
-              try {
-                // Upload the variant image
-                const imageFile = variant.image.startsWith('blob:') 
-                  ? await fetch(variant.image).then(r => r.blob()).then(blob => new File([blob], 'variant.jpg', { type: 'image/jpeg' }))
-                  : null
-                
-                if (imageFile && savedProduct?.id) {
-                  const result = await uploadVersionedProductImage(
-                    imageFile,
-                    savedProduct.id,
-                    'variant'
-                  )
-                  
-                  if (result.success && result.publicUrl) {
-                    variantImageUrl = result.publicUrl
-                    // Store barcode and image URL as JSON in value field
-                    variantValue = JSON.stringify({
-                      barcode: variant.barcode,
-                      image: result.publicUrl
-                    })
-                    console.log('🖼️ Uploaded variant image:', result.publicUrl)
-                  }
-                }
-              } catch (error) {
-                console.error('Error uploading variant image:', error)
-              }
-            }
+          // ✅ NEW: Save colors/shapes using API route (with service_role_key)
+          console.log('💾 Saving color/shape definitions for new product...')
 
-            const variantData = {
-              product_id: savedProduct!.id,
-              branch_id: variant.locationId, // Use branch_id for all locations
-              variant_type: variant.elementType,
-              name: variant.elementName,
-              barcode: variant.barcode, // Store barcode directly in barcode field
-              quantity: variant.quantity,
-              image_url: variantImageUrl, // Store image URL in dedicated field
-              color_hex: variant.elementType === 'color' ? (productColors.find(c => c.id === variant.elementId)?.color || null) : null,
-              color_name: variant.elementType === 'color' ? variant.elementName : null
-            }
-            
-            console.log('💾 Saving variant data:', variantData)
-            return supabase.from('product_variants').insert(variantData)
+          const saveVariantsResponse = await fetch('/api/products/save-variants', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              productId: savedProduct.id,
+              colors: updatedColors,
+              shapes: updatedShapes,
+              quantities: locationVariants // ✅ Send quantities too!
+            })
           })
 
-          const variantResults = await Promise.all(variantPromises)
-          console.log('✅ Variant save results:', variantResults)
+          const saveVariantsResult = await saveVariantsResponse.json()
+
+          if (!saveVariantsResult.success) {
+            console.error('❌ Error saving variant definitions:', saveVariantsResult.error)
+            alert('فشل في حفظ الألوان والأشكال: ' + saveVariantsResult.error)
+          } else {
+            const savedDefinitions = saveVariantsResult.data
+            console.log('✅ Saved variant definitions:', savedDefinitions)
+          }
 
           // Upload images for new product using versioned upload
           console.log('🖼️ Uploading images for new product:', savedProduct.name)
@@ -2991,17 +3056,30 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
                         {branches.map((branch) => (
                           <div key={branch.id} className="bg-[#2B3441] border border-[#4A5568] rounded-lg p-4">
                             {/* Branch Header */}
-                            <div className="flex items-center gap-3 mb-4 pb-3 border-b border-[#4A5568]">
-                              <div className="p-2 rounded bg-blue-600/20 text-blue-400">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                                </svg>
+                            <div className="flex items-center justify-between mb-4 pb-3 border-b border-[#4A5568]">
+                              <div className="flex items-center gap-3">
+                                <div className="p-2 rounded bg-blue-600/20 text-blue-400">
+                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                                  </svg>
+                                </div>
+                                <div>
+                                  <h3 className="text-white font-medium text-lg">{branch.name}</h3>
+                                  <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-600/20 text-blue-300 border border-blue-600/30">
+                                    فرع
+                                  </span>
+                                </div>
                               </div>
-                              <div>
-                                <h3 className="text-white font-medium text-lg">{branch.name}</h3>
-                                <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-600/20 text-blue-300 border border-blue-600/30">
-                                  فرع
-                                </span>
+                              <div className="text-right">
+                                <p className="text-gray-300 text-sm">
+                                  الكمية الإجمالية: <span className="font-bold text-white">{getBranchTotalQuantity(branch.id)}</span> قطعة
+                                </p>
+                                <p className="text-blue-400 text-sm">
+                                  المخصص: <span className="font-bold">{getTotalAllocatedQuantity(branch.id)}</span> قطعة
+                                </p>
+                                <p className="text-green-400 text-sm">
+                                  المتبقي: <span className="font-bold">{getBranchTotalQuantity(branch.id) - getTotalAllocatedQuantity(branch.id)}</span> قطعة
+                                </p>
                               </div>
                             </div>
 
@@ -3041,6 +3119,8 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
                                           type="number"
                                           placeholder="الكمية"
                                           min="0"
+                                          value={getVariantQuantity(branch.id, color.id, 'color') || ''}
+                                          onChange={(e) => updateVariantQuantity(branch.id, color.id, 'color', parseInt(e.target.value) || 0)}
                                           className="w-full px-3 py-2 bg-[#2B3441] border border-[#4A5568] rounded text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-[#5DADE2] focus:border-[#5DADE2] text-center text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                         />
                                       </div>
@@ -3084,6 +3164,8 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
                                           type="number"
                                           placeholder="الكمية"
                                           min="0"
+                                          value={getVariantQuantity(branch.id, shape.id, 'shape') || ''}
+                                          onChange={(e) => updateVariantQuantity(branch.id, shape.id, 'shape', parseInt(e.target.value) || 0)}
                                           className="w-full px-3 py-2 bg-[#2B3441] border border-[#4A5568] rounded text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-[#5DADE2] focus:border-[#5DADE2] text-center text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                         />
                                       </div>

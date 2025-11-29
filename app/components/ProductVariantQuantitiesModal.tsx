@@ -79,7 +79,7 @@ export default function ProductVariantQuantitiesModal({
         .order('sort_order', { ascending: true })
 
       if (defsError) throw defsError
-      setDefinitions(defs || [])
+      setDefinitions((defs || []) as any)
 
       // Load all quantities for these variants across all branches
       if (defs && defs.length > 0) {

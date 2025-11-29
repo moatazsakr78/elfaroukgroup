@@ -435,7 +435,7 @@ export function useProductsAdmin(options?: { selectedBranches?: string[] }) {
         .single()
 
       if (error) throw error
-      return data
+      return data as Product
     } catch (err) {
       console.error('Error creating product:', err)
       throw err
@@ -479,7 +479,7 @@ export function useProductsAdmin(options?: { selectedBranches?: string[] }) {
         .single()
 
       if (error) throw error
-      return data
+      return data as Product
     } catch (err) {
       console.error('Error updating product:', err)
       throw err
