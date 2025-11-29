@@ -21,7 +21,12 @@ const supabase = createClient<Database, 'elfaroukgroup'>(supabaseUrl, supabaseAn
 
 /**
  * Get all active products for the website
- * Supports Static Generation with ISR
+ * Supports Static Generation with ISR (revalidate every 60 seconds)
+ *
+ * ✨ Optimized strategy:
+ * - Product colors (static - rarely change) ✅
+ * - Stock quantities (static - updated every 60s via ISR) ✅
+ * - Result: 1 DB query serves 1000s of users, fresh data every minute!
  */
 export async function getWebsiteProducts() {
   try {
@@ -56,16 +61,47 @@ export async function getWebsiteProducts() {
 
     if (error) throw error;
 
-    // Get inventory totals for all products
+    // Get product colors & inventory for all products in ONE optimized query
     if (products && products.length > 0) {
       const productIds = products.map(p => p.id);
+
+      // Query 1: Fetch colors
+      const { data: colorsData } = await supabase
+        .from('product_color_shape_definitions')
+        .select('id, product_id, name, color_hex, image_url, sort_order')
+        .in('product_id', productIds)
+        .eq('variant_type', 'color')
+        .order('sort_order', { ascending: true });
+
+      // Query 2: Fetch inventory totals
       const { data: inventoryData } = await supabase
         .from('inventory')
         .select('product_id, quantity')
         .in('product_id', productIds);
 
+      // Process colors
+      if (colorsData) {
+        const colorsMap = new Map<string, any[]>();
+        colorsData.forEach(color => {
+          if (!colorsMap.has(color.product_id)) {
+            colorsMap.set(color.product_id, []);
+          }
+          colorsMap.get(color.product_id)!.push({
+            id: color.id,
+            name: color.name,
+            hex: color.color_hex,
+            image_url: color.image_url
+          });
+        });
+
+        // Attach colors to products
+        products.forEach((product: any) => {
+          product.colors = colorsMap.get(product.id) || [];
+        });
+      }
+
+      // Process inventory (sum across all branches)
       if (inventoryData) {
-        // Calculate total stock per product
         const stockMap = new Map<string, number>();
         inventoryData.forEach(item => {
           const currentStock = stockMap.get(item.product_id) || 0;

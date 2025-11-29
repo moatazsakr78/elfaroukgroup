@@ -131,6 +131,24 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // ✨ Trigger revalidation to update the website immediately
+    try {
+      const revalidateUrl = `${request.nextUrl.origin}/api/revalidate`;
+      await fetch(revalidateUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          secret: 'client-revalidate-request',
+          productId,
+          path: '/'
+        })
+      });
+      console.log('✅ Triggered revalidation for product:', productId);
+    } catch (revalidateError) {
+      console.warn('⚠️ Revalidation failed (non-critical):', revalidateError);
+      // Non-critical error - don't fail the main operation
+    }
+
     return NextResponse.json({
       success: true,
       data: savedDefinitions

@@ -472,7 +472,7 @@ export default function InteractiveProductCard({
               {profile?.role === 'جملة' && currentProduct.wholesale_price && (
                 <span className="text-xs text-blue-600 font-medium">سعر الجملة</span>
               )}
-              {/* Display total quantity */}
+              {/* Static stock - updated every 60 seconds via ISR */}
               {(product.totalQuantity !== undefined || product.stock !== undefined) && (
                 <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
                   (product.totalQuantity || product.stock || 0) > 0

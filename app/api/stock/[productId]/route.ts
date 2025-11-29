@@ -32,20 +32,20 @@ export async function GET(
   try {
     const { productId } = params;
 
-    // Fetch stock from inventory table
-    const { data: inventory, error } = await supabase
+    // Fetch stock from ALL inventory records (all branches)
+    const { data: inventoryRecords, error } = await supabase
       .from('inventory')
       .select('quantity, min_stock')
-      .eq('product_id', productId)
-      .single();
+      .eq('product_id', productId);
 
     if (error) {
-      // If no inventory record exists, assume unlimited stock
+      console.error('Error fetching inventory:', error);
+      // If no inventory record exists, return zero stock
       return NextResponse.json(
         {
           productId,
-          quantity: 999,
-          available: true,
+          quantity: 0,
+          available: false,
           low_stock: false,
           min_stock: 10
         },
@@ -58,15 +58,34 @@ export async function GET(
       );
     }
 
-    const quantity = inventory?.quantity || 0;
-    const min_stock = inventory?.min_stock || 10;
-    const isLowStock = quantity < min_stock;
-    const isAvailable = quantity > 0;
+    if (!inventoryRecords || inventoryRecords.length === 0) {
+      // No inventory records found
+      return NextResponse.json(
+        {
+          productId,
+          quantity: 0,
+          available: false,
+          low_stock: false,
+          min_stock: 10
+        },
+        {
+          headers: {
+            'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=60',
+          },
+        }
+      );
+    }
+
+    // Calculate total quantity across all branches
+    const totalQuantity = inventoryRecords.reduce((sum, record) => sum + (record.quantity || 0), 0);
+    const min_stock = inventoryRecords[0]?.min_stock || 10;
+    const isLowStock = totalQuantity < min_stock;
+    const isAvailable = totalQuantity > 0;
 
     return NextResponse.json(
       {
         productId,
-        quantity,
+        quantity: totalQuantity,
         available: isAvailable,
         low_stock: isLowStock,
         min_stock
