@@ -1887,32 +1887,36 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
 
           await Promise.all(inventoryPromises)
 
-          // ✅ NEW: Save colors/shapes using API route (with service_role_key)
-          console.log('💾 Saving color/shape definitions...')
+          // ✅ NEW SYSTEM: Save colors/shapes via API (bypasses RLS with service_role_key)
+          console.log('💾 Saving color/shape definitions via API...')
           console.log('🎨 updatedColors to save:', updatedColors)
           console.log('🔶 updatedShapes to save:', updatedShapes)
           console.log('📦 productId:', savedProduct.id)
 
-          const saveVariantsResponse = await fetch('/api/products/save-variants', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              productId: savedProduct.id,
-              colors: updatedColors,
-              shapes: updatedShapes,
-              quantities: locationVariants // ✅ Send quantities too!
+          try {
+            const saveResponse = await fetch('/api/products/save-color-shape-definitions', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                productId: savedProduct.id,
+                colors: updatedColors,
+                shapes: updatedShapes,
+                quantities: locationVariants
+              })
             })
-          })
 
-          const saveVariantsResult = await saveVariantsResponse.json()
+            const saveResult = await saveResponse.json()
 
-          if (!saveVariantsResult.success) {
-            console.error('❌ Error saving variant definitions:', saveVariantsResult.error)
-            alert('فشل في حفظ الألوان والأشكال: ' + saveVariantsResult.error)
-          } else {
-            console.log('✅ Saved variant definitions and quantities via API')
+            if (!saveResult.success) {
+              throw new Error(saveResult.error || 'Failed to save definitions')
+            }
+
+            console.log('✅ Successfully saved all variant data:', saveResult.data?.length || 0, 'definitions')
+          } catch (error: any) {
+            console.error('❌ Error saving variant definitions:', error)
+            alert('فشل في حفظ الألوان والأشكال: ' + error.message)
           }
           
           // Trigger refresh and close
@@ -1982,30 +1986,33 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
           const inventoryResults = await Promise.all(inventoryPromises)
           console.log('✅ Inventory save results:', inventoryResults)
 
-          // ✅ NEW: Save colors/shapes using API route (with service_role_key)
-          console.log('💾 Saving color/shape definitions for new product...')
+          // ✅ NEW SYSTEM: Save colors/shapes via API for new product (bypasses RLS)
+          console.log('💾 Saving color/shape definitions for new product via API...')
 
-          const saveVariantsResponse = await fetch('/api/products/save-variants', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              productId: savedProduct.id,
-              colors: updatedColors,
-              shapes: updatedShapes,
-              quantities: locationVariants // ✅ Send quantities too!
+          try {
+            const saveResponse = await fetch('/api/products/save-color-shape-definitions', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                productId: savedProduct.id,
+                colors: updatedColors,
+                shapes: updatedShapes,
+                quantities: locationVariants
+              })
             })
-          })
 
-          const saveVariantsResult = await saveVariantsResponse.json()
+            const saveResult = await saveResponse.json()
 
-          if (!saveVariantsResult.success) {
-            console.error('❌ Error saving variant definitions:', saveVariantsResult.error)
-            alert('فشل في حفظ الألوان والأشكال: ' + saveVariantsResult.error)
-          } else {
-            const savedDefinitions = saveVariantsResult.data
-            console.log('✅ Saved variant definitions:', savedDefinitions)
+            if (!saveResult.success) {
+              throw new Error(saveResult.error || 'Failed to save definitions')
+            }
+
+            console.log('✅ Successfully saved all variant data for new product:', saveResult.data?.length || 0, 'definitions')
+          } catch (error: any) {
+            console.error('❌ Error saving variant definitions:', error)
+            alert('فشل في حفظ الألوان والأشكال: ' + error.message)
           }
 
           // Upload images for new product using versioned upload
