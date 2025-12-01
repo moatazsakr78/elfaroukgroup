@@ -196,15 +196,19 @@ export async function getProductWithAllData(productId: string) {
       return null;
     }
 
-    // Query 2: Get ALL variants (colors, shapes, sizes) in ONE query
-    const { data: variants, error: variantsError } = await supabase
-      .from('product_variants')
+    // Query 2: Get color & shape definitions from the correct table
+    const { data: colorShapeDefinitions, error: definitionsError } = await supabase
+      .from('product_color_shape_definitions')
       .select('*')
-      .eq('product_id', productId);
+      .eq('product_id', productId)
+      .order('sort_order', { ascending: true });
 
-    if (variantsError) {
-      console.error('Error fetching variants:', variantsError);
+    if (definitionsError) {
+      console.error('Error fetching color/shape definitions:', definitionsError);
     }
+
+    // Transform definitions to match expected format
+    const variants = colorShapeDefinitions || [];
 
     // Query 3: Get product videos (if table exists - optional)
     let videos: any[] = [];

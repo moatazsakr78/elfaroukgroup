@@ -113,15 +113,16 @@ export default function DesktopHome({
     const fetchProductsWithColors = async () => {
       try {
         if (databaseProducts && databaseProducts.length > 0) {
-          // First, fetch all product variants for colors, shapes and size groups
+          // First, fetch all product color & shape definitions
           const { supabase } = await import('../../app/lib/supabase/client');
           const { data: variants, error: variantsError } = await supabase
-            .from('product_variants')
+            .from('product_color_shape_definitions')
             .select('*')
-            .in('variant_type', ['color', 'shape']);
+            .in('variant_type', ['color', 'shape'])
+            .order('sort_order', { ascending: true });
 
           if (variantsError) {
-            console.error('Error fetching product variants:', variantsError);
+            console.error('Error fetching product color/shape definitions:', variantsError);
           }
 
           // Fetch size groups with their items

@@ -406,19 +406,21 @@ export default function ProductDetailContent({ productId, serverData }: ProductD
             return;
           }
 
-          // Get all product variants (colors, shapes, sizes)
+          // Get all product color & shape definitions from the correct table
           const { data: fetchedColorVariants } = await supabase
-            .from('product_variants')
-            .select('id, name, color_hex, color_name, image_url, quantity')
+            .from('product_color_shape_definitions')
+            .select('id, name, color_hex, image_url, barcode')
             .eq('product_id', product.id)
-            .eq('variant_type', 'color') as { data: any[] | null };
+            .eq('variant_type', 'color')
+            .order('sort_order', { ascending: true }) as { data: any[] | null };
           colorVariants = fetchedColorVariants || [];
 
           const { data: fetchedShapeVariants } = await supabase
-            .from('product_variants')
-            .select('id, name, quantity, image_url')
+            .from('product_color_shape_definitions')
+            .select('id, name, image_url, barcode')
             .eq('product_id', product.id)
-            .eq('variant_type', 'shape') as { data: any[] | null };
+            .eq('variant_type', 'shape')
+            .order('sort_order', { ascending: true }) as { data: any[] | null };
           shapeVariants = fetchedShapeVariants || [];
 
           const { data: fetchedSizeVariants } = await supabase
