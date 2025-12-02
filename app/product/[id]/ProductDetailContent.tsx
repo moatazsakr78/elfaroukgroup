@@ -1150,7 +1150,7 @@ export default function ProductDetailContent({ productId, serverData }: ProductD
             {productDetails.colors && productDetails.colors.length > 0 && (
               <div>
                 <h3 className="font-semibold text-gray-800 mb-3">اللون المتاح:</h3>
-                <div className="flex gap-3 flex-wrap">
+                <div className="flex gap-3 flex-wrap max-h-[200px] md:max-h-[250px] overflow-y-auto scrollbar-hide pr-2 pb-2">
                   {productDetails.colors?.map((color) => (
                     <button
                       key={color.id}
@@ -1170,7 +1170,7 @@ export default function ProductDetailContent({ productId, serverData }: ProductD
                           }
                         }
                       }}
-                      className={`relative w-12 h-12 rounded-full border-2 transition-all ${
+                      className={`relative w-12 h-12 rounded-full border-2 transition-all flex-shrink-0 ${
                         selectedColor?.id === color.id
                           ? 'border-red-500 shadow-lg scale-110'
                           : 'border-gray-300 hover:border-red-300'
@@ -1196,7 +1196,7 @@ export default function ProductDetailContent({ productId, serverData }: ProductD
             {productDetails.shapes && productDetails.shapes.length > 0 && (
               <div>
                 <h3 className="font-semibold text-gray-800 mb-3">الشكل المتاح:</h3>
-                <div className="flex gap-3 flex-wrap">
+                <div className="flex gap-3 flex-wrap max-h-[200px] md:max-h-[250px] overflow-y-auto scrollbar-hide pr-2 pb-2">
                   {productDetails.shapes?.map((shape) => (
                     <button
                       key={shape.id}
@@ -1238,7 +1238,7 @@ export default function ProductDetailContent({ productId, serverData }: ProductD
             {productDetails.sizes && productDetails.sizes.length > 0 && (
               <div>
                 <h3 className="font-semibold text-gray-800 mb-3">الحجم المتاح:</h3>
-                <div className="flex gap-3 flex-wrap">
+                <div className="flex gap-3 flex-wrap max-h-[200px] md:max-h-[250px] overflow-y-auto scrollbar-hide pr-2 pb-2">
                   {productDetails.sizes?.map((size) => (
                     <button
                       key={size.id}
