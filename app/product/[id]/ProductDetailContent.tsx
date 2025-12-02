@@ -423,12 +423,9 @@ export default function ProductDetailContent({ productId, serverData }: ProductD
             .order('sort_order', { ascending: true }) as { data: any[] | null };
           shapeVariants = fetchedShapeVariants || [];
 
-          const { data: fetchedSizeVariants } = await supabase
-            .from('product_variants')
-            .select('id, name, quantity')
-            .eq('product_id', product.id)
-            .eq('variant_type', 'size') as { data: any[] | null };
-          sizeVariants = fetchedSizeVariants || [];
+          // Note: Size variants are not managed in the new system (product_color_shape_definitions)
+          // They remain as separate products with different names
+          sizeVariants = [];
 
           // البحث عن منتجات مترابطة (أحجام مختلفة) بناءً على اسم المنتج
           try {

@@ -87,20 +87,65 @@ export function useBranches() {
 
   const fetchProductVariants = async (productId: string, branchId?: string) => {
     try {
-      let query = supabase
-        .from('product_variants')
+      // Step 1: Get color/shape definitions for this product
+      const { data: variantDefs, error: defsError } = await supabase
+        .from('product_color_shape_definitions')
         .select('*')
         .eq('product_id', productId)
 
-      if (branchId) {
-        query = query.eq('branch_id', branchId)
+      if (defsError) throw defsError
+
+      if (!variantDefs || variantDefs.length === 0) {
+        return []
       }
 
-      const { data, error } = await query
+      // Step 2: Get quantities for these definitions
+      const defIds = variantDefs.map(d => d.id)
+      let quantitiesQuery = supabase
+        .from('product_variant_quantities')
+        .select('*')
+        .in('variant_definition_id', defIds)
 
-      if (error) throw error
+      if (branchId) {
+        quantitiesQuery = quantitiesQuery.eq('branch_id', branchId)
+      }
 
-      return data || []
+      const { data: quantities, error: quantitiesError } = await quantitiesQuery
+
+      if (quantitiesError) throw quantitiesError
+
+      // Step 3: Merge definitions with quantities to match old format
+      const variants = variantDefs.flatMap(def => {
+        const defQuantities = (quantities || []).filter(q => q.variant_definition_id === def.id)
+
+        if (defQuantities.length === 0) {
+          return [{
+            id: def.id,
+            product_id: def.product_id,
+            variant_type: def.variant_type,
+            name: def.name,
+            quantity: 0,
+            color_hex: def.color_hex,
+            color_name: def.name,
+            image_url: def.image_url,
+            branch_id: null
+          }]
+        }
+
+        return defQuantities.map(q => ({
+          id: def.id,
+          product_id: def.product_id,
+          variant_type: def.variant_type,
+          name: def.name,
+          quantity: q.quantity,
+          color_hex: def.color_hex,
+          color_name: def.name,
+          image_url: def.image_url,
+          branch_id: q.branch_id
+        }))
+      })
+
+      return variants
     } catch (err) {
       console.error('Error fetching product variants:', err)
       return []

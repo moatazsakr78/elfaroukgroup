@@ -219,76 +219,73 @@ export async function createPurchaseInvoice({
       }
 
       // In purchase mode, we store quantities as "unspecified" variant
-      // Find ANY existing "غير محدد" variant for this product and location (regardless of duplicate entries)
-      const { data: existingVariants, error: variantGetError } = await supabase
-        .from('product_variants')
-        .select('id, quantity')
-        .eq('product_id', item.product.id)
-        .eq(branchId ? 'branch_id' : 'warehouse_id', locationId)
-        .eq('name', 'غير محدد')
-        .eq('variant_type', 'color')
+      // Only track variant quantities for branches (not warehouses)
+      if (branchId) {
+        // First, check if an "غير محدد" definition exists for this product
+        const { data: unspecifiedDef, error: defError } = await supabase
+          .from('product_color_shape_definitions')
+          .select('id')
+          .eq('product_id', item.product.id)
+          .eq('name', 'غير محدد')
+          .eq('variant_type', 'color')
+          .single()
 
-      if (variantGetError) {
-        console.warn(`Failed to get unspecified variants for product ${item.product.id}:`, variantGetError.message)
-        continue
-      }
+        let unspecifiedDefId: string
 
-      if (existingVariants && existingVariants.length > 0) {
-        // If multiple "غير محدد" variants exist, merge them into the first one and delete the rest
-        const primaryVariant = existingVariants[0]
-        const totalQuantity = existingVariants.reduce((sum, variant) => sum + (variant.quantity || 0), 0) + item.quantity
+        if (defError || !unspecifiedDef) {
+          // Create the "غير محدد" definition if it doesn't exist
+          const { data: newDef, error: createDefError } = await supabase
+            .from('product_color_shape_definitions')
+            .insert({
+              product_id: item.product.id,
+              variant_type: 'color',
+              name: 'غير محدد',
+              color_hex: '#6B7280',
+              sort_order: 9999 // Put it at the end
+            })
+            .select('id')
+            .single()
 
-        // Update the primary variant with the combined quantity
-        const variantUpdateData: any = { quantity: totalQuantity }
-        if (branchId) {
-          variantUpdateData.branch_id = branchId
-        } else {
-          variantUpdateData.warehouse_id = warehouseId
-        }
-
-        const { error: variantUpdateError } = await supabase
-          .from('product_variants')
-          .update(variantUpdateData)
-          .eq('id', primaryVariant.id)
-
-        if (variantUpdateError) {
-          console.warn(`Failed to update primary unspecified variant for product ${item.product.id}:`, variantUpdateError.message)
-        } else {
-          // Delete duplicate variants if they exist
-          if (existingVariants.length > 1) {
-            const duplicateIds = existingVariants.slice(1).map(v => v.id)
-            const { error: deleteError } = await supabase
-              .from('product_variants')
-              .delete()
-              .in('id', duplicateIds)
-
-            if (deleteError) {
-              console.warn(`Failed to delete duplicate unspecified variants for product ${item.product.id}:`, deleteError.message)
-            }
+          if (createDefError || !newDef) {
+            console.warn(`Failed to create unspecified definition for product ${item.product.id}:`, createDefError?.message)
+            continue
           }
-        }
-      } else {
-        // Create new unspecified variant
-        const variantInsertData: any = {
-          product_id: item.product.id,
-          name: 'غير محدد',
-          variant_type: 'color',
-          quantity: item.quantity,
-          value: JSON.stringify({ color: '#6B7280', description: 'كمية غير محددة اللون - وضع الشراء' })
-        }
-        
-        if (branchId) {
-          variantInsertData.branch_id = branchId
+          unspecifiedDefId = newDef.id
         } else {
-          variantInsertData.warehouse_id = warehouseId
+          unspecifiedDefId = unspecifiedDef.id
         }
 
-        const { error: variantInsertError } = await supabase
-          .from('product_variants')
-          .insert(variantInsertData)
+        // Now manage the quantity in product_variant_quantities
+        const { data: currentQty, error: qtyGetError } = await supabase
+          .from('product_variant_quantities')
+          .select('quantity')
+          .eq('variant_definition_id', unspecifiedDefId)
+          .eq('branch_id', branchId)
+          .single()
 
-        if (variantInsertError) {
-          console.warn(`Failed to create unspecified variant for product ${item.product.id}:`, variantInsertError.message)
+        if (qtyGetError && qtyGetError.code !== 'PGRST116') {
+          console.warn(`Failed to get current quantity for unspecified variant:`, qtyGetError.message)
+          continue
+        }
+
+        // Calculate new quantity (for returns, subtract; for purchases, add)
+        const quantityChange = isReturn ? -item.quantity : item.quantity
+        const newVariantQuantity = Math.max(0, (currentQty?.quantity || 0) + quantityChange)
+
+        // Upsert the quantity
+        const { error: qtyUpsertError } = await supabase
+          .from('product_variant_quantities')
+          .upsert({
+            variant_definition_id: unspecifiedDefId,
+            branch_id: branchId,
+            quantity: newVariantQuantity,
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'variant_definition_id,branch_id'
+          })
+
+        if (qtyUpsertError) {
+          console.warn(`Failed to upsert quantity for unspecified variant:`, qtyUpsertError.message)
         }
       }
     }

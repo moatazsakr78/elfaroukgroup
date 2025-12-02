@@ -1796,11 +1796,11 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
         }
       }
 
-      // ✅ حفظ الوصف كنص عادي فقط (الألوان والأشكال في product_variants)
+      // ✅ حفظ الوصف كنص عادي فقط (الألوان والأشكال في product_color_shape_definitions)
       const descriptionToSave = formData.description.trim() || ''
-      console.log('✅ Saving description as plain text (colors/shapes stored in product_variants)')
-      console.log('🎨 Current productColors to be saved in variants:', productColors.length, 'colors')
-      console.log('🔶 Current productShapes to be saved in variants:', productShapes.length, 'shapes')
+      console.log('✅ Saving description as plain text (colors/shapes stored in product_color_shape_definitions)')
+      console.log('🎨 Current productColors to be saved in definitions:', productColors.length, 'colors')
+      console.log('🔶 Current productShapes to be saved in definitions:', productShapes.length, 'shapes')
 
       // Prepare product data
       const productData: Partial<Product> = {

@@ -264,42 +264,55 @@ export async function createSalesInvoice({
         // Don't throw error here as the sale was created successfully
       }
 
-      // Update product variants quantities if the item has color selections
+      // Update product variant quantities if the item has color selections
       if (item.selectedColors && Object.keys(item.selectedColors).length > 0) {
         for (const [colorName, colorQuantity] of Object.entries(item.selectedColors as Record<string, number>)) {
           if (colorQuantity > 0) {
-            // Get current variant quantity
-            const { data: currentVariant, error: variantGetError } = await supabase
-              .from('product_variants')
-              .select('quantity')
+            // First, get the variant definition ID from product_color_shape_definitions
+            const { data: variantDefinition, error: defError } = await supabase
+              .from('product_color_shape_definitions')
+              .select('id')
               .eq('product_id', item.product.id)
-              .eq('branch_id', selections.branch.id)
               .eq('name', colorName)
               .eq('variant_type', 'color')
               .single()
 
-            if (variantGetError) {
-              console.warn(`Failed to get current variant for product ${item.product.id}, color ${colorName}:`, variantGetError.message)
+            if (defError || !variantDefinition) {
+              console.warn(`Failed to get variant definition for product ${item.product.id}, color ${colorName}:`, defError?.message)
+              continue
+            }
+
+            // Get current quantity from product_variant_quantities
+            const { data: currentQuantity, error: qtyGetError } = await supabase
+              .from('product_variant_quantities')
+              .select('quantity')
+              .eq('variant_definition_id', variantDefinition.id)
+              .eq('branch_id', selections.branch.id)
+              .single()
+
+            if (qtyGetError && qtyGetError.code !== 'PGRST116') {
+              console.warn(`Failed to get current quantity for variant ${variantDefinition.id}:`, qtyGetError.message)
               continue
             }
 
             // For returns, add quantity back; for sales, subtract
             const variantQuantityChange = isReturn ? colorQuantity : -colorQuantity
-            const newVariantQuantity = Math.max(0, (currentVariant?.quantity || 0) + variantQuantityChange)
+            const newVariantQuantity = Math.max(0, (currentQuantity?.quantity || 0) + variantQuantityChange)
 
-            // Update variant quantity
-            const { error: variantUpdateError } = await supabase
-              .from('product_variants')
-              .update({
-                quantity: newVariantQuantity
+            // Update or insert quantity in product_variant_quantities
+            const { error: qtyUpdateError } = await supabase
+              .from('product_variant_quantities')
+              .upsert({
+                variant_definition_id: variantDefinition.id,
+                branch_id: selections.branch.id,
+                quantity: newVariantQuantity,
+                updated_at: new Date().toISOString()
+              }, {
+                onConflict: 'variant_definition_id,branch_id'
               })
-              .eq('product_id', item.product.id)
-              .eq('branch_id', selections.branch.id)
-              .eq('name', colorName)
-              .eq('variant_type', 'color')
 
-            if (variantUpdateError) {
-              console.warn(`Failed to update variant quantity for product ${item.product.id}, color ${colorName}:`, variantUpdateError.message)
+            if (qtyUpdateError) {
+              console.warn(`Failed to update variant quantity for variant ${variantDefinition.id}:`, qtyUpdateError.message)
               // Don't throw error here as the sale was created successfully
             }
           }

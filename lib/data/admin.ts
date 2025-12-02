@@ -72,15 +72,63 @@ export async function getProductsWithInventory() {
       console.warn('Error fetching inventory:', inventoryError);
     }
 
-    // Query 3: Get ALL variants for ALL products in ONE query
-    const { data: variants, error: variantsError } = await supabase
-      .from('product_variants')
-      .select('product_id, variant_type, name, quantity, color_hex, color_name, image_url')
+    // Query 3a: Get ALL color/shape definitions for ALL products
+    const { data: variantDefs, error: variantDefsError } = await supabase
+      .from('product_color_shape_definitions')
+      .select('id, product_id, variant_type, name, color_hex, image_url')
       .in('product_id', productIds);
 
-    if (variantsError) {
-      console.warn('Error fetching variants:', variantsError);
+    if (variantDefsError) {
+      console.warn('Error fetching variant definitions:', variantDefsError);
     }
+
+    // Query 3b: Get ALL variant quantities
+    const defIds = (variantDefs || []).map(d => d.id);
+    let variantQuantities: any[] = [];
+    if (defIds.length > 0) {
+      const { data: quantities, error: quantitiesError } = await supabase
+        .from('product_variant_quantities')
+        .select('variant_definition_id, branch_id, quantity')
+        .in('variant_definition_id', defIds);
+
+      if (quantitiesError) {
+        console.warn('Error fetching variant quantities:', quantitiesError);
+      } else {
+        variantQuantities = quantities || [];
+      }
+    }
+
+    // Merge definitions with quantities to match old format
+    const variants = (variantDefs || []).flatMap(def => {
+      // Get all quantities for this definition
+      const defsQuantities = variantQuantities.filter(q => q.variant_definition_id === def.id);
+
+      // If no quantities, return a single entry with quantity 0
+      if (defsQuantities.length === 0) {
+        return [{
+          product_id: def.product_id,
+          variant_type: def.variant_type,
+          name: def.name,
+          quantity: 0,
+          color_hex: def.color_hex,
+          color_name: def.name,
+          image_url: def.image_url,
+          branch_id: null
+        }];
+      }
+
+      // For each quantity entry, create a variant record
+      return defsQuantities.map(q => ({
+        product_id: def.product_id,
+        variant_type: def.variant_type,
+        name: def.name,
+        quantity: q.quantity,
+        color_hex: def.color_hex,
+        color_name: def.name,
+        image_url: def.image_url,
+        branch_id: q.branch_id
+      }));
+    });
 
     return {
       products: products || [],

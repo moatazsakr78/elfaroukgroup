@@ -474,24 +474,24 @@ export default function ProductDetailsModal({
           return;
         }
 
-        // Get all product variants (colors, shapes, sizes)
+        // Get all product color & shape definitions from the correct table
         const { data: colorVariants } = await supabase
-          .from('product_variants')
-          .select('id, name, color_hex, color_name, image_url, quantity')
+          .from('product_color_shape_definitions')
+          .select('id, name, color_hex, image_url, barcode')
           .eq('product_id', product.id)
-          .eq('variant_type', 'color') as { data: any[] | null };
+          .eq('variant_type', 'color')
+          .order('sort_order', { ascending: true }) as { data: any[] | null };
 
         const { data: shapeVariants } = await supabase
-          .from('product_variants')
-          .select('id, name, quantity, image_url')
+          .from('product_color_shape_definitions')
+          .select('id, name, image_url, barcode')
           .eq('product_id', product.id)
-          .eq('variant_type', 'shape') as { data: any[] | null };
+          .eq('variant_type', 'shape')
+          .order('sort_order', { ascending: true }) as { data: any[] | null };
 
-        const { data: sizeVariants } = await supabase
-          .from('product_variants')
-          .select('id, name, quantity')
-          .eq('product_id', product.id)
-          .eq('variant_type', 'size') as { data: any[] | null };
+        // Note: Size variants are not managed in the new system (product_color_shape_definitions)
+        // They remain as separate products with different names
+        const sizeVariants: any[] = [];
 
         // البحث عن الأحجام الحقيقية من product_size_groups
         let realSizeProducts: any[] = [];

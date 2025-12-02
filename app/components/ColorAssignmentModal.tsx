@@ -262,59 +262,9 @@ export default function ColorAssignmentModal({
     }
   }, [selectedBranch, productColors])
 
-  // Utility function to consolidate any existing duplicate variants
-  const consolidateExistingDuplicates = useCallback(async () => {
-    if (!selectedBranch) return
-
-    try {
-      // Get all variants for this branch
-      const { data: allVariants, error } = await supabase
-        .from('product_variants')
-        .select('*')
-        .eq('product_id', product.id)
-        .eq('branch_id', selectedBranch.branchId)
-
-      if (error) throw error
-
-      // Group by variant name and type
-      const variantGroups: Record<string, any[]> = {}
-      allVariants?.forEach((variant) => {
-        const key = `${variant.variant_type}_${variant.name}`
-        if (!variantGroups[key]) {
-          variantGroups[key] = []
-        }
-        variantGroups[key].push(variant)
-      })
-
-      // Consolidate duplicates
-      for (const [key, variants] of Object.entries(variantGroups)) {
-        if (variants.length > 1) {
-          const [variantType, variantName] = key.split('_')
-          const totalQuantity = variants.reduce((sum, v) => sum + v.quantity, 0)
-          const primaryVariant = variants[0]
-          const duplicateIds = variants.slice(1).map(v => v.id)
-
-          console.log(`Found ${variants.length} duplicate variants for ${variantName}, consolidating ${totalQuantity} units`)
-
-          // Update primary variant with total quantity
-          await supabase
-            .from('product_variants')
-            .update({ quantity: totalQuantity })
-            .eq('id', primaryVariant.id)
-
-          // Delete duplicates
-          if (duplicateIds.length > 0) {
-            await supabase
-              .from('product_variants')
-              .delete()
-              .in('id', duplicateIds)
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Error consolidating existing duplicates:', error)
-    }
-  }, [selectedBranch, product.id])
+  // Note: consolidateExistingDuplicates function removed - no longer needed
+  // The new system (product_color_shape_definitions + product_variant_quantities)
+  // prevents duplicates using unique constraints
 
   // Reset states when modal closes
   useEffect(() => {
@@ -327,13 +277,7 @@ export default function ColorAssignmentModal({
     }
   }, [isOpen])
 
-  // Automatically consolidate duplicates when modal opens
-  useEffect(() => {
-    if (isOpen && selectedBranch) {
-      console.log('🔧 Auto-consolidating existing duplicate variants...')
-      consolidateExistingDuplicates()
-    }
-  }, [isOpen, selectedBranch, consolidateExistingDuplicates])
+  // Note: Auto-consolidation useEffect removed - no longer needed with new system
 
   const handleBranchSelect = (branchData: BranchInventoryData) => {
     setSelectedBranchId(branchData.branchId)
@@ -422,9 +366,6 @@ export default function ColorAssignmentModal({
 
     setIsSaving(true)
     try {
-      // First, consolidate any existing duplicate variants
-      await consolidateExistingDuplicates()
-
       const colorsToProcess = Object.entries(colorAssignments)
         .filter(([colorName, quantity]) => quantity > 0)
 
@@ -433,62 +374,53 @@ export default function ColorAssignmentModal({
         const color = productColors.find((c: ProductColor) => c.name === colorName)
         const imageUrl = getColorImage(color!)
 
-        // After consolidation, check if this color variant exists (should be only one now)
-        const { data: existingVariants, error: fetchError } = await supabase
-          .from('product_variants')
-          .select('*')
+        // Get the color definition ID from product_color_shape_definitions
+        const { data: colorDef, error: defError } = await supabase
+          .from('product_color_shape_definitions')
+          .select('id')
           .eq('product_id', product.id)
-          .eq('branch_id', selectedBranch.branchId)
-          .eq('variant_type', 'color')
           .eq('name', colorName)
+          .eq('variant_type', 'color')
+          .single()
 
-        if (fetchError) {
-          console.error('Error fetching existing variants:', fetchError)
-          throw fetchError
+        if (defError || !colorDef) {
+          console.error('Error getting color definition:', defError)
+          throw new Error(`لم يتم العثور على تعريف اللون: ${colorName}`)
         }
 
-        if (existingVariants && existingVariants.length > 0) {
-          // UPDATE: Should only be one variant now after consolidation
-          const existingVariant = existingVariants[0]
-          const newQuantity = existingVariant.quantity + quantity
+        // Get current quantity from product_variant_quantities
+        const { data: currentQty, error: qtyGetError } = await supabase
+          .from('product_variant_quantities')
+          .select('quantity')
+          .eq('variant_definition_id', colorDef.id)
+          .eq('branch_id', selectedBranch.branchId)
+          .single()
 
-          console.log(`Updating existing ${colorName}: ${existingVariant.quantity} + ${quantity} = ${newQuantity}`)
+        if (qtyGetError && qtyGetError.code !== 'PGRST116') {
+          console.error('Error getting current quantity:', qtyGetError)
+          throw qtyGetError
+        }
 
-          const { error: updateError } = await supabase
-            .from('product_variants')
-            .update({ 
-              quantity: newQuantity,
-              color_hex: color?.color || '#6B7280',
-              color_name: colorName,
-              image_url: imageUrl || null
-            })
-            .eq('id', existingVariant.id)
+        const currentQuantity = currentQty?.quantity || 0
+        const newQuantity = currentQuantity + quantity
 
-          if (updateError) {
-            console.error('Error updating variant:', updateError)
-            throw updateError
-          }
-        } else {
-          // INSERT: Create new variant for this color
-          console.log(`Creating new ${colorName}: ${quantity}`)
+        console.log(`${currentQuantity > 0 ? 'Updating' : 'Creating'} ${colorName}: ${currentQuantity} + ${quantity} = ${newQuantity}`)
 
-          const { error } = await supabase
-            .from('product_variants')
-            .insert({
-              product_id: product.id,
-              branch_id: selectedBranch.branchId,
-              variant_type: 'color',
-              name: colorName,
-              quantity: quantity,
-              color_hex: color?.color || '#6B7280',
-              color_name: colorName,
-              image_url: imageUrl || null
-            })
+        // Upsert the new quantity
+        const { error: upsertError } = await supabase
+          .from('product_variant_quantities')
+          .upsert({
+            variant_definition_id: colorDef.id,
+            branch_id: selectedBranch.branchId,
+            quantity: newQuantity,
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'variant_definition_id,branch_id'
+          })
 
-          if (error) {
-            console.error('Error creating variant:', error)
-            throw error
-          }
+        if (upsertError) {
+          console.error('Error upserting variant quantity:', upsertError)
+          throw upsertError
         }
       }
 
@@ -496,21 +428,17 @@ export default function ColorAssignmentModal({
       onAssignmentComplete()
     } catch (error) {
       console.error('Error saving color assignments:', error)
-      
+
       // Provide more specific error messages
       let errorMessage = 'حدث خطأ أثناء حفظ تحديد الألوان'
-      
+
       if (error && typeof error === 'object') {
         const err = error as any
         if (err.message) {
-          if (err.message.includes('image_url')) {
-            errorMessage = 'خطأ في حفظ صور الألوان'
-          } else {
-            errorMessage = `خطأ في قاعدة البيانات: ${err.message}`
-          }
+          errorMessage = `خطأ في قاعدة البيانات: ${err.message}`
         }
       }
-      
+
       alert(errorMessage)
     } finally {
       setIsSaving(false)

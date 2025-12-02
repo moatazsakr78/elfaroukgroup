@@ -313,14 +313,15 @@ export function useProducts() {
           return data || []
         }),
 
-      // Single query for all variants data
+      // Single query for all color & shape definitions
       supabase
-        .from('product_variants')
+        .from('product_color_shape_definitions')
         .select('*')
         .in('product_id', productIds)
+        .order('sort_order', { ascending: true })
         .then(({ data, error }) => {
           if (error) {
-            console.warn('Unable to fetch variants data:', error)
+            console.warn('Unable to fetch color/shape definitions:', error)
             return []
           }
           return data || []
@@ -863,34 +864,34 @@ export function useProducts() {
       )
       .subscribe()
 
-    // Variants subscription
-    const variantsChannel = supabase
-      .channel('variants_changes_optimized')
+    // Color/Shape definitions subscription
+    const variantDefsChannel = supabase
+      .channel('variant_definitions_changes')
       .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'product_variants' },
+        { event: '*', schema: 'public', table: 'product_color_shape_definitions' },
         async (payload: any) => {
-          // OPTIMIZATION: Update specific product variants without full refetch
-          if (payload.new && payload.new.product_id && (payload.new.branch_id || payload.new.warehouse_id)) {
-            const productId = payload.new.product_id
-            const locationId = payload.new.branch_id || payload.new.warehouse_id
-            
-            // Refetch variants for this specific product and location only
+          // When color/shape definitions change, refetch for the affected product
+          const productId = payload.new?.product_id || payload.old?.product_id
+          if (productId) {
+            // Refetch color & shape definitions for this specific product
             const { data: variants } = await supabase
-              .from('product_variants')
+              .from('product_color_shape_definitions')
               .select('*')
               .eq('product_id', productId)
-              .or(`branch_id.eq.${locationId},warehouse_id.eq.${locationId}`)
+              .order('sort_order', { ascending: true })
 
+            // Update all products with this ID (across all branches)
             setProducts(prev => prev.map(product => {
               if (product.id === productId) {
-                const updatedVariantsData = {
-                  ...product.variantsData,
-                  [locationId]: (variants || []).map(v => ({
+                // Update variant definitions for all locations
+                const updatedVariantsData: Record<string, any[]> = {}
+                Object.keys(product.variantsData || {}).forEach(locationId => {
+                  updatedVariantsData[locationId] = (variants || []).map(v => ({
                     ...v,
                     variant_type: v.variant_type as 'color' | 'shape'
                   }))
-                }
-                
+                })
+
                 return {
                   ...product,
                   variantsData: updatedVariantsData
@@ -898,6 +899,55 @@ export function useProducts() {
               }
               return product
             }))
+          }
+        }
+      )
+      .subscribe()
+
+    // Variant quantities subscription
+    const variantQuantitiesChannel = supabase
+      .channel('variant_quantities_changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'product_variant_quantities' },
+        async (payload: any) => {
+          // When quantities change, we need to refetch for affected product
+          // Since we don't have product_id directly, we need to get it from the definition
+          const variantDefId = payload.new?.variant_definition_id || payload.old?.variant_definition_id
+          if (variantDefId) {
+            // Get the product_id from the definition
+            const { data: def } = await supabase
+              .from('product_color_shape_definitions')
+              .select('product_id')
+              .eq('id', variantDefId)
+              .single()
+
+            if (def?.product_id) {
+              // Refetch variants for this product
+              const { data: variants } = await supabase
+                .from('product_color_shape_definitions')
+                .select('*')
+                .eq('product_id', def.product_id)
+                .order('sort_order', { ascending: true })
+
+              // Update products
+              setProducts(prev => prev.map(product => {
+                if (product.id === def.product_id) {
+                  const updatedVariantsData: Record<string, any[]> = {}
+                  Object.keys(product.variantsData || {}).forEach(locationId => {
+                    updatedVariantsData[locationId] = (variants || []).map(v => ({
+                      ...v,
+                      variant_type: v.variant_type as 'color' | 'shape'
+                    }))
+                  })
+
+                  return {
+                    ...product,
+                    variantsData: updatedVariantsData
+                  }
+                }
+                return product
+              }))
+            }
           }
         }
       )
@@ -920,7 +970,8 @@ export function useProducts() {
     return () => {
       productsChannel.unsubscribe()
       inventoryChannel.unsubscribe()
-      variantsChannel.unsubscribe()
+      variantDefsChannel.unsubscribe()
+      variantQuantitiesChannel.unsubscribe()
       displaySettingsChannel.unsubscribe()
     }
   }, [fetchProductsOptimized])

@@ -167,97 +167,119 @@ export default function ColorChangeModal({
       const selectedBranch = availableBranches.find(b => b.id === selectedBranchId)
       if (!selectedBranch) return
 
-      // Step 1: Update existing variants by reducing quantities based on "from" selection
+      // Step 1: Update existing variant quantities by reducing based on "from" selection
       for (const fromColor of fromColors) {
         if (fromColor.quantity > 0) {
-          // Find the original variant for this color
-          const originalVariant = selectedBranch.colorVariants.find(v => v.name === fromColor.colorName)
-          if (originalVariant) {
-            const newQuantity = (originalVariant.quantity || 0) - fromColor.quantity
-            
-            if (newQuantity <= 0) {
-              // Delete variant if quantity becomes 0 or less
-              const { error: deleteError } = await supabase
-                .from('product_variants')
-                .delete()
-                .eq('id', originalVariant.id)
+          // Get the color definition ID from product_color_shape_definitions
+          const { data: colorDef, error: defError } = await supabase
+            .from('product_color_shape_definitions')
+            .select('id')
+            .eq('product_id', product.id)
+            .eq('name', fromColor.colorName)
+            .eq('variant_type', 'color')
+            .single()
 
-              if (deleteError) {
-                console.error('Error deleting variant:', deleteError)
-                throw deleteError
-              }
-            } else {
-              // Update variant with reduced quantity
-              const { error: updateError } = await supabase
-                .from('product_variants')
-                .update({ quantity: newQuantity })
-                .eq('id', originalVariant.id)
+          if (defError || !colorDef) {
+            console.error('Error getting color definition:', defError)
+            throw new Error(`لم يتم العثور على تعريف اللون: ${fromColor.colorName}`)
+          }
 
-              if (updateError) {
-                console.error('Error updating variant quantity:', updateError)
-                throw updateError
-              }
+          // Get current quantity from product_variant_quantities
+          const { data: currentQty, error: qtyGetError } = await supabase
+            .from('product_variant_quantities')
+            .select('quantity')
+            .eq('variant_definition_id', colorDef.id)
+            .eq('branch_id', selectedBranchId)
+            .single()
+
+          if (qtyGetError && qtyGetError.code !== 'PGRST116') {
+            console.error('Error getting current quantity:', qtyGetError)
+            throw qtyGetError
+          }
+
+          const currentQuantity = currentQty?.quantity || 0
+          const newQuantity = Math.max(0, currentQuantity - fromColor.quantity)
+
+          if (newQuantity <= 0) {
+            // Delete quantity entry if it becomes 0
+            const { error: deleteError } = await supabase
+              .from('product_variant_quantities')
+              .delete()
+              .eq('variant_definition_id', colorDef.id)
+              .eq('branch_id', selectedBranchId)
+
+            if (deleteError) {
+              console.error('Error deleting variant quantity:', deleteError)
+              throw deleteError
+            }
+          } else {
+            // Update quantity
+            const { error: updateError } = await supabase
+              .from('product_variant_quantities')
+              .update({
+                quantity: newQuantity,
+                updated_at: new Date().toISOString()
+              })
+              .eq('variant_definition_id', colorDef.id)
+              .eq('branch_id', selectedBranchId)
+
+            if (updateError) {
+              console.error('Error updating variant quantity:', updateError)
+              throw updateError
             }
           }
         }
       }
 
-      // Step 2: Add or update variants based on "to" colors (only colors with quantity > 0)
+      // Step 2: Add or update variant quantities based on "to" colors (only colors with quantity > 0)
       for (const toColor of toColors.filter(color => color.quantity > 0)) {
         const colorData = productColors.find(c => c.name === toColor.colorName)
-        
-        // Check if variant already exists
-        const { data: existingVariants, error: fetchError } = await supabase
-          .from('product_variants')
-          .select('*')
-          .eq('product_id', product.id)
-          .eq('branch_id', selectedBranchId)
-          .eq('variant_type', 'color')
-          .eq('name', toColor.colorName)
 
-        if (fetchError) {
-          console.error('Error fetching existing variants:', fetchError)
-          throw fetchError
+        // Get the color definition ID from product_color_shape_definitions
+        const { data: colorDef, error: defError } = await supabase
+          .from('product_color_shape_definitions')
+          .select('id')
+          .eq('product_id', product.id)
+          .eq('name', toColor.colorName)
+          .eq('variant_type', 'color')
+          .single()
+
+        if (defError || !colorDef) {
+          console.error('Error getting color definition:', defError)
+          throw new Error(`لم يتم العثور على تعريف اللون: ${toColor.colorName}`)
         }
 
-        if (existingVariants && existingVariants.length > 0) {
-          // Update existing variant by adding quantity
-          const existingVariant = existingVariants[0]
-          const newQuantity = existingVariant.quantity + toColor.quantity
+        // Get current quantity from product_variant_quantities
+        const { data: currentQty, error: qtyGetError } = await supabase
+          .from('product_variant_quantities')
+          .select('quantity')
+          .eq('variant_definition_id', colorDef.id)
+          .eq('branch_id', selectedBranchId)
+          .single()
 
-          const { error: updateError } = await supabase
-            .from('product_variants')
-            .update({ 
-              quantity: newQuantity,
-              color_hex: colorData?.color || '#6B7280',
-              color_name: toColor.colorName,
-              image_url: colorData?.image || null
-            })
-            .eq('id', existingVariant.id)
+        if (qtyGetError && qtyGetError.code !== 'PGRST116') {
+          console.error('Error getting current quantity:', qtyGetError)
+          throw qtyGetError
+        }
 
-          if (updateError) {
-            console.error('Error updating existing variant:', updateError)
-            throw updateError
-          }
-        } else {
-          // Create new variant
-          const { error: insertError } = await supabase
-            .from('product_variants')
-            .insert({
-              product_id: product.id,
-              branch_id: selectedBranchId,
-              variant_type: 'color',
-              name: toColor.colorName,
-              quantity: toColor.quantity,
-              color_hex: colorData?.color || '#6B7280',
-              color_name: toColor.colorName,
-              image_url: colorData?.image || null
-            })
+        const currentQuantity = currentQty?.quantity || 0
+        const newQuantity = currentQuantity + toColor.quantity
 
-          if (insertError) {
-            console.error('Error creating new variant:', insertError)
-            throw insertError
-          }
+        // Upsert the new quantity
+        const { error: upsertError } = await supabase
+          .from('product_variant_quantities')
+          .upsert({
+            variant_definition_id: colorDef.id,
+            branch_id: selectedBranchId,
+            quantity: newQuantity,
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'variant_definition_id,branch_id'
+          })
+
+        if (upsertError) {
+          console.error('Error upserting variant quantity:', upsertError)
+          throw upsertError
         }
       }
 
