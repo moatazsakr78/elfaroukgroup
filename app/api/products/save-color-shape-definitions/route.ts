@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
           variant_type: 'shape',
           name: shape.name,
           color_hex: null,
-          image_url: shape.image_url || null,
+          image_url: shape.image || null,  // استخدام shape.image بدلاً من shape.image_url
           barcode: shape.barcode || null,
           sort_order: index
         })

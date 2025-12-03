@@ -508,15 +508,23 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
 
         const shapes = definitions
           .filter(d => d.variant_type === 'shape')
-          .map(d => ({
-            id: d.id,
-            name: d.name || '',
-            image: d.image_url || undefined,  // استخدام image بدلاً من image_url
-            barcode: d.barcode || undefined
-          }))
+          .map(d => {
+            console.log('🔶 Loading shape from DB:', {
+              id: d.id,
+              name: d.name,
+              hasImageUrl: !!d.image_url,
+              imageUrlPreview: d.image_url ? `${d.image_url.substring(0, 80)}...` : null
+            })
+            return {
+              id: d.id,
+              name: d.name || '',
+              image: d.image_url || undefined,  // استخدام image بدلاً من image_url
+              barcode: d.barcode || undefined
+            }
+          })
 
         console.log('🎨 Setting colors:', colors)
-        console.log('🔶 Setting shapes:', shapes)
+        console.log('🔶 Setting shapes:', shapes.map(s => ({ name: s.name, hasImage: !!s.image })))
 
         setProductColors(colors as any)
         setProductShapes(shapes as any)
@@ -1065,6 +1073,12 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
       return
     }
 
+    console.log('🔶 addShape called with:', {
+      shapeName: shapeName.trim(),
+      shapeBarcode: shapeBarcode.trim(),
+      shapeImagePreview: shapeImagePreview ? `${shapeImagePreview.substring(0, 50)}...` : null
+    })
+
     if (editingShapeId) {
       // Update existing shape
       setProductShapes(prev =>
@@ -1080,6 +1094,7 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
         )
       )
       setEditingShapeId(null)
+      console.log('🔶 Updated existing shape')
     } else {
       // Add new shape
       const newShape: any = {
@@ -1088,7 +1103,17 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
         barcode: shapeBarcode.trim() || undefined,
         image: shapeImagePreview || undefined
       }
-      setProductShapes(prev => [...prev, newShape])
+      console.log('🔶 Adding new shape:', {
+        id: newShape.id,
+        name: newShape.name,
+        barcode: newShape.barcode,
+        hasImage: !!newShape.image
+      })
+      setProductShapes(prev => {
+        const updated = [...prev, newShape]
+        console.log('🔶 Updated productShapes:', updated.map(s => ({ name: s.name, hasImage: !!s.image })))
+        return updated
+      })
     }
 
     // Reset form
@@ -2773,7 +2798,14 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
                   <div className="space-y-3 mt-4">
                     <h4 className="text-white text-sm font-medium text-right">الأشكال المضافة:</h4>
                     <div className="space-y-2">
-                      {productShapes.map((shape) => (
+                      {productShapes.map((shape) => {
+                        console.log('🔶 Rendering shape:', {
+                          id: shape.id,
+                          name: shape.name,
+                          hasImage: !!shape.image,
+                          imagePreview: shape.image ? `${shape.image.substring(0, 50)}...` : null
+                        })
+                        return (
                         <div
                           key={shape.id}
                           className="bg-[#2B3441] border border-[#4A5568] rounded p-3 flex items-center gap-3"
@@ -2784,6 +2816,12 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
                               src={shape.image}
                               alt={shape.name || 'شكل'}
                               className="w-12 h-12 object-cover rounded border border-[#4A5568]"
+                              onError={(e) => {
+                                console.error('🔶 Image failed to load:', shape.name, shape.image ? `${shape.image.substring(0, 100)}` : null)
+                              }}
+                              onLoad={() => {
+                                console.log('🔶 Image loaded successfully:', shape.name)
+                              }}
                             />
                           )}
 
@@ -2822,7 +2860,8 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
                             </button>
                           </div>
                         </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </div>
                 )}
