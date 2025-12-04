@@ -352,7 +352,14 @@ export default function ProductDetailContent({ productId, serverData }: ProductD
   const [zoomPosition, setZoomPosition] = useState({ x: 0, y: 0 });
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
   const [showVideoModal, setShowVideoModal] = useState(false);
+  const [showShapeImageModal, setShowShapeImageModal] = useState(false);
+  const [selectedShapeImage, setSelectedShapeImage] = useState<string | null>(null);
   const [productVideos, setProductVideos] = useState<any[]>([]);
+
+  // Helper function to check if shape has a real name (not null/undefined)
+  const hasShapeName = (shape: { name?: string | null }): boolean => {
+    return !!(shape.name && shape.name.trim());
+  };
 
   // Fetch product data
   useEffect(() => {
@@ -407,7 +414,8 @@ export default function ProductDetailContent({ productId, serverData }: ProductD
           }
 
           // Get all product color & shape definitions from the correct table
-          const { data: fetchedColorVariants } = await supabase
+          const { data: fetchedColorVariants } = await (supabase as any)
+            .schema('elfaroukgroup')
             .from('product_color_shape_definitions')
             .select('id, name, color_hex, image_url, barcode')
             .eq('product_id', product.id)
@@ -415,13 +423,19 @@ export default function ProductDetailContent({ productId, serverData }: ProductD
             .order('sort_order', { ascending: true }) as { data: any[] | null };
           colorVariants = fetchedColorVariants || [];
 
-          const { data: fetchedShapeVariants } = await supabase
+          const { data: fetchedShapeVariants } = await (supabase as any)
+            .schema('elfaroukgroup')
             .from('product_color_shape_definitions')
             .select('id, name, image_url, barcode')
             .eq('product_id', product.id)
             .eq('variant_type', 'shape')
             .order('sort_order', { ascending: true }) as { data: any[] | null };
           shapeVariants = fetchedShapeVariants || [];
+
+          console.log('🔶 Fetched shape variants from DB:', {
+            count: shapeVariants.length,
+            shapes: shapeVariants
+          });
 
           // Note: Size variants are not managed in the new system (product_color_shape_definitions)
           // They remain as separate products with different names
@@ -597,12 +611,21 @@ export default function ProductDetailContent({ productId, serverData }: ProductD
             quantity: variant.quantity || 0
           }))
           .sort((a, b) => (b.quantity || 0) - (a.quantity || 0)) || [], // Sort by quantity descending
-          shapes: shapeVariants?.map(variant => ({
-            id: variant.id,
-            name: variant.name,
-            image_url: variant.image_url,
-            available: (variant.quantity || 0) > 0
-          })) || [],
+          shapes: shapeVariants?.map(variant => {
+            console.log('🔶 Shape variant from DB:', {
+              id: variant.id,
+              name: variant.name,
+              image_url: variant.image_url,
+              has_image: !!variant.image_url,
+              raw_variant: variant
+            });
+            return {
+              id: variant.id,
+              name: variant.name || null,
+              image_url: variant.image_url || null,
+              available: true  // Always available by default (quantity not tracked for shapes)
+            };
+          }) || [],
           sizes: [
             // أولاً: المقاسات من product_variants
             ...(sizeVariants?.map(variant => ({
@@ -1192,44 +1215,125 @@ export default function ProductDetailContent({ productId, serverData }: ProductD
               </div>
             )}
 
-            {/* Shapes */}
+            {/* Shapes - Amazon Style (Image with name below) */}
             {productDetails.shapes && productDetails.shapes.length > 0 && (
               <div>
-                <h3 className="font-semibold text-gray-800 mb-3">الشكل المتاح:</h3>
+                <h3 className="font-semibold text-gray-800 mb-3">الشكل المتاح: ({productDetails.shapes.length} شكل)</h3>
                 <div className="flex gap-3 flex-wrap max-h-[200px] md:max-h-[250px] overflow-y-auto scrollbar-hide pr-2 pb-2">
-                  {productDetails.shapes?.map((shape) => (
-                    <button
-                      key={shape.id}
-                      onClick={() => {
-                        if (selectedShape?.id === shape.id) {
-                          setSelectedShape(null);
-                        } else {
-                          setSelectedShape(shape);
-                        }
-                      }}
-                      disabled={!shape.available}
-                      className={`px-4 py-2 border-2 rounded-lg transition-all text-sm font-medium ${
-                        selectedShape?.id === shape.id
-                          ? 'border-red-500 bg-red-50 text-red-600 shadow-lg'
-                          : shape.available
-                          ? 'border-gray-300 hover:border-red-300 bg-white text-gray-700 hover:bg-red-50'
-                          : 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
-                      }`}
-                      title={shape.name}
-                    >
-                      {shape.name}
-                      {selectedShape?.id === shape.id && (
-                        <span className="mr-2">
-                          <svg className="w-4 h-4 inline" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                          </svg>
-                        </span>
-                      )}
-                    </button>
-                  ))}
+                  {productDetails.shapes?.map((shape) => {
+                    const hasImage = !!shape.image_url;
+                    const hasName = hasShapeName(shape);
+
+                    console.log('🎨 Rendering shape:', {
+                      id: shape.id,
+                      name: shape.name,
+                      hasImage,
+                      hasName,
+                      image_url: shape.image_url,
+                      available: shape.available
+                    });
+
+                    // Case 1: Shape with image (with or without name) - Show image-based button
+                    if (hasImage) {
+                      return (
+                        <button
+                          key={shape.id}
+                          onClick={() => {
+                            if (selectedShape?.id === shape.id) {
+                              setSelectedShape(null);
+                            } else {
+                              setSelectedShape(shape);
+                            }
+                          }}
+                          disabled={!shape.available}
+                          className={`border-2 rounded-lg transition-all flex flex-col items-center gap-1 p-2 ${
+                            selectedShape?.id === shape.id
+                              ? 'border-red-500 bg-red-50 shadow-lg'
+                              : shape.available
+                              ? 'border-gray-300 hover:border-red-300 bg-white hover:bg-red-50'
+                              : 'border-gray-200 bg-gray-100 cursor-not-allowed'
+                          }`}
+                          title={hasName ? shape.name! : 'شكل'}
+                        >
+                          {/* Shape Image (clickable for zoom) */}
+                          <div className="relative">
+                            <img
+                              src={shape.image_url}
+                              alt={hasName ? shape.name! : 'شكل'}
+                              className="w-16 h-16 object-cover rounded cursor-pointer hover:scale-105 transition-transform"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedShapeImage(shape.image_url || null);
+                                setShowShapeImageModal(true);
+                              }}
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                target.style.display = 'none';
+                              }}
+                            />
+                            {/* Check icon for selected shape */}
+                            {selectedShape?.id === shape.id && (
+                              <div className="absolute top-0 right-0 bg-red-500 rounded-full p-0.5">
+                                <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Shape Name below image (if exists) */}
+                          {hasName && (
+                            <span className={`text-xs text-center max-w-[80px] truncate ${
+                              selectedShape?.id === shape.id ? 'text-red-600 font-medium' : 'text-gray-700'
+                            }`}>
+                              {shape.name}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    }
+
+                    // Case 2: Shape with name only (no image) - Show text-based button
+                    if (hasName) {
+                      return (
+                        <button
+                          key={shape.id}
+                          onClick={() => {
+                            if (selectedShape?.id === shape.id) {
+                              setSelectedShape(null);
+                            } else {
+                              setSelectedShape(shape);
+                            }
+                          }}
+                          disabled={!shape.available}
+                          className={`px-4 py-2 border-2 rounded-lg transition-all text-sm font-medium ${
+                            selectedShape?.id === shape.id
+                              ? 'border-red-500 bg-red-50 text-red-600 shadow-lg'
+                              : shape.available
+                              ? 'border-gray-300 hover:border-red-300 bg-white text-gray-700 hover:bg-red-50'
+                              : 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
+                          }`}
+                          title={shape.name!}
+                        >
+                          {shape.name}
+                          {selectedShape?.id === shape.id && (
+                            <span className="mr-2">
+                              <svg className="w-4 h-4 inline" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            </span>
+                          )}
+                        </button>
+                      );
+                    }
+
+                    return null;
+                  })}
                 </div>
                 {selectedShape && (
-                  <p className="text-sm text-gray-600 mt-2">الشكل المحدد: {selectedShape?.name}</p>
+                  <p className="text-sm text-gray-600 mt-2">
+                    الشكل المحدد: {hasShapeName(selectedShape) ? selectedShape.name : 'شكل'}
+                  </p>
                 )}
               </div>
             )}
@@ -1616,6 +1720,43 @@ export default function ProductDetailContent({ productId, serverData }: ProductD
           </div>
         </div>
       </footer>
+
+      {/* Shape Image Modal */}
+      {showShapeImageModal && selectedShapeImage && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4"
+          onClick={() => {
+            setShowShapeImageModal(false);
+            setSelectedShapeImage(null);
+          }}
+        >
+          <div className="relative max-w-3xl max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+            {/* Close button */}
+            <button
+              onClick={() => {
+                setShowShapeImageModal(false);
+                setSelectedShapeImage(null);
+              }}
+              className="absolute -top-10 left-0 text-white hover:text-gray-300 transition-colors"
+            >
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            {/* Image */}
+            <img
+              src={selectedShapeImage}
+              alt="شكل المنتج"
+              className="max-w-full max-h-[85vh] rounded-lg shadow-2xl"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.src = '/placeholder-product.svg';
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Cart Modal */}
       <CartModal

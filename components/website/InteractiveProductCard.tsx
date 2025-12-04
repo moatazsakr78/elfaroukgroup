@@ -9,6 +9,7 @@ import { useWebsiteCurrency } from '@/lib/hooks/useCurrency';
 import { useRatingsDisplay } from '../../lib/hooks/useRatingSettings';
 import { useProductVoting } from '@/app/lib/hooks/useProductVoting';
 import ProductVoteModal from './ProductVoteModal';
+import ShapeSelector from './ShapeSelector';
 
 interface InteractiveProductCardProps {
   product: Product;
@@ -390,34 +391,18 @@ export default function InteractiveProductCard({
           <div className={`${deviceType === 'tablet' ? 'h-3' : 'h-2'} mb-1`}></div>
         )}
 
-        {/* Shape Options - Dropdown for shapes */}
+        {/* Shape Options - Custom Dropdown with Image Support */}
         {product.shapes && product.shapes.length > 0 ? (
           <div className={`${deviceType === 'tablet' ? 'h-10' : 'h-9'} mb-1`}>
-            <select
-              value={selectedShape?.id || ''}
-              onChange={(e) => {
-                const shapeId = e.target.value;
-                if (shapeId) {
-                  const shape = product.shapes?.find(s => s.id === shapeId);
-                  if (shape) {
-                    handleShapeSelect(shape, e as any);
-                  }
-                } else {
-                  setSelectedShape(null);
-                }
+            <ShapeSelector
+              shapes={product.shapes}
+              selectedShape={selectedShape}
+              onShapeSelect={(shape) => {
+                setSelectedShape(shape);
+                setCurrentImageIndex(0);
               }}
-              onClick={(e) => e.stopPropagation()}
-              className={`w-full bg-white border border-gray-300 rounded-md px-3 text-sm text-gray-700 focus:outline-none focus:ring-1 focus:ring-red-500 focus:border-red-500 transition-all shadow-sm ${
-                deviceType === 'tablet' ? 'py-2.5 text-base' : 'py-2'
-              }`}
-            >
-              <option value="">اختر الشكل</option>
-              {product.shapes.map((shape) => (
-                <option key={shape.id} value={shape.id}>
-                  {shape.name}
-                </option>
-              ))}
-            </select>
+              deviceType={deviceType}
+            />
           </div>
         ) : (
           <div className={`${deviceType === 'tablet' ? 'h-2' : 'h-1'} mb-1`}></div>

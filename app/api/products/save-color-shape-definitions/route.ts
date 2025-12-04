@@ -48,12 +48,15 @@ export async function POST(request: NextRequest) {
     // Add shape definitions
     if (shapes && Array.isArray(shapes)) {
       shapes.forEach((shape: any, index: number) => {
+        // ✅ Keep name as NULL if not provided (no auto-generation)
+        const shapeName = shape.name && shape.name.trim() ? shape.name.trim() : null
+
         definitionsToInsert.push({
           product_id: productId,
           variant_type: 'shape',
-          name: shape.name,
+          name: shapeName,  // NULL is allowed now after constraint fix
           color_hex: null,
-          image_url: shape.image || null,  // استخدام shape.image بدلاً من shape.image_url
+          image_url: shape.image || null,
           barcode: shape.barcode || null,
           sort_order: index
         })
