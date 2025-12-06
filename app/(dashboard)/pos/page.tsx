@@ -139,6 +139,8 @@ function POSPageContent() {
   const { companyName, logoUrl } = useCompanySettings();
 
   const [searchQuery, setSearchQuery] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
   // Keep CartContext for website functionality
   const {
     cartItems: webCartItems,
@@ -855,6 +857,12 @@ function POSPageContent() {
     // إغلاق النافذة
     setShowColorSelectionModal(false);
     setModalProduct(null);
+
+    // مسح البحث وإعادة التركيز على حقل البحث
+    setSearchQuery("");
+    setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 100);
   };
 
   const handleProductClick = (product: any) => {
@@ -1208,6 +1216,12 @@ function POSPageContent() {
   const handleQuickAddToCart = (productData: any) => {
     // Use the main handleAddToCart function to ensure consistent grouping
     handleAddToCart(productData, productData.quantity);
+
+    // مسح البحث وإعادة التركيز على حقل البحث
+    setSearchQuery("");
+    setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 100);
   };
 
   // Check if all required selections are made for purchase mode
@@ -2396,6 +2410,7 @@ function POSPageContent() {
                 <div className="relative">
                   <MagnifyingGlassIcon className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                   <input
+                    ref={searchInputRef}
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
@@ -3267,6 +3282,12 @@ function POSPageContent() {
             price: isTransferMode ? 0 : product.price || 0,
           };
           handleAddToCart(productWithCorrectPrice, quantity, selectedColor);
+
+          // مسح البحث وإعادة التركيز على حقل البحث
+          setSearchQuery("");
+          setTimeout(() => {
+            searchInputRef.current?.focus();
+          }, 100);
         }}
       />
 
