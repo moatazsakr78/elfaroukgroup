@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { XMarkIcon, PlusIcon, MinusIcon, ShoppingCartIcon } from '@heroicons/react/24/outline'
 import { useCurrency } from '../../lib/hooks/useCurrency'
 
@@ -54,11 +54,9 @@ export default function ColorSelectionModal({
     }
   }, [product, isPurchaseMode])
 
-  if (!isOpen || !product) return null
-
   // منطق استخراج الألوان المتاحة
   const getProductColors = () => {
-    if (isPurchaseMode) return []
+    if (!product || isPurchaseMode) return []
 
     const colors: any[] = []
     const unspecifiedVariants: any[] = []
@@ -229,7 +227,7 @@ export default function ColorSelectionModal({
   }
 
   const selectedQuantity = Object.values(selections).reduce((sum, qty) => sum + qty, 0)
-  const totalPrice = isTransferMode ? 0 : totalQuantity * (isPurchaseMode ? purchasePrice : (product.price || 0))
+  const totalPrice = isTransferMode ? 0 : totalQuantity * (isPurchaseMode ? purchasePrice : (product?.price || 0))
 
   // تحقق من صحة البيانات
   const getValidationInfo = () => {
@@ -249,7 +247,7 @@ export default function ColorSelectionModal({
 
   const validationInfo = getValidationInfo()
 
-  const handleAddToCart = () => {
+  const handleAddToCart = useCallback(() => {
     if (totalQuantity > 0 && validationInfo.isValid) {
       if (isPurchaseMode) {
         onAddToCart(selections, totalQuantity, purchasePrice)
@@ -260,7 +258,26 @@ export default function ColorSelectionModal({
       setSelections({})
       setManualQuantity(1) // إعادة تعيين الكمية اليدوية
     }
-  }
+  }, [totalQuantity, validationInfo.isValid, isPurchaseMode, onAddToCart, selections, purchasePrice, onClose])
+
+  // Enter key shortcut to add to cart
+  useEffect(() => {
+    if (!isOpen || !product) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        e.stopPropagation()
+        handleAddToCart()
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown, true)
+    return () => document.removeEventListener('keydown', handleKeyDown, true)
+  }, [isOpen, product, handleAddToCart])
+
+  // Early return AFTER all hooks are called
+  if (!isOpen || !product) return null
 
   return (
     <>
@@ -471,10 +488,10 @@ export default function ColorSelectionModal({
                   {!validationInfo.isValid
                     ? 'غير متاح للإضافة'
                     : isTransferMode
-                      ? `إضافة للنقل (${totalQuantity})`
+                      ? `إضافة للنقل (${totalQuantity}) [Enter]`
                       : isPurchaseMode
-                        ? `إضافة للشراء (${totalQuantity})`
-                        : `إضافة للسلة (${totalQuantity})`
+                        ? `إضافة للشراء (${totalQuantity}) [Enter]`
+                        : `إضافة للسلة (${totalQuantity}) [Enter]`
                   }
                 </span>
               </button>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { XMarkIcon, PlusIcon, MinusIcon, ShoppingCartIcon } from '@heroicons/react/24/outline'
 import { useCurrency } from '../../lib/hooks/useCurrency'
 
@@ -28,12 +28,28 @@ export default function AddToCartModal({ isOpen, onClose, product, onAddToCart, 
     setQuantity(newQuantity)
   }
 
-  const handleAddToCart = () => {
+  const handleAddToCart = useCallback(() => {
     onAddToCart(product, quantity, selectedColor || undefined)
     onClose()
     setQuantity(1)
     setSelectedColor(null)
-  }
+  }, [onAddToCart, product, quantity, selectedColor, onClose])
+
+  // Enter key shortcut to add to cart
+  useEffect(() => {
+    if (!isOpen || !product) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        e.stopPropagation()
+        handleAddToCart()
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown, true)
+    return () => document.removeEventListener('keydown', handleKeyDown, true)
+  }, [isOpen, product, handleAddToCart])
 
   // الألوان المتاحة
   const colors = [
@@ -187,7 +203,7 @@ export default function AddToCartModal({ isOpen, onClose, product, onAddToCart, 
               }`}
             >
               <ShoppingCartIcon className="h-5 w-5" />
-              {isTransferMode ? 'إضافة للنقل' : 'إضافة للسلة'}
+              {isTransferMode ? 'إضافة للنقل [Enter]' : 'إضافة للسلة [Enter]'}
             </button>
           </div>
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { useRouter } from 'next/navigation';
 import { Product, ProductColor } from '../../components/website/shared/types';
@@ -847,7 +847,7 @@ export default function ProductDetailsModal({
     fetchProduct();
   }, [isOpen, productId]);
 
-  const handleAddToCart = async () => {
+  const handleAddToCart = useCallback(async () => {
     if (!productDetails) return;
 
     try {
@@ -870,6 +870,16 @@ export default function ProductDetailsModal({
     } catch (error) {
       console.error('Error adding to cart:', error);
       alert('حدث خطأ أثناء إضافة المنتج. يرجى المحاولة مرة أخرى.');
+    }
+  }, [productDetails, selectedSize, productId, currentPrice, addToCart, quantity, selectedColor, selectedShape]);
+
+  // Handle keyboard shortcuts
+  const handleModalKeyDown = (e: React.KeyboardEvent) => {
+    // Enter key to add to cart
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
+      handleAddToCart();
     }
   };
 
@@ -949,6 +959,9 @@ export default function ProductDetailsModal({
           fontFamily: "'Cairo', Arial, sans-serif"
         }}
         dir="rtl"
+        tabIndex={0}
+        onKeyDown={handleModalKeyDown}
+        ref={(el) => el?.focus()}
       >
 
       {/* Responsive Header */}
@@ -1239,7 +1252,7 @@ export default function ProductDetailsModal({
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4m0 0L7 13m0 0l-1.5 6H19" />
                   </svg>
-                  إضافة إلى السلة
+                  إضافة إلى السلة [Enter]
                 </button>
               </div>
             </div>
@@ -1756,7 +1769,7 @@ export default function ProductDetailsModal({
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4m0 0L7 13m0 0l-1.5 6H19" />
                 </svg>
-                أضف إلى السلة
+                أضف إلى السلة [Enter]
               </button>
               <button className="px-4 py-2 border rounded-lg font-semibold transition-colors flex items-center justify-center text-sm" style={{borderColor: 'var(--primary-color)', color: 'var(--primary-color)'}} onMouseEnter={(e) => { (e.target as HTMLButtonElement).style.backgroundColor = '#F5F1F1'; }} onMouseLeave={(e) => { (e.target as HTMLButtonElement).style.backgroundColor = 'transparent'; }}>
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

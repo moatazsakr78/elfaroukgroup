@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useCart, CartProvider } from "@/lib/contexts/CartContext";
 import { useCartBadge } from "@/lib/hooks/useCartBadge";
 import CartModal from "@/app/components/CartModal";
@@ -1103,6 +1103,26 @@ function POSPageContent() {
       setIsProcessingInvoice(false);
     }
   };
+
+  // Y keyboard shortcut to confirm order
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check if user is typing in an input field
+      const activeElement = document.activeElement;
+      const isInputFocused = activeElement?.tagName === 'INPUT' ||
+                             activeElement?.tagName === 'TEXTAREA' ||
+                             activeElement?.getAttribute('contenteditable') === 'true';
+
+      if ((e.key === 'y' || e.key === 'Y') && !isInputFocused) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleCreateInvoice();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => document.removeEventListener('keydown', handleKeyDown, true);
+  });
 
   // Purchase Mode Functions
   const handlePurchaseModeToggle = () => {
@@ -2760,14 +2780,14 @@ function POSPageContent() {
                             : !hasAllRequiredSelections()
                               ? "يجب إكمال التحديدات"
                               : isTransferMode
-                                ? `تأكيد النقل (${cartItems.length})`
+                                ? `تأكيد النقل (${cartItems.length}) [Y]`
                                 : isReturnMode
                                   ? isPurchaseMode
-                                    ? `مرتجع شراء (${cartItems.length})`
-                                    : `مرتجع بيع (${cartItems.length})`
+                                    ? `مرتجع شراء (${cartItems.length}) [Y]`
+                                    : `مرتجع بيع (${cartItems.length}) [Y]`
                                   : isPurchaseMode
-                                    ? `تأكيد الشراء (${cartItems.length})`
-                                    : `تأكيد الطلب (${cartItems.length})`}
+                                    ? `تأكيد الشراء (${cartItems.length}) [Y]`
+                                    : `تأكيد الطلب (${cartItems.length}) [Y]`}
                       </button>
                     </div>
                   </div>
@@ -3188,14 +3208,14 @@ function POSPageContent() {
                     : !hasAllRequiredSelections()
                       ? "يجب إكمال التحديدات"
                       : isTransferMode
-                        ? `تأكيد النقل (${cartItems.length})`
+                        ? `تأكيد النقل (${cartItems.length}) [Y]`
                         : isReturnMode
                           ? isPurchaseMode
-                            ? `مرتجع شراء (${cartItems.length})`
-                            : `مرتجع بيع (${cartItems.length})`
+                            ? `مرتجع شراء (${cartItems.length}) [Y]`
+                            : `مرتجع بيع (${cartItems.length}) [Y]`
                           : isPurchaseMode
-                            ? `تأكيد الشراء (${cartItems.length})`
-                            : `تأكيد الطلب (${cartItems.length})`}
+                            ? `تأكيد الشراء (${cartItems.length}) [Y]`
+                            : `تأكيد الطلب (${cartItems.length}) [Y]`}
               </button>
               </div>
             </div>
