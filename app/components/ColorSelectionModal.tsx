@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { XMarkIcon, PlusIcon, MinusIcon, ShoppingCartIcon } from '@heroicons/react/24/outline'
 import { useCurrency } from '../../lib/hooks/useCurrency'
 
@@ -34,6 +34,9 @@ export default function ColorSelectionModal({
   const [selections, setSelections] = useState<{[key: string]: number}>({})
   const [manualQuantity, setManualQuantity] = useState(1) // للمنتجات بدون ألوان
   const [editingColorQuantity, setEditingColorQuantity] = useState<string | null>(null)
+
+  // Reference to the quantity input for auto-focus
+  const quantityInputRef = useRef<HTMLInputElement>(null)
   const [tempColorQuantities, setTempColorQuantities] = useState<{[key: string]: string}>({})
 
   // Purchase mode specific state
@@ -276,6 +279,18 @@ export default function ColorSelectionModal({
     return () => document.removeEventListener('keydown', handleKeyDown, true)
   }, [isOpen, product, handleAddToCart])
 
+  // Auto-focus quantity input when modal opens (for products without colors)
+  useEffect(() => {
+    if (isOpen && product && quantityInputRef.current) {
+      // Small delay to ensure modal is rendered
+      const timer = setTimeout(() => {
+        quantityInputRef.current?.focus()
+        quantityInputRef.current?.select()
+      }, 100)
+      return () => clearTimeout(timer)
+    }
+  }, [isOpen, product])
+
   // Early return AFTER all hooks are called
   if (!isOpen || !product) return null
 
@@ -348,6 +363,7 @@ export default function ColorSelectionModal({
                       <MinusIcon className="h-4 w-4 text-white" />
                     </button>
                     <input
+                      ref={quantityInputRef}
                       type="text"
                       value={manualQuantity}
                       onChange={(e) => {

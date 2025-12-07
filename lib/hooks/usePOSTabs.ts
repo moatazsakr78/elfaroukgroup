@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { posTabsService } from '@/lib/services/posTabsService';
+import { supabase } from '@/app/lib/supabase/client';
+import { useAuth } from '@/lib/useAuth';
 
 export interface POSTab {
   id: string;
@@ -32,6 +34,8 @@ interface UsePOSTabsReturn {
   updateActiveTabMode: (updates: Partial<POSTab>) => void;
   clearActiveTabCart: () => void;
   isLoading: boolean;
+  isSaving: boolean;
+  lastSaved: Date | null;
 }
 
 const DEFAULT_TAB: POSTab = {
@@ -47,30 +51,71 @@ const DEFAULT_TAB: POSTab = {
 };
 
 export function usePOSTabs(): UsePOSTabsReturn {
+  // Get user from NextAuth
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
+
   const [tabs, setTabs] = useState<POSTab[]>([DEFAULT_TAB]);
   const [activeTabId, setActiveTabId] = useState<string>('main');
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isInitialMount = useRef(true);
+  const lastSavedDataRef = useRef<string>('');
+  const userIdRef = useRef<string | null>(null);
 
   const activeTab = tabs.find(tab => tab.id === activeTabId);
 
+  // Function to save tabs state immediately
+  const saveTabsStateNow = useCallback(async (tabsToSave: POSTab[], activeId: string, userId?: string) => {
+    const effectiveUserId = userId || userIdRef.current;
+    if (!effectiveUserId) {
+      console.warn('POS Tabs: Cannot save - no user ID');
+      return false;
+    }
+
+    const dataToSave = JSON.stringify({ tabs: tabsToSave, activeTabId: activeId });
+
+    // Skip if data hasn't changed
+    if (dataToSave === lastSavedDataRef.current) {
+      return true;
+    }
+
+    try {
+      setIsSaving(true);
+      const success = await posTabsService.saveTabsState(effectiveUserId, tabsToSave, activeId);
+      if (success) {
+        lastSavedDataRef.current = dataToSave;
+        setLastSaved(new Date());
+      }
+      return success;
+    } catch (error) {
+      console.error('Failed to save POS tabs state:', error);
+      return false;
+    } finally {
+      setIsSaving(false);
+    }
+  }, []);
+
   const addTab = useCallback((title: string) => {
     const newTabId = `pos-${Date.now()}`;
-    setTabs(prev => [
-      ...prev.map(tab => ({ ...tab, active: false })),
-      {
-        id: newTabId,
-        title,
-        active: true,
-        cartItems: [],
-        selections: {
-          customer: null,
-          branch: null,
-          record: null,
+    setTabs(prev => {
+      const newTabs = [
+        ...prev.map(tab => ({ ...tab, active: false })),
+        {
+          id: newTabId,
+          title,
+          active: true,
+          cartItems: [],
+          selections: {
+            customer: null,
+            branch: null,
+            record: null,
+          },
         },
-      },
-    ]);
+      ];
+      return newTabs;
+    });
     setActiveTabId(newTabId);
   }, []);
 
@@ -134,17 +179,44 @@ export function usePOSTabs(): UsePOSTabsReturn {
     ));
   }, [activeTabId]);
 
-  // Load tabs state from database on mount
+  // Load tabs state from database when user is authenticated
   useEffect(() => {
     const loadTabsState = async () => {
+      // Wait for auth to finish loading
+      if (authLoading) {
+        return;
+      }
+
+      // Check if user is authenticated
+      if (!isAuthenticated || !user?.id) {
+        console.log('POS Tabs: No user logged in, using default tabs');
+        setIsLoading(false);
+        isInitialMount.current = false;
+        userIdRef.current = null;
+        return;
+      }
+
+      // Skip if already loaded for this user
+      if (userIdRef.current === user.id && !isInitialMount.current) {
+        setIsLoading(false);
+        return;
+      }
+
       try {
         setIsLoading(true);
-        const savedState = await posTabsService.loadTabsState();
+        userIdRef.current = user.id;
+
+        console.log('POS Tabs: Loading state for user:', user.id);
+        const savedState = await posTabsService.loadTabsState(user.id);
 
         if (savedState && savedState.tabs && savedState.tabs.length > 0) {
           // Restore saved tabs
           setTabs(savedState.tabs);
           setActiveTabId(savedState.active_tab_id || 'main');
+          lastSavedDataRef.current = JSON.stringify({ tabs: savedState.tabs, activeTabId: savedState.active_tab_id });
+          console.log('POS Tabs: Loaded', savedState.tabs.length, 'tabs from database');
+        } else {
+          console.log('POS Tabs: No saved state found, using defaults');
         }
       } catch (error) {
         console.error('Failed to load POS tabs state:', error);
@@ -155,12 +227,56 @@ export function usePOSTabs(): UsePOSTabsReturn {
     };
 
     loadTabsState();
-  }, []);
+  }, [user?.id, isAuthenticated, authLoading]);
+
+  // Real-time subscription for cross-device sync
+  useEffect(() => {
+    if (!userIdRef.current) return;
+
+    const userId = userIdRef.current;
+
+    const subscription = supabase
+      .channel(`pos_tabs_state_${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'pos_tabs_state',
+          filter: `user_id=eq.${userId}`
+        },
+        (payload: any) => {
+          // Only update if the change came from another device/tab
+          const newData = payload.new;
+          if (newData && newData.tabs) {
+            const incomingData = JSON.stringify({ tabs: newData.tabs, activeTabId: newData.active_tab_id });
+
+            // If data is different from what we just saved, update local state
+            if (incomingData !== lastSavedDataRef.current) {
+              console.log('POS Tabs: Received update from another device');
+              setTabs(newData.tabs);
+              setActiveTabId(newData.active_tab_id || 'main');
+              lastSavedDataRef.current = incomingData;
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [user?.id]);
 
   // Auto-save tabs state to database with debounce
   useEffect(() => {
-    // Skip saving on initial mount
-    if (isInitialMount.current || isLoading) {
+    // Skip saving on initial mount or while loading
+    if (isInitialMount.current || isLoading || authLoading) {
+      return;
+    }
+
+    // Skip if no user
+    if (!userIdRef.current) {
       return;
     }
 
@@ -169,14 +285,10 @@ export function usePOSTabs(): UsePOSTabsReturn {
       clearTimeout(saveTimeoutRef.current);
     }
 
-    // Debounce save operation (save after 1 second of no changes)
+    // Debounce save operation (save after 300ms of no changes - faster!)
     saveTimeoutRef.current = setTimeout(async () => {
-      try {
-        await posTabsService.saveTabsState(tabs, activeTabId);
-      } catch (error) {
-        console.error('Failed to save POS tabs state:', error);
-      }
-    }, 1000);
+      await saveTabsStateNow(tabs, activeTabId);
+    }, 300);
 
     // Cleanup timeout on unmount
     return () => {
@@ -184,7 +296,35 @@ export function usePOSTabs(): UsePOSTabsReturn {
         clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [tabs, activeTabId, isLoading]);
+  }, [tabs, activeTabId, isLoading, authLoading, saveTabsStateNow]);
+
+  // Save immediately when page is about to unload or becomes hidden
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      // Synchronous save attempt before unload
+      if (!isInitialMount.current && userIdRef.current) {
+        const dataToSave = JSON.stringify({ tabs, activeTabId });
+        if (dataToSave !== lastSavedDataRef.current) {
+          posTabsService.saveTabsState(userIdRef.current, tabs, activeTabId);
+        }
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      // Save when tab becomes hidden (user switches tabs or minimizes)
+      if (document.visibilityState === 'hidden' && !isInitialMount.current && userIdRef.current) {
+        saveTabsStateNow(tabs, activeTabId);
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [tabs, activeTabId, saveTabsStateNow]);
 
   return {
     tabs,
@@ -198,5 +338,7 @@ export function usePOSTabs(): UsePOSTabsReturn {
     updateActiveTabMode,
     clearActiveTabCart,
     isLoading,
+    isSaving,
+    lastSaved,
   };
 }
