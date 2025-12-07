@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { posTabsService } from '@/lib/services/posTabsService';
+import { saveToLocalStorage, loadFromLocalStorage } from '@/lib/services/posTabsLocalStorage';
 import { supabase } from '@/app/lib/supabase/client';
 import { useAuth } from '@/lib/useAuth';
 
@@ -59,44 +60,74 @@ export function usePOSTabs(): UsePOSTabsReturn {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const dbSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isInitialMount = useRef(true);
-  const lastSavedDataRef = useRef<string>('');
+  const lastDbSavedDataRef = useRef<string>('');
   const userIdRef = useRef<string | null>(null);
 
   const activeTab = tabs.find(tab => tab.id === activeTabId);
 
-  // Function to save tabs state immediately
-  const saveTabsStateNow = useCallback(async (tabsToSave: POSTab[], activeId: string, userId?: string) => {
-    const effectiveUserId = userId || userIdRef.current;
-    if (!effectiveUserId) {
-      console.warn('POS Tabs: Cannot save - no user ID');
+  // ============================================
+  // INSTANT LOCAL STORAGE SAVE (synchronous)
+  // ============================================
+  const saveToLocal = useCallback((tabsToSave: POSTab[], activeId: string) => {
+    if (!userIdRef.current) return;
+    saveToLocalStorage(userIdRef.current, tabsToSave, activeId);
+  }, []);
+
+  // ============================================
+  // DATABASE SAVE (async, debounced)
+  // ============================================
+  const saveToDatabase = useCallback(async (tabsToSave: POSTab[], activeId: string) => {
+    const userId = userIdRef.current;
+    if (!userId) {
+      console.warn('POS Tabs: Cannot save to DB - no user ID');
       return false;
     }
 
     const dataToSave = JSON.stringify({ tabs: tabsToSave, activeTabId: activeId });
 
     // Skip if data hasn't changed
-    if (dataToSave === lastSavedDataRef.current) {
+    if (dataToSave === lastDbSavedDataRef.current) {
       return true;
     }
 
     try {
       setIsSaving(true);
-      const success = await posTabsService.saveTabsState(effectiveUserId, tabsToSave, activeId);
+      const success = await posTabsService.saveTabsState(userId, tabsToSave, activeId);
       if (success) {
-        lastSavedDataRef.current = dataToSave;
+        lastDbSavedDataRef.current = dataToSave;
         setLastSaved(new Date());
+        console.log('POS Tabs: Saved to database');
       }
       return success;
     } catch (error) {
-      console.error('Failed to save POS tabs state:', error);
+      console.error('POS Tabs: Failed to save to database:', error);
       return false;
     } finally {
       setIsSaving(false);
     }
   }, []);
 
+  // ============================================
+  // COMBINED SAVE: localStorage (instant) + DB (debounced)
+  // ============================================
+  const saveState = useCallback((newTabs: POSTab[], newActiveTabId: string) => {
+    // 1. INSTANT: Save to localStorage (synchronous, never fails)
+    saveToLocal(newTabs, newActiveTabId);
+
+    // 2. DEBOUNCED: Save to database (async, for cross-device sync)
+    if (dbSaveTimeoutRef.current) {
+      clearTimeout(dbSaveTimeoutRef.current);
+    }
+    dbSaveTimeoutRef.current = setTimeout(() => {
+      saveToDatabase(newTabs, newActiveTabId);
+    }, 2000); // 2 seconds debounce for DB (localStorage is instant)
+  }, [saveToLocal, saveToDatabase]);
+
+  // ============================================
+  // TAB MANAGEMENT FUNCTIONS
+  // ============================================
   const addTab = useCallback((title: string) => {
     const newTabId = `pos-${Date.now()}`;
     setTabs(prev => {
@@ -114,72 +145,105 @@ export function usePOSTabs(): UsePOSTabsReturn {
           },
         },
       ];
+      // Instant save
+      saveState(newTabs, newTabId);
       return newTabs;
     });
     setActiveTabId(newTabId);
-  }, []);
+  }, [saveState]);
 
   const closeTab = useCallback((tabId: string) => {
     if (tabId === 'main') return;
 
     setTabs(prev => {
       const newTabs = prev.filter(tab => tab.id !== tabId);
+      let newActiveId = activeTabId;
 
       if (activeTabId === tabId) {
         const lastTab = newTabs[newTabs.length - 1];
-        const newActiveId = lastTab?.id || 'main';
+        newActiveId = lastTab?.id || 'main';
         setActiveTabId(newActiveId);
-        return newTabs.map(tab => ({
-          ...tab,
-          active: tab.id === newActiveId,
-        }));
       }
 
-      return newTabs;
+      const finalTabs = newTabs.map(tab => ({
+        ...tab,
+        active: tab.id === newActiveId,
+      }));
+
+      // Instant save
+      saveState(finalTabs, newActiveId);
+      return finalTabs;
     });
-  }, [activeTabId]);
+  }, [activeTabId, saveState]);
 
   const switchTab = useCallback((tabId: string) => {
-    setTabs(prev => prev.map(tab => ({
-      ...tab,
-      active: tab.id === tabId,
-    })));
+    setTabs(prev => {
+      const newTabs = prev.map(tab => ({
+        ...tab,
+        active: tab.id === tabId,
+      }));
+      // Instant save
+      saveState(newTabs, tabId);
+      return newTabs;
+    });
     setActiveTabId(tabId);
-  }, []);
+  }, [saveState]);
 
   const updateActiveTabCart = useCallback((cartItems: any[]) => {
-    setTabs(prev => prev.map(tab =>
-      tab.id === activeTabId
-        ? { ...tab, cartItems }
-        : tab
-    ));
-  }, [activeTabId]);
+    setTabs(prev => {
+      const newTabs = prev.map(tab =>
+        tab.id === activeTabId
+          ? { ...tab, cartItems }
+          : tab
+      );
+      // Instant save
+      saveState(newTabs, activeTabId);
+      return newTabs;
+    });
+  }, [activeTabId, saveState]);
 
   const updateActiveTabSelections = useCallback((selections: any) => {
-    setTabs(prev => prev.map(tab =>
-      tab.id === activeTabId
-        ? { ...tab, selections }
-        : tab
-    ));
-  }, [activeTabId]);
+    setTabs(prev => {
+      const newTabs = prev.map(tab =>
+        tab.id === activeTabId
+          ? { ...tab, selections }
+          : tab
+      );
+      // Instant save
+      saveState(newTabs, activeTabId);
+      return newTabs;
+    });
+  }, [activeTabId, saveState]);
 
   const updateActiveTabMode = useCallback((updates: Partial<POSTab>) => {
-    setTabs(prev => prev.map(tab =>
-      tab.id === activeTabId
-        ? { ...tab, ...updates }
-        : tab
-    ));
-  }, [activeTabId]);
+    setTabs(prev => {
+      const newTabs = prev.map(tab =>
+        tab.id === activeTabId
+          ? { ...tab, ...updates }
+          : tab
+      );
+      // Instant save
+      saveState(newTabs, activeTabId);
+      return newTabs;
+    });
+  }, [activeTabId, saveState]);
 
   const clearActiveTabCart = useCallback(() => {
-    setTabs(prev => prev.map(tab =>
-      tab.id === activeTabId
-        ? { ...tab, cartItems: [] }
-        : tab
-    ));
-  }, [activeTabId]);
+    setTabs(prev => {
+      const newTabs = prev.map(tab =>
+        tab.id === activeTabId
+          ? { ...tab, cartItems: [] }
+          : tab
+      );
+      // Instant save
+      saveState(newTabs, activeTabId);
+      return newTabs;
+    });
+  }, [activeTabId, saveState]);
 
-  // Load tabs state from database when user is authenticated
+  // ============================================
+  // LOAD STATE: localStorage first, then DB sync
+  // ============================================
   useEffect(() => {
     const loadTabsState = async () => {
       // Wait for auth to finish loading
@@ -207,19 +271,33 @@ export function usePOSTabs(): UsePOSTabsReturn {
         userIdRef.current = user.id;
 
         console.log('POS Tabs: Loading state for user:', user.id);
-        const savedState = await posTabsService.loadTabsState(user.id);
 
-        if (savedState && savedState.tabs && savedState.tabs.length > 0) {
-          // Restore saved tabs
-          setTabs(savedState.tabs);
-          setActiveTabId(savedState.active_tab_id || 'main');
-          lastSavedDataRef.current = JSON.stringify({ tabs: savedState.tabs, activeTabId: savedState.active_tab_id });
-          console.log('POS Tabs: Loaded', savedState.tabs.length, 'tabs from database');
-        } else {
-          console.log('POS Tabs: No saved state found, using defaults');
+        // STEP 1: Load from localStorage FIRST (instant)
+        const localState = loadFromLocalStorage(user.id);
+
+        if (localState && localState.tabs && localState.tabs.length > 0) {
+          console.log('POS Tabs: Loaded from localStorage:', localState.tabs.length, 'tabs');
+          setTabs(localState.tabs);
+          setActiveTabId(localState.activeTabId || 'main');
         }
+
+        // STEP 2: Sync with database in background
+        const dbState = await posTabsService.loadTabsState(user.id);
+
+        if (dbState && dbState.tabs && dbState.tabs.length > 0) {
+          // If no local state, use DB state
+          if (!localState || !localState.tabs || localState.tabs.length === 0) {
+            console.log('POS Tabs: Using database state:', dbState.tabs.length, 'tabs');
+            setTabs(dbState.tabs);
+            setActiveTabId(dbState.active_tab_id || 'main');
+            // Also save to localStorage for next time
+            saveToLocalStorage(user.id, dbState.tabs, dbState.active_tab_id || 'main');
+          }
+          lastDbSavedDataRef.current = JSON.stringify({ tabs: dbState.tabs, activeTabId: dbState.active_tab_id });
+        }
+
       } catch (error) {
-        console.error('Failed to load POS tabs state:', error);
+        console.error('POS Tabs: Failed to load state:', error);
       } finally {
         setIsLoading(false);
         isInitialMount.current = false;
@@ -229,7 +307,9 @@ export function usePOSTabs(): UsePOSTabsReturn {
     loadTabsState();
   }, [user?.id, isAuthenticated, authLoading]);
 
-  // Real-time subscription for cross-device sync
+  // ============================================
+  // REAL-TIME SYNC FROM OTHER DEVICES
+  // ============================================
   useEffect(() => {
     if (!userIdRef.current) return;
 
@@ -246,17 +326,18 @@ export function usePOSTabs(): UsePOSTabsReturn {
           filter: `user_id=eq.${userId}`
         },
         (payload: any) => {
-          // Only update if the change came from another device/tab
           const newData = payload.new;
           if (newData && newData.tabs) {
             const incomingData = JSON.stringify({ tabs: newData.tabs, activeTabId: newData.active_tab_id });
 
-            // If data is different from what we just saved, update local state
-            if (incomingData !== lastSavedDataRef.current) {
+            // Only update if change came from another device
+            if (incomingData !== lastDbSavedDataRef.current) {
               console.log('POS Tabs: Received update from another device');
               setTabs(newData.tabs);
               setActiveTabId(newData.active_tab_id || 'main');
-              lastSavedDataRef.current = incomingData;
+              lastDbSavedDataRef.current = incomingData;
+              // Update localStorage too
+              saveToLocalStorage(userId, newData.tabs, newData.active_tab_id || 'main');
             }
           }
         }
@@ -268,63 +349,20 @@ export function usePOSTabs(): UsePOSTabsReturn {
     };
   }, [user?.id]);
 
-  // Auto-save tabs state to database with debounce
+  // ============================================
+  // CLEANUP: Clear DB timeout on unmount
+  // ============================================
   useEffect(() => {
-    // Skip saving on initial mount or while loading
-    if (isInitialMount.current || isLoading || authLoading) {
-      return;
-    }
-
-    // Skip if no user
-    if (!userIdRef.current) {
-      return;
-    }
-
-    // Clear previous timeout
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-
-    // Debounce save operation (save after 300ms of no changes - faster!)
-    saveTimeoutRef.current = setTimeout(async () => {
-      await saveTabsStateNow(tabs, activeTabId);
-    }, 300);
-
-    // Cleanup timeout on unmount
     return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-    };
-  }, [tabs, activeTabId, isLoading, authLoading, saveTabsStateNow]);
-
-  // Save immediately when page is about to unload or becomes hidden
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      // Synchronous save attempt before unload
-      if (!isInitialMount.current && userIdRef.current) {
-        const dataToSave = JSON.stringify({ tabs, activeTabId });
-        if (dataToSave !== lastSavedDataRef.current) {
+      if (dbSaveTimeoutRef.current) {
+        clearTimeout(dbSaveTimeoutRef.current);
+        // Force immediate DB save on unmount
+        if (userIdRef.current && !isInitialMount.current) {
           posTabsService.saveTabsState(userIdRef.current, tabs, activeTabId);
         }
       }
     };
-
-    const handleVisibilityChange = () => {
-      // Save when tab becomes hidden (user switches tabs or minimizes)
-      if (document.visibilityState === 'hidden' && !isInitialMount.current && userIdRef.current) {
-        saveTabsStateNow(tabs, activeTabId);
-      }
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [tabs, activeTabId, saveTabsStateNow]);
+  }, [tabs, activeTabId]);
 
   return {
     tabs,
