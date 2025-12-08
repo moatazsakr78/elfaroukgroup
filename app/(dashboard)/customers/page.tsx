@@ -13,6 +13,7 @@ import ColumnsControlModal from '../../components/ColumnsControlModal'
 import { useCustomerGroups, CustomerGroup } from '../../lib/hooks/useCustomerGroups'
 import { useCustomers, Customer, DEFAULT_CUSTOMER_ID } from '../../lib/hooks/useCustomers'
 import CustomersGridView from '../../components/CustomersGridView'
+import MergeCustomersModal from '../../components/MergeCustomersModal'
 import {
   ArrowPathIcon,
   FolderPlusIcon,
@@ -32,7 +33,8 @@ import {
   MinusIcon,
   FolderIcon,
   FolderOpenIcon,
-  UserPlusIcon
+  UserPlusIcon,
+  ArrowsRightLeftIcon
 } from '@heroicons/react/24/outline'
 import { ranks } from '@/app/lib/data/ranks'
 import Image from 'next/image'
@@ -254,7 +256,8 @@ export default function CustomersPage() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('grid')
   const [isGroupsHidden, setIsGroupsHidden] = useState(true)
-  
+  const [isMergeModalOpen, setIsMergeModalOpen] = useState(false)
+
   // Use the real-time hooks for customer groups and customers
   const { groups, isLoading: groupsLoading, error: groupsError, toggleGroup } = useCustomerGroups()
   const { customers, isLoading: customersLoading, error: customersError, isDefaultCustomer } = useCustomers()
@@ -656,6 +659,14 @@ export default function CustomersPage() {
               <span className="text-sm">ترتيب</span>
             </button>
 
+            <button
+              onClick={() => setIsMergeModalOpen(true)}
+              className="flex items-center gap-2 px-3 py-2 text-gray-300 hover:text-white hover:bg-gray-600/30 rounded-md cursor-pointer whitespace-nowrap transition-colors"
+            >
+              <ArrowsRightLeftIcon className="h-4 w-4" />
+              <span className="text-sm">دمج الحسابات</span>
+            </button>
+
             {viewMode === 'table' && (
               <button
                 onClick={() => setShowColumnsModal(true)}
@@ -960,6 +971,17 @@ export default function CustomersPage() {
         onClose={() => setShowColumnsModal(false)}
         columns={getAllColumns()}
         onColumnsChange={handleColumnsChange}
+      />
+
+      {/* Merge Customers Modal */}
+      <MergeCustomersModal
+        isOpen={isMergeModalOpen}
+        onClose={() => setIsMergeModalOpen(false)}
+        onMergeComplete={() => {
+          // Refresh is handled automatically by real-time hook
+          setSelectedCustomer(null)
+        }}
+        preSelectedCustomer={selectedCustomer}
       />
 
     </div>

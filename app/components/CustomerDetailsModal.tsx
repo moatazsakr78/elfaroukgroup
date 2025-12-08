@@ -218,14 +218,10 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
         return
       }
 
-      // Calculate sales balance: Sale Invoices add to balance, Sale Returns subtract
+      // Calculate sales balance: Just sum all amounts
+      // Sale Returns are already stored as negative values in the database
       const salesBalance = (allSales || []).reduce((total, sale) => {
-        if (sale.invoice_type === 'Sale Invoice') {
-          return total + (sale.total_amount || 0)
-        } else if (sale.invoice_type === 'Sale Return') {
-          return total - (sale.total_amount || 0)
-        }
-        return total
+        return total + (sale.total_amount || 0)
       }, 0)
 
       // Calculate total payments
@@ -430,6 +426,7 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
       const statements: any[] = []
 
       // Add sales
+      // Note: Sale Returns are already stored as negative values in the database
       salesData?.forEach(sale => {
         if (sale.created_at) {
           const saleDate = new Date(sale.created_at)
@@ -438,7 +435,7 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
             date: saleDate,
             description: `${sale.invoice_number} فاتورة`,
             type: sale.invoice_type === 'Sale Invoice' ? 'فاتورة' : 'مرتجع',
-            amount: sale.invoice_type === 'Sale Invoice' ? sale.total_amount : -sale.total_amount,
+            amount: sale.total_amount, // Already negative for returns
             balance: 0 // Will be calculated
           })
         }
@@ -672,13 +669,9 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
         .eq('customer_id', customer.id)
 
       if (!error && data) {
+        // Just sum all amounts - Sale Returns are already stored as negative values
         const total = data.reduce((sum, sale) => {
-          if (sale.invoice_type === 'Sale Invoice') {
-            return sum + (sale.total_amount || 0)
-          } else if (sale.invoice_type === 'Sale Return') {
-            return sum - (sale.total_amount || 0)
-          }
-          return sum
+          return sum + (sale.total_amount || 0)
         }, 0)
         setTotalInvoicesAmount(total)
       }
