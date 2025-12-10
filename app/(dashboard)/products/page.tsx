@@ -16,6 +16,7 @@ import ColorChangeModal from '../../components/ColorChangeModal'
 import ColumnsControlModal from '../../components/ColumnsControlModal'
 import ProductExportModal from '../../components/ProductExportModal'
 import ProductImportModal from '../../components/ProductImportModal'
+import ExcelProductModal from '../../components/ExcelProductModal'
 import BarcodePrintModal from '../../components/BarcodePrintModal'
 import { useBranches, Branch, ProductVariant } from '../../lib/hooks/useBranches'
 import { useProductsAdmin } from '../../../lib/hooks/useProductsAdmin'
@@ -93,6 +94,7 @@ export default function ProductsPage() {
   // Import/Export modals state
   const [showExportModal, setShowExportModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
+  const [showExcelModal, setShowExcelModal] = useState(false)
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([])
   const [isSelectionMode, setIsSelectionMode] = useState(false)
 
@@ -938,6 +940,14 @@ export default function ProductsPage() {
             >
               <ArrowDownTrayIcon className="h-5 w-5 mb-1" />
               <span className="text-sm">استيراد</span>
+            </button>
+
+            <button
+              onClick={() => setShowExcelModal(true)}
+              className="flex flex-col items-center p-2 text-green-400 hover:text-green-300 cursor-pointer min-w-[80px]"
+            >
+              <TableCellsIcon className="h-5 w-5 mb-1" />
+              <span className="text-sm">Excel</span>
             </button>
 
             {isSelectionMode && selectedProductIds.length > 0 ? (
@@ -1851,6 +1861,18 @@ export default function ProductsPage() {
         onImportComplete={() => {
           fetchProducts()
           setShowImportModal(false)
+        }}
+      />
+
+      {/* Excel Import/Export Modal */}
+      <ExcelProductModal
+        isOpen={showExcelModal}
+        onClose={() => setShowExcelModal(false)}
+        products={filteredProducts}
+        selectedProductIds={selectedProductIds}
+        createProduct={createProduct}
+        onImportComplete={() => {
+          fetchProducts()
         }}
       />
 
