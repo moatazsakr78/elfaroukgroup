@@ -99,7 +99,8 @@ import {
   XMarkIcon,
   TableCellsIcon,
   StarIcon,
-  ClipboardDocumentIcon
+  ClipboardDocumentIcon,
+  MagnifyingGlassIcon
 } from '@heroicons/react/24/outline';
 
 // Sample reports data - matching the customer details table structure
@@ -368,10 +369,9 @@ const getProductsTableColumns = (formatPrice: (value: number) => string) => [
   {
     id: 'index',
     header: '#',
-    accessor: 'index',
+    accessor: '#',
     width: 60,
-    visible: true,
-    cell: (info: any) => info.row.index + 1
+    visible: true
   },
   { 
     id: 'category_name', 
@@ -601,6 +601,7 @@ function ReportsPageContent() {
   const [customersReportData, setCustomersReportData] = useState<any[]>([]);
   const [showUsersReport, setShowUsersReport] = useState(false);
   const [usersReportData, setUsersReportData] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Define columns for users report
   const usersTableColumns = useMemo(() => [
@@ -647,7 +648,45 @@ function ReportsPageContent() {
   const [activeTab, setActiveTab] = useState<string>('main');
   const [showColumnsModal, setShowColumnsModal] = useState(false);
   const [currentReportType, setCurrentReportType] = useState<string>('');
-  
+
+  // Filtered data based on search query
+  const filteredProductsData = useMemo(() => {
+    if (!searchQuery.trim()) return productsReportData;
+    const query = searchQuery.toLowerCase().trim();
+    return productsReportData.filter(product =>
+      product.product_name?.toLowerCase().includes(query)
+    );
+  }, [productsReportData, searchQuery]);
+
+  const filteredCategoriesData = useMemo(() => {
+    if (!searchQuery.trim()) return categoriesReportData;
+    const query = searchQuery.toLowerCase().trim();
+    return categoriesReportData.filter(category =>
+      category.category_name?.toLowerCase().includes(query)
+    );
+  }, [categoriesReportData, searchQuery]);
+
+  const filteredCustomersData = useMemo(() => {
+    if (!searchQuery.trim()) return customersReportData;
+    const query = searchQuery.toLowerCase().trim();
+    return customersReportData.filter(customer =>
+      customer.customer_name?.toLowerCase().includes(query)
+    );
+  }, [customersReportData, searchQuery]);
+
+  const filteredUsersData = useMemo(() => {
+    if (!searchQuery.trim()) return usersReportData;
+    const query = searchQuery.toLowerCase().trim();
+    return usersReportData.filter(user =>
+      user.user_name?.toLowerCase().includes(query)
+    );
+  }, [usersReportData, searchQuery]);
+
+  // Clear search when switching tabs
+  useEffect(() => {
+    setSearchQuery('');
+  }, [activeTab]);
+
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);
   };
@@ -1990,6 +2029,37 @@ function ReportsPageContent() {
                 {/* Tabs Bar - Only for table area, not sidebar */}
                 <div className="bg-[#374151] border-b border-gray-600 flex-shrink-0">
                   <div className="flex items-center overflow-x-auto scrollbar-hide">
+                    {/* Search Box - Left Side */}
+                    {activeTab !== 'main' && (
+                      <div className="flex-shrink-0 px-2 py-1.5 border-r border-gray-600">
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder={
+                              activeTab === 'products' ? 'بحث باسم المنتج...' :
+                              activeTab === 'categories' ? 'بحث باسم التصنيف...' :
+                              activeTab === 'customers' ? 'بحث باسم العميل...' :
+                              activeTab === 'users' ? 'بحث باسم المستخدم...' :
+                              'بحث...'
+                            }
+                            className="w-56 bg-[#2B3544] border border-gray-600 rounded-md py-1.5 px-3 pr-8 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                            dir="rtl"
+                          />
+                          <MagnifyingGlassIcon className="absolute right-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                          {searchQuery && (
+                            <button
+                              onClick={() => setSearchQuery('')}
+                              className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white"
+                            >
+                              <XMarkIcon className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
                     {openTabs.map((tab) => (
                       <div key={tab.id} className={`flex items-center border-r border-gray-600 ${
                         tab.active
@@ -2055,7 +2125,7 @@ function ReportsPageContent() {
                           <ResizableTable
                             className="h-full w-full"
                             columns={getProductsTableColumns(formatPrice)}
-                            data={productsReportData}
+                            data={filteredProductsData}
                             selectedRowId={null}
                             reportType="PRODUCTS_REPORT"
                             showToast={showToast}
@@ -2081,7 +2151,7 @@ function ReportsPageContent() {
                           <ResizableTable
                             className="h-full w-full"
                             columns={getCategoriesTableColumns(formatPrice)}
-                            data={categoriesReportData}
+                            data={filteredCategoriesData}
                             selectedRowId={null}
                             reportType="CATEGORIES_REPORT"
                             showToast={showToast}
@@ -2107,7 +2177,7 @@ function ReportsPageContent() {
                           <ResizableTable
                             className="h-full w-full"
                             columns={getCustomersTableColumns(formatPrice)}
-                            data={customersReportData}
+                            data={filteredCustomersData}
                             selectedRowId={null}
                             reportType="CUSTOMERS_REPORT"
                             showToast={showToast}
@@ -2133,7 +2203,7 @@ function ReportsPageContent() {
                           <ResizableTable
                             className="h-full w-full"
                             columns={usersTableColumns}
-                            data={usersReportData}
+                            data={filteredUsersData}
                             selectedRowId={null}
                             reportType="CUSTOMERS_REPORT"
                             showToast={showToast}
