@@ -454,132 +454,39 @@ const CartModal = ({ isOpen, onClose, onCartChange }: CartModalProps) => {
     await clearCart();
   };
   
-  // Save order to database
+  // Save order to database via API (uses NextAuth session for proper user_id)
   const saveOrderToDatabase = async (orderData: any) => {
     try {
-      const { supabase } = await import('../lib/supabase/client');
-      
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      // Generate order number
-      const orderNumber = 'ORD-' + Date.now().toString().slice(-8);
-      
-      // Generate a session identifier for non-registered users
-      let userSession = null;
-      if (!user?.id) {
-        // For non-registered users, create a session identifier
-        userSession = 'guest_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-      }
-      
-      // Find or create customer in customers table
-      let customerId = null;
-      if (user?.id) {
-        // Check if customer already exists for this user
-        const { data: existingCustomer, error: customerCheckError } = await supabase
-          .from('customers')
-          .select('id')
-          .eq('user_id', user.id)
-          .single();
+      const response = await fetch('/api/user/orders/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          items: orderData.items.map((item: CartItemData) => ({
+            product_id: item.product_id,
+            quantity: item.quantity,
+            price: item.price
+          })),
+          customer: orderData.customer,
+          delivery_method: orderData.delivery_method,
+          shipping_details: orderData.shipping_details,
+          subtotal: orderData.subtotal,
+          shipping: orderData.shipping,
+          total: orderData.total
+        }),
+      });
 
-        if (customerCheckError && customerCheckError.code !== 'PGRST116') {
-          // Error other than "not found"
-          console.error('Error checking existing customer:', customerCheckError);
-        }
+      const result = await response.json();
 
-        if (existingCustomer) {
-          // Customer exists, update their information
-          customerId = existingCustomer.id;
-          const { error: updateError } = await supabase
-            .from('customers')
-            .update({
-              name: orderData.customer.name,
-              phone: orderData.customer.phone,
-              backup_phone: orderData.customer.altPhone,
-              address: orderData.customer.address,
-              email: user.email,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', customerId);
-
-          if (updateError) {
-            console.error('Error updating customer:', updateError);
-          }
-        } else {
-          // Customer doesn't exist, create new one
-          const { data: newCustomer, error: createCustomerError } = await supabase
-            .from('customers')
-            .insert({
-              user_id: user.id,
-              name: orderData.customer.name,
-              phone: orderData.customer.phone,
-              backup_phone: orderData.customer.altPhone,
-              address: orderData.customer.address,
-              email: user.email,
-              is_active: true,
-              loyalty_points: 0,
-              account_balance: 0,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
-            })
-            .select('id')
-            .single();
-
-          if (createCustomerError) {
-            console.error('Error creating customer:', createCustomerError);
-          } else {
-            customerId = newCustomer.id;
-          }
-        }
-      }
-      
-      // Insert order into orders table
-      const { data: orderResult, error: orderError } = await supabase
-        .from('orders')
-        .insert({
-          order_number: orderNumber,
-          customer_id: customerId,
-          user_id: user?.id || null,
-          user_session: userSession,
-          customer_name: orderData.customer.name,
-          customer_phone: orderData.customer.phone,
-          customer_address: orderData.customer.address,
-          total_amount: orderData.total,
-          subtotal_amount: orderData.subtotal,
-          shipping_amount: orderData.shipping,
-          status: 'pending',
-          delivery_type: orderData.delivery_method === 'delivery' ? 'delivery' : 'pickup',
-          notes: `الشحن: ${orderData.delivery_method === 'delivery' ? 'توصيل' : 'استلام من المتجر'}${orderData.shipping_details ? ` - ${orderData.shipping_details.company_name} - ${orderData.shipping_details.governorate_name}${orderData.shipping_details.area_name ? ` - ${orderData.shipping_details.area_name}` : ''}` : ''}`
-        })
-        .select('id')
-        .single();
-
-      if (orderError) {
-        console.error('Error creating order:', orderError);
-        throw orderError;
+      if (!response.ok) {
+        console.error('Error creating order:', result.error);
+        throw new Error(result.error || 'Failed to create order');
       }
 
-      // Insert order items
-      const orderItems = orderData.items.map((item: CartItemData) => ({
-        order_id: orderResult.id,
-        product_id: item.product_id, // Use product_id instead of item.id
-        quantity: item.quantity,
-        unit_price: item.price
-      }));
+      console.log('Order saved successfully:', result.orderNumber);
+      return result;
 
-      const { error: itemsError } = await supabase
-        .from('order_items')
-        .insert(orderItems);
-
-      if (itemsError) {
-        console.error('Error creating order items:', itemsError);
-        // If order items failed, delete the order to keep data consistent
-        await supabase.from('orders').delete().eq('id', orderResult.id);
-        throw itemsError;
-      }
-
-      console.log('Order saved successfully with ID:', orderResult.id);
-      
     } catch (error) {
       console.error('Error saving order to database:', error);
       throw error;

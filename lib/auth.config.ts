@@ -64,9 +64,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
           const authUser = authUsers[0]
 
+          // Check if user signed up with Google (no password hash)
           if (!authUser || !authUser.password_hash) {
-            console.log('❌ User has no password hash')
-            return null
+            console.log('❌ User registered with Google, needs to use Google sign-in:', credentials.email)
+            // Throw error with special code for Google users
+            throw new Error('GOOGLE_USER')
           }
 
           // Verify password

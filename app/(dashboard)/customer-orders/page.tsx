@@ -93,6 +93,12 @@ export default function CustomerOrdersPage() {
   // Payment receipts states
   const [orderReceipts, setOrderReceipts] = useState<Record<string, PaymentReceipt[]>>({});
 
+  // Add product to order states
+  const [showAddProductSection, setShowAddProductSection] = useState(false);
+  const [productSearchQuery, setProductSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+
   // Debug: Log context menu state changes
   useEffect(() => {
     console.log('Context menu state changed:', contextMenu);
@@ -816,6 +822,10 @@ export default function CustomerOrdersPage() {
   const closeEditModal = () => {
     setShowEditModal(false);
     setSelectedOrderForEdit(null);
+    // Reset add product states
+    setShowAddProductSection(false);
+    setProductSearchQuery('');
+    setSearchResults([]);
   };
 
   // Handle marking order as cancelled
@@ -993,10 +1003,10 @@ export default function CustomerOrdersPage() {
   // Remove item from order
   const removeItem = (itemId: string) => {
     if (!selectedOrderForEdit) return;
-    
+
     const updatedItems = selectedOrderForEdit.items.filter(item => item.id !== itemId);
     const newTotal = updatedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    
+
     setSelectedOrderForEdit({
       ...selectedOrderForEdit,
       items: updatedItems,
@@ -1004,16 +1014,101 @@ export default function CustomerOrdersPage() {
     });
   };
 
+  // Search products for adding to order
+  const searchProducts = async (query: string) => {
+    if (!query.trim()) {
+      setSearchResults([]);
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('id, name, product_code, price, main_image_url')
+        .or(`name.ilike.%${query}%,product_code.ilike.%${query}%`)
+        .eq('is_active', true)
+        .limit(10);
+
+      if (error) {
+        console.error('Error searching products:', error);
+        setSearchResults([]);
+        return;
+      }
+
+      setSearchResults(data || []);
+    } catch (error) {
+      console.error('Error searching products:', error);
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // Add product to order
+  const addProductToOrder = (product: any) => {
+    if (!selectedOrderForEdit) return;
+
+    // Check if product already exists in order
+    const existingItem = selectedOrderForEdit.items.find(
+      item => item.productId === product.id
+    );
+
+    if (existingItem) {
+      // Increase quantity if product already exists
+      updateItemQuantity(existingItem.id, existingItem.quantity + 1);
+    } else {
+      // Add new item with temporary ID (will be created in database on save)
+      const newItem = {
+        id: `new_${Date.now()}_${product.id}`,
+        productId: product.id,
+        name: product.name,
+        price: product.price,
+        quantity: 1,
+        image: product.main_image_url,
+        notes: '',
+        isNew: true // Flag to identify new items when saving
+      };
+
+      const updatedItems = [...selectedOrderForEdit.items, newItem];
+      const newTotal = updatedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+      setSelectedOrderForEdit({
+        ...selectedOrderForEdit,
+        items: updatedItems,
+        total: newTotal
+      });
+    }
+
+    // Clear search after adding
+    setProductSearchQuery('');
+    setSearchResults([]);
+    setShowAddProductSection(false);
+  };
+
   // Save order changes
   const saveOrderChanges = async () => {
     if (!selectedOrderForEdit) return;
-    
+
     try {
-      
+      // Get the order's database ID first
+      const { data: orderData, error: orderFetchError } = await supabase
+        .from('orders')
+        .select('id')
+        .eq('order_number', selectedOrderForEdit.id)
+        .single();
+
+      if (orderFetchError || !orderData) {
+        console.error('Error fetching order:', orderFetchError);
+        return;
+      }
+
+      const orderId = orderData.id;
+
       // Update order total
       const { error: orderError } = await supabase
         .from('orders')
-        .update({ 
+        .update({
           total_amount: selectedOrderForEdit.total,
           updated_at: new Date().toISOString()
         })
@@ -1024,11 +1119,15 @@ export default function CustomerOrdersPage() {
         return;
       }
 
-      // Update order items quantities, notes and remove deleted items
-      for (const item of selectedOrderForEdit.items) {
+      // Separate new items from existing items
+      const newItems = selectedOrderForEdit.items.filter((item: any) => item.isNew);
+      const existingItems = selectedOrderForEdit.items.filter((item: any) => !item.isNew);
+
+      // Update existing order items quantities and notes
+      for (const item of existingItems) {
         const { error: itemError } = await supabase
           .from('order_items')
-          .update({ 
+          .update({
             quantity: item.quantity,
             notes: item.notes || null
           })
@@ -1039,9 +1138,26 @@ export default function CustomerOrdersPage() {
         }
       }
 
+      // Insert new items
+      for (const newItem of newItems) {
+        const { error: insertError } = await supabase
+          .from('order_items')
+          .insert({
+            order_id: orderId,
+            product_id: (newItem as any).productId,
+            quantity: newItem.quantity,
+            unit_price: newItem.price,
+            notes: newItem.notes || null
+          });
+
+        if (insertError) {
+          console.error('Error inserting new item:', insertError);
+        }
+      }
+
       // Remove items that were deleted
       const originalItems = orders.find(o => o.id === selectedOrderForEdit.id)?.items || [];
-      const deletedItems = originalItems.filter(original => 
+      const deletedItems = originalItems.filter(original =>
         !selectedOrderForEdit.items.find(current => current.id === original.id)
       );
 
@@ -1056,10 +1172,44 @@ export default function CustomerOrdersPage() {
         }
       }
 
-      // Update local state
-      setOrders(prevOrders => 
-        prevOrders.map(order => 
-          order.id === selectedOrderForEdit.id ? selectedOrderForEdit : order
+      // Refetch order items to get proper IDs for newly inserted items
+      const { data: updatedItems, error: refetchError } = await supabase
+        .from('order_items')
+        .select(`
+          id,
+          product_id,
+          quantity,
+          unit_price,
+          notes,
+          products (
+            id,
+            name,
+            main_image_url
+          )
+        `)
+        .eq('order_id', orderId);
+
+      if (refetchError) {
+        console.error('Error refetching items:', refetchError);
+      }
+
+      // Update local state with refetched data
+      const updatedOrder = {
+        ...selectedOrderForEdit,
+        items: updatedItems?.map((item: any) => ({
+          id: item.id,
+          productId: item.product_id,
+          name: item.products?.name || 'منتج غير معروف',
+          price: item.unit_price,
+          quantity: item.quantity,
+          image: item.products?.main_image_url || null,
+          notes: item.notes
+        })) || selectedOrderForEdit.items
+      };
+
+      setOrders(prevOrders =>
+        prevOrders.map(order =>
+          order.id === selectedOrderForEdit.id ? updatedOrder : order
         )
       );
 
@@ -1883,8 +2033,108 @@ export default function CustomerOrdersPage() {
 
                 {/* Items List */}
                 <div>
-                  <h4 className="font-semibold text-gray-800 mb-4">عناصر الطلب</h4>
-                  
+                  <div className="flex justify-between items-center mb-4">
+                    <h4 className="font-semibold text-gray-800">عناصر الطلب</h4>
+                    <button
+                      onClick={() => setShowAddProductSection(!showAddProductSection)}
+                      className="flex items-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors text-sm font-medium"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      إضافة منتج
+                    </button>
+                  </div>
+
+                  {/* Add Product Section */}
+                  {showAddProductSection && (
+                    <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                      <div className="flex justify-between items-center mb-3">
+                        <h5 className="font-semibold text-blue-800">البحث عن منتج لإضافته</h5>
+                        <button
+                          onClick={() => {
+                            setShowAddProductSection(false);
+                            setProductSearchQuery('');
+                            setSearchResults([]);
+                          }}
+                          className="text-gray-500 hover:text-gray-700"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+
+                      {/* Search Input */}
+                      <div className="relative mb-3">
+                        <input
+                          type="text"
+                          value={productSearchQuery}
+                          onChange={(e) => {
+                            setProductSearchQuery(e.target.value);
+                            searchProducts(e.target.value);
+                          }}
+                          placeholder="ابحث بالاسم أو كود المنتج..."
+                          className="w-full px-4 py-3 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                        />
+                        <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
+                          {isSearching ? (
+                            <svg className="w-5 h-5 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                          ) : (
+                            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Search Results */}
+                      {searchResults.length > 0 && (
+                        <div className="max-h-60 overflow-y-auto space-y-2">
+                          {searchResults.map((product) => (
+                            <div
+                              key={product.id}
+                              className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200 hover:border-blue-400 hover:bg-blue-50 cursor-pointer transition-colors"
+                              onClick={() => addProductToOrder(product)}
+                            >
+                              <div className="w-12 h-12 bg-gray-200 rounded-lg flex items-center justify-center flex-shrink-0">
+                                {product.main_image_url ? (
+                                  <img
+                                    src={product.main_image_url}
+                                    alt={product.name}
+                                    className="w-full h-full object-cover rounded-lg"
+                                  />
+                                ) : (
+                                  <span className="text-gray-400 text-xl">📦</span>
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <h6 className="font-semibold text-gray-800 truncate">{product.name}</h6>
+                                <p className="text-gray-500 text-sm">كود: {product.product_code || 'غير محدد'}</p>
+                              </div>
+                              <div className="text-left">
+                                <p className="font-bold text-green-600">{formatPrice(product.price)}</p>
+                                <button className="text-blue-600 text-sm font-medium hover:text-blue-800">
+                                  + إضافة
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* No Results */}
+                      {productSearchQuery && !isSearching && searchResults.length === 0 && (
+                        <div className="text-center py-4 text-gray-500">
+                          لم يتم العثور على منتجات
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {selectedOrderForEdit.items.length === 0 ? (
                     <div className="text-center py-8">
                       <p className="text-gray-500">لا توجد عناصر في الطلب</p>
@@ -1892,14 +2142,23 @@ export default function CustomerOrdersPage() {
                   ) : (
                     <div className="space-y-4">
                       {selectedOrderForEdit.items.map((item) => (
-                        <div key={item.id} className="bg-gray-50 rounded-lg p-4 space-y-3">
+                        <div key={item.id} className={`rounded-lg p-4 space-y-3 ${(item as any).isNew ? 'bg-green-50 border-2 border-green-300' : 'bg-gray-50'}`}>
+                          {/* New Item Badge */}
+                          {(item as any).isNew && (
+                            <div className="flex justify-end">
+                              <span className="px-2 py-1 bg-green-500 text-white text-xs rounded-full font-medium">
+                                منتج جديد
+                              </span>
+                            </div>
+                          )}
+
                           {/* First Row: Product Info and Controls */}
                           <div className="flex items-center gap-4">
                             {/* Product Image */}
                             <div className="w-16 h-16 bg-gray-200 rounded-lg flex items-center justify-center flex-shrink-0">
                               {item.image ? (
-                                <img 
-                                  src={item.image} 
+                                <img
+                                  src={item.image}
                                   alt={item.name}
                                   className="w-full h-full object-cover rounded-lg"
                                 />

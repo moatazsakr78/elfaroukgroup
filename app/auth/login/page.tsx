@@ -20,6 +20,7 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [error, setError] = useState('');
+  const [isGoogleUser, setIsGoogleUser] = useState(false);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -29,6 +30,7 @@ export default function LoginPage() {
     }));
     // Clear error when user starts typing
     if (error) setError('');
+    if (isGoogleUser) setIsGoogleUser(false);
   };
 
   const handleEmailLogin = async (e: React.FormEvent) => {
@@ -44,6 +46,33 @@ export default function LoginPage() {
       });
 
       if (result?.error) {
+        // Check if the error is for a Google user
+        if (result.error === 'CredentialsSignin') {
+          // Check if this user exists with Google
+          try {
+            const checkResponse = await fetch('/api/auth/check-provider', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email: formData.email })
+            });
+            const checkData = await checkResponse.json();
+
+            if (checkData.isGoogleUser) {
+              // Auto-redirect to Google sign-in
+              setIsGoogleUser(true);
+              setError('هذا الحساب مسجل باستخدام جوجل. جاري تحويلك لتسجيل الدخول بجوجل...');
+              setIsLoading(false);
+
+              // Automatically trigger Google sign-in after a brief delay
+              setTimeout(() => {
+                signIn('google', { callbackUrl: '/' });
+              }, 1500);
+              return;
+            }
+          } catch (checkError) {
+            console.error('Error checking provider:', checkError);
+          }
+        }
         setError('البريد الإلكتروني أو كلمة المرور غير صحيحة');
         setIsLoading(false);
         return;
@@ -128,7 +157,11 @@ export default function LoginPage() {
           <h2 className="text-2xl font-bold text-center text-gray-800 mb-8">تسجيل الدخول</h2>
           
           {error && (
-            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-6 text-center">
+            <div className={`px-4 py-3 rounded-lg mb-6 text-center ${
+              isGoogleUser
+                ? 'bg-blue-100 border border-blue-400 text-blue-700'
+                : 'bg-red-100 border border-red-400 text-red-700'
+            }`}>
               {error}
             </div>
           )}
@@ -137,7 +170,11 @@ export default function LoginPage() {
           <button
             onClick={handleGoogleLogin}
             disabled={isGoogleLoading}
-            className="w-full bg-white hover:bg-gray-50 text-gray-800 border border-gray-300 font-semibold py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm mb-6"
+            className={`w-full bg-white hover:bg-gray-50 text-gray-800 font-semibold py-3 px-4 rounded-lg transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm mb-6 ${
+              isGoogleUser
+                ? 'border-2 border-blue-500 ring-2 ring-blue-200 animate-pulse'
+                : 'border border-gray-300'
+            }`}
           >
             {isGoogleLoading ? (
               <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-red-600"></div>
