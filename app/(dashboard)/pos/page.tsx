@@ -1523,7 +1523,9 @@ function POSPageContent() {
       }
     }
 
-    if (cartItems.length === 0) {
+    // In edit mode, allow empty cart (user might want to delete all items)
+    const tabIsEditModeCheck = activePOSTab?.isEditMode || false;
+    if (cartItems.length === 0 && !tabIsEditModeCheck) {
       const emptyCartMessage = isTransferMode
         ? "لا يمكن إنشاء فاتورة نقل بدون منتجات"
         : isReturnMode
@@ -1973,6 +1975,12 @@ function POSPageContent() {
 
   // Check if all required selections are made (works for both modes)
   const hasAllRequiredSelections = () => {
+    // In edit mode, skip validation - the original invoice already had valid selections
+    // User is just modifying items, not creating a new invoice
+    if (activePOSTab?.isEditMode) {
+      return true;
+    }
+
     if (isTransferMode) {
       return transferFromLocation && transferToLocation && selections.record;
     } else if (isPurchaseMode) {
@@ -3775,7 +3783,8 @@ function POSPageContent() {
                       {/* Button section */}
                       <button
                         disabled={
-                          cartItems.length === 0 ||
+                          // In edit mode, allow empty cart (user might delete all items)
+                          (cartItems.length === 0 && !activePOSTab?.isEditMode) ||
                           !hasAllRequiredSelections() ||
                           isProcessingInvoice
                         }
@@ -3794,7 +3803,7 @@ function POSPageContent() {
                       >
                         {isProcessingInvoice
                           ? "جاري المعالجة..."
-                          : cartItems.length === 0
+                          : cartItems.length === 0 && !activePOSTab?.isEditMode
                             ? "السلة فارغة"
                             : !hasAllRequiredSelections()
                               ? "يجب إكمال التحديدات"
@@ -4228,7 +4237,8 @@ function POSPageContent() {
                 {/* Button section */}
                 <button
                 disabled={
-                  cartItems.length === 0 ||
+                  // In edit mode, allow empty cart (user might delete all items)
+                  (cartItems.length === 0 && !activePOSTab?.isEditMode) ||
                   !hasAllRequiredSelections() ||
                   isProcessingInvoice
                 }
@@ -4247,7 +4257,7 @@ function POSPageContent() {
               >
                 {isProcessingInvoice
                   ? "جاري المعالجة..."
-                  : cartItems.length === 0
+                  : cartItems.length === 0 && !activePOSTab?.isEditMode
                     ? "السلة فارغة"
                     : !hasAllRequiredSelections()
                       ? "يجب إكمال التحديدات"
