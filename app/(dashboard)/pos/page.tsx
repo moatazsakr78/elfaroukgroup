@@ -168,6 +168,7 @@ function POSPageContent() {
     activeTabId,
     addTab,
     addTabWithCustomer,
+    addTabWithCustomerAndCart,
     closeTab,
     switchTab,
     updateActiveTabCart,
@@ -355,8 +356,16 @@ function POSPageContent() {
   }, []);
 
   // Edit Mode: Check URL params, load invoice data, and fetch sale items
+  // Track if edit mode has been initialized to prevent re-running
+  const editModeInitializedRef = useRef(false);
+
   useEffect(() => {
     const initEditMode = async () => {
+      // Skip if already initialized
+      if (editModeInitializedRef.current) {
+        return;
+      }
+
       const urlParams = new URLSearchParams(window.location.search);
       const isEdit = urlParams.get('edit') === 'true';
       const saleId = urlParams.get('saleId');
@@ -364,6 +373,9 @@ function POSPageContent() {
       if (!isEdit || !saleId) {
         return;
       }
+
+      // Mark as initialized
+      editModeInitializedRef.current = true;
 
       // Set edit mode
       setIsEditMode(true);
@@ -378,15 +390,6 @@ function POSPageContent() {
           const editData = JSON.parse(editDataStr);
           customerData = editData;
           localStorageItems = editData.items || [];
-
-          // Set customer for the tab
-          if (editData.customerId) {
-            setGlobalCustomer({
-              id: editData.customerId,
-              name: editData.customerName,
-              phone: editData.customerPhone
-            });
-          }
 
           // Clear localStorage after reading
           localStorage.removeItem('pos_edit_invoice');
@@ -478,15 +481,48 @@ function POSPageContent() {
           }));
         }
 
+        // Create customer object for the new tab
+        const customerForTab = customerData?.customerId ? {
+          id: customerData.customerId,
+          name: customerData.customerName,
+          phone: customerData.customerPhone
+        } : null;
+
+        // Create tab title with customer name (like when selecting a customer from POS)
+        const tabTitle = customerForTab?.name || 'تعديل فاتورة';
+
         if (newCartItems.length > 0) {
+          // Create a new tab with the customer name and cart items (like when selecting a customer)
+          addTabWithCustomerAndCart(customerForTab, newCartItems, tabTitle, {
+            branch: globalSelections.branch,
+            record: globalSelections.record,
+            priceType: selectedPriceType,
+          });
           setCartItems(newCartItems);
-          updateActiveTabCart(newCartItems);
           setEditItemsLoaded(true);
         } else {
+          // Even if no cart items, create a tab with customer name
+          if (customerForTab) {
+            addTabWithCustomerAndCart(customerForTab, [], tabTitle, {
+              branch: globalSelections.branch,
+              record: globalSelections.record,
+              priceType: selectedPriceType,
+            });
+          }
           setEditItemsLoaded(true);
         }
       } catch (error) {
         console.error('Error loading edit items:', error);
+
+        // Create customer object for the new tab
+        const customerForTab = customerData?.customerId ? {
+          id: customerData.customerId,
+          name: customerData.customerName,
+          phone: customerData.customerPhone
+        } : null;
+
+        // Create tab title with customer name
+        const tabTitle = customerForTab?.name || 'تعديل فاتورة';
 
         // Fallback to localStorage items if exception occurred
         if (localStorageItems.length > 0) {
@@ -504,15 +540,31 @@ function POSPageContent() {
             discount: item.discount || 0,
             isEditItem: true
           }));
+
+          // Create a new tab with the customer name and cart items
+          addTabWithCustomerAndCart(customerForTab, fallbackItems, tabTitle, {
+            branch: globalSelections.branch,
+            record: globalSelections.record,
+            priceType: selectedPriceType,
+          });
           setCartItems(fallbackItems);
-          updateActiveTabCart(fallbackItems);
+          setEditItemsLoaded(true);
+        } else {
+          // Even if no items, create a tab with customer name
+          if (customerForTab) {
+            addTabWithCustomerAndCart(customerForTab, [], tabTitle, {
+              branch: globalSelections.branch,
+              record: globalSelections.record,
+              priceType: selectedPriceType,
+            });
+          }
           setEditItemsLoaded(true);
         }
       }
     };
 
     initEditMode();
-  }, []);
+  }, [addTabWithCustomerAndCart, globalSelections.branch, globalSelections.record, selectedPriceType]);
 
   // Generate dynamic table columns based on branches - same as Products page
   const dynamicTableColumns = useMemo(() => {

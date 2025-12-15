@@ -39,6 +39,7 @@ interface UsePOSTabsReturn {
   activeTabId: string;
   addTab: (title: string, inheritedSelections?: InheritedSelections) => void;
   addTabWithCustomer: (customer: any, inheritedSelections?: InheritedSelections) => void;
+  addTabWithCustomerAndCart: (customer: any, cartItems: any[], title: string, inheritedSelections?: InheritedSelections) => string;
   closeTab: (tabId: string) => void;
   switchTab: (tabId: string) => void;
   updateActiveTabCart: (cartItems: any[]) => void;
@@ -206,6 +207,47 @@ export function usePOSTabs(): UsePOSTabsReturn {
       return newTabs;
     });
     setActiveTabId(newTabId);
+  }, [saveState]);
+
+  // Add tab with customer, cart items, and custom title (for edit invoice mode)
+  // Returns the new tab ID
+  const addTabWithCustomerAndCart = useCallback((customer: any, cartItems: any[], title: string, inheritedSelections?: InheritedSelections): string => {
+    const newTabId = `pos-${Date.now()}`;
+    const tabTitle = title || customer?.name || 'فاتورة جديدة';
+
+    // Get customer's default record if set
+    let customerRecord = null;
+    if (customer?.default_record_id) {
+      customerRecord = { id: customer.default_record_id };
+    } else if (inheritedSelections?.record) {
+      customerRecord = inheritedSelections.record;
+    }
+
+    // Get customer's default price type if set
+    const customerPriceType = customer?.default_price_type || inheritedSelections?.priceType || 'price';
+
+    setTabs(prev => {
+      const newTabs = [
+        ...prev.map(tab => ({ ...tab, active: false })),
+        {
+          id: newTabId,
+          title: tabTitle,
+          active: true,
+          cartItems: cartItems,
+          selections: {
+            customer: customer,
+            branch: inheritedSelections?.branch || null,
+            record: customerRecord,
+            priceType: customerPriceType as any,
+          },
+        },
+      ];
+      // Instant save
+      saveState(newTabs, newTabId);
+      return newTabs;
+    });
+    setActiveTabId(newTabId);
+    return newTabId;
   }, [saveState]);
 
   const closeTab = useCallback((tabId: string) => {
@@ -498,6 +540,7 @@ export function usePOSTabs(): UsePOSTabsReturn {
     activeTabId,
     addTab,
     addTabWithCustomer,
+    addTabWithCustomerAndCart,
     closeTab,
     switchTab,
     updateActiveTabCart,
