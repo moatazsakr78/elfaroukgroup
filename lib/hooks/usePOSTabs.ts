@@ -24,6 +24,9 @@ export interface POSTab {
   transferToLocation?: any;
   isPostponed?: boolean;
   postponedAt?: string;
+  // Edit Invoice Mode
+  isEditMode?: boolean;
+  editInvoiceData?: any;
 }
 
 interface InheritedSelections {
@@ -33,13 +36,18 @@ interface InheritedSelections {
   priceType?: string;
 }
 
+interface EditModeOptions {
+  isEditMode?: boolean;
+  editInvoiceData?: any;
+}
+
 interface UsePOSTabsReturn {
   tabs: POSTab[];
   activeTab: POSTab | undefined;
   activeTabId: string;
   addTab: (title: string, inheritedSelections?: InheritedSelections) => void;
   addTabWithCustomer: (customer: any, inheritedSelections?: InheritedSelections) => void;
-  addTabWithCustomerAndCart: (customer: any, cartItems: any[], title: string, inheritedSelections?: InheritedSelections) => string;
+  addTabWithCustomerAndCart: (customer: any, cartItems: any[], title: string, inheritedSelections?: InheritedSelections, editModeOptions?: EditModeOptions) => string;
   closeTab: (tabId: string) => void;
   switchTab: (tabId: string) => void;
   updateActiveTabCart: (cartItems: any[]) => void;
@@ -211,7 +219,8 @@ export function usePOSTabs(): UsePOSTabsReturn {
 
   // Add tab with customer, cart items, and custom title (for edit invoice mode)
   // Returns the new tab ID
-  const addTabWithCustomerAndCart = useCallback((customer: any, cartItems: any[], title: string, inheritedSelections?: InheritedSelections): string => {
+  // editModeOptions: Pass isEditMode and editInvoiceData directly to avoid race conditions
+  const addTabWithCustomerAndCart = useCallback((customer: any, cartItems: any[], title: string, inheritedSelections?: InheritedSelections, editModeOptions?: EditModeOptions): string => {
     const newTabId = `pos-${Date.now()}`;
     const tabTitle = title || customer?.name || 'فاتورة جديدة';
 
@@ -240,6 +249,9 @@ export function usePOSTabs(): UsePOSTabsReturn {
             record: customerRecord,
             priceType: customerPriceType as any,
           },
+          // Set edit mode directly when creating the tab (no setTimeout needed)
+          isEditMode: editModeOptions?.isEditMode || false,
+          editInvoiceData: editModeOptions?.editInvoiceData || null,
         },
       ];
       // Instant save
@@ -444,7 +456,14 @@ export function usePOSTabs(): UsePOSTabsReturn {
 
         if (localState && localState.tabs && localState.tabs.length > 0) {
           console.log('POS Tabs: Loaded from localStorage:', localState.tabs.length, 'tabs');
-          setTabs(localState.tabs);
+          // Clean up any tabs: ensure main tab never has edit mode
+          const cleanedTabs = localState.tabs.map(tab => {
+            if (tab.id === 'main') {
+              return { ...tab, isEditMode: false, editInvoiceData: null };
+            }
+            return tab;
+          });
+          setTabs(cleanedTabs);
           setActiveTabId(localState.activeTabId || 'main');
         }
 
@@ -452,15 +471,23 @@ export function usePOSTabs(): UsePOSTabsReturn {
         const dbState = await posTabsService.loadTabsState(user.id);
 
         if (dbState && dbState.tabs && dbState.tabs.length > 0) {
+          // Clean up DB tabs: ensure main tab never has edit mode
+          const cleanedDbTabs = dbState.tabs.map((tab: any) => {
+            if (tab.id === 'main') {
+              return { ...tab, isEditMode: false, editInvoiceData: null };
+            }
+            return tab;
+          });
+
           // If no local state, use DB state
           if (!localState || !localState.tabs || localState.tabs.length === 0) {
-            console.log('POS Tabs: Using database state:', dbState.tabs.length, 'tabs');
-            setTabs(dbState.tabs);
+            console.log('POS Tabs: Using database state:', cleanedDbTabs.length, 'tabs');
+            setTabs(cleanedDbTabs);
             setActiveTabId(dbState.active_tab_id || 'main');
             // Also save to localStorage for next time
-            saveToLocalStorage(user.id, dbState.tabs, dbState.active_tab_id || 'main');
+            saveToLocalStorage(user.id, cleanedDbTabs, dbState.active_tab_id || 'main');
           }
-          lastDbSavedDataRef.current = JSON.stringify({ tabs: dbState.tabs, activeTabId: dbState.active_tab_id });
+          lastDbSavedDataRef.current = JSON.stringify({ tabs: cleanedDbTabs, activeTabId: dbState.active_tab_id });
         }
 
       } catch (error) {

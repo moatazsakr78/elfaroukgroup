@@ -355,6 +355,18 @@ function POSPageContent() {
     return () => window.removeEventListener('resize', checkDevice);
   }, []);
 
+  // Cleanup: Clear any stale edit invoice data from localStorage on page load
+  // This prevents old data from interfering with new edit sessions
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const isEdit = urlParams.get('edit') === 'true';
+
+    // Only clear if we're NOT in edit mode - if we are, let the initEditMode handle it
+    if (!isEdit) {
+      localStorage.removeItem('pos_edit_invoice');
+    }
+  }, []);
+
   // Edit Mode: Check URL params, load invoice data, and fetch sale items
   // Track if edit mode has been initialized to prevent re-running
   const editModeInitializedRef = useRef(false);
@@ -377,8 +389,8 @@ function POSPageContent() {
       // Mark as initialized
       editModeInitializedRef.current = true;
 
-      // Set edit mode
-      setIsEditMode(true);
+      // Don't set isEditMode here - let the tab control the edit mode state
+      // The edit mode will be set in the tab via updateActiveTabMode after tab creation
 
       // Read edit data from localStorage for customer info (localStorage is shared between tabs)
       const editDataStr = localStorage.getItem('pos_edit_invoice');
@@ -397,12 +409,6 @@ function POSPageContent() {
           console.error('Error parsing edit invoice data:', error);
         }
       }
-
-      // Set edit invoice data with saleId
-      setEditInvoiceData({
-        ...customerData,
-        saleId: saleId
-      });
 
       // Fetch sale items from database
       try {
@@ -435,12 +441,8 @@ function POSPageContent() {
           .eq('id', saleId)
           .single();
 
-        // Update edit invoice data with invoice number
-        setEditInvoiceData((prev: any) => ({
-          ...prev,
-          saleId: saleId,
-          invoiceNumber: saleData?.invoice_number || ''
-        }));
+        // Store invoice number for later use (don't set state here)
+        const invoiceNumber = saleData?.invoice_number || '';
 
         // Build cart items from fetched data
         let newCartItems: any[] = [];
@@ -491,14 +493,24 @@ function POSPageContent() {
         // Create tab title with customer name (like when selecting a customer from POS)
         const tabTitle = customerForTab?.name || 'تعديل فاتورة';
 
+        // Store edit invoice data for the new tab
+        const editData = {
+          ...customerData,
+          saleId: saleId,
+          invoiceNumber: invoiceNumber
+        };
+
         if (newCartItems.length > 0) {
           // Create a new tab with the customer name and cart items (like when selecting a customer)
+          // Pass edit mode options directly to avoid race conditions
           addTabWithCustomerAndCart(customerForTab, newCartItems, tabTitle, {
             branch: globalSelections.branch,
             record: globalSelections.record,
             priceType: selectedPriceType,
+          }, {
+            isEditMode: true,
+            editInvoiceData: editData,
           });
-          setCartItems(newCartItems);
           setEditItemsLoaded(true);
         } else {
           // Even if no cart items, create a tab with customer name
@@ -507,6 +519,9 @@ function POSPageContent() {
               branch: globalSelections.branch,
               record: globalSelections.record,
               priceType: selectedPriceType,
+            }, {
+              isEditMode: true,
+              editInvoiceData: editData,
             });
           }
           setEditItemsLoaded(true);
@@ -523,6 +538,13 @@ function POSPageContent() {
 
         // Create tab title with customer name
         const tabTitle = customerForTab?.name || 'تعديل فاتورة';
+
+        // Store edit invoice data for the new tab
+        const editData = {
+          ...customerData,
+          saleId: saleId,
+          invoiceNumber: ''
+        };
 
         // Fallback to localStorage items if exception occurred
         if (localStorageItems.length > 0) {
@@ -542,12 +564,15 @@ function POSPageContent() {
           }));
 
           // Create a new tab with the customer name and cart items
+          // Pass edit mode options directly to avoid race conditions
           addTabWithCustomerAndCart(customerForTab, fallbackItems, tabTitle, {
             branch: globalSelections.branch,
             record: globalSelections.record,
             priceType: selectedPriceType,
+          }, {
+            isEditMode: true,
+            editInvoiceData: editData,
           });
-          setCartItems(fallbackItems);
           setEditItemsLoaded(true);
         } else {
           // Even if no items, create a tab with customer name
@@ -556,6 +581,9 @@ function POSPageContent() {
               branch: globalSelections.branch,
               record: globalSelections.record,
               priceType: selectedPriceType,
+            }, {
+              isEditMode: true,
+              editInvoiceData: editData,
             });
           }
           setEditItemsLoaded(true);
@@ -1032,6 +1060,9 @@ function POSPageContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Intentionally empty - fetchCategories and performance monitors are internal
 
+  // Ref to track previous activeTabId for cart sync
+  const prevCartSyncTabIdRef = useRef<string | null>(null);
+
   // Sync cart with active tab - wait for tabs to load from database first
   useEffect(() => {
     // Don't sync until tabs are loaded from database
@@ -1039,25 +1070,32 @@ function POSPageContent() {
       return;
     }
 
-    // Don't sync if we're in edit mode - let edit mode handle its own cart items
-    // Check both state and URL params to handle race condition
-    const urlParams = new URLSearchParams(window.location.search);
-    const isEditFromUrl = urlParams.get('edit') === 'true';
-
-    if (isEditMode || isEditFromUrl) {
+    // Only sync cart when tab actually changes (not when tab data changes)
+    if (prevCartSyncTabIdRef.current === activeTabId) {
       return;
     }
+    prevCartSyncTabIdRef.current = activeTabId;
 
     if (activePOSTab) {
       setCartItems(activePOSTab.cartItems || []);
     }
-  }, [activeTabId, activePOSTab, isLoadingTabs, isEditMode]);
+  }, [activeTabId, activePOSTab, isLoadingTabs]);
+
+  // Ref to track previous activeTabId to only restore on actual tab switch
+  const prevActiveTabIdRef = useRef<string | null>(null);
 
   // Sync modes and selections from active tab after loading
+  // Only runs when activeTabId changes (tab switch), not when tab data changes
   useEffect(() => {
     if (isLoadingTabs || !activePOSTab) {
       return;
     }
+
+    // Only restore if we actually switched tabs (not just tab data changed)
+    if (prevActiveTabIdRef.current === activeTabId) {
+      return;
+    }
+    prevActiveTabIdRef.current = activeTabId;
 
     // Restore modes from saved tab
     if (activePOSTab.isPurchaseMode !== undefined) {
@@ -1081,11 +1119,19 @@ function POSPageContent() {
     if (activePOSTab.transferToLocation !== undefined) {
       setTransferToLocation(activePOSTab.transferToLocation);
     }
+    // Restore edit mode from saved tab
+    setIsEditMode(activePOSTab.isEditMode || false);
+    setEditInvoiceData(activePOSTab.editInvoiceData || null);
+    // Reset editItemsLoaded when switching tabs to allow loading items for the new tab
+    if (!activePOSTab.isEditMode) {
+      setEditItemsLoaded(false);
+    }
 
     console.log('POS: Restored modes from tab:', {
       isPurchaseMode: activePOSTab.isPurchaseMode,
       isTransferMode: activePOSTab.isTransferMode,
       isReturnMode: activePOSTab.isReturnMode,
+      isEditMode: activePOSTab.isEditMode,
     });
   }, [activeTabId, activePOSTab, isLoadingTabs]);
 
@@ -1100,6 +1146,8 @@ function POSPageContent() {
       activePOSTab.isPurchaseMode !== isPurchaseMode ||
       activePOSTab.isTransferMode !== isTransferMode ||
       activePOSTab.isReturnMode !== isReturnMode ||
+      activePOSTab.isEditMode !== isEditMode ||
+      JSON.stringify(activePOSTab.editInvoiceData) !== JSON.stringify(editInvoiceData) ||
       JSON.stringify(activePOSTab.selectedSupplier) !== JSON.stringify(selectedSupplier) ||
       JSON.stringify(activePOSTab.selectedWarehouse) !== JSON.stringify(selectedWarehouse) ||
       JSON.stringify(activePOSTab.transferFromLocation) !== JSON.stringify(transferFromLocation) ||
@@ -1110,13 +1158,15 @@ function POSPageContent() {
         isPurchaseMode,
         isTransferMode,
         isReturnMode,
+        isEditMode,
+        editInvoiceData,
         selectedSupplier,
         selectedWarehouse,
         transferFromLocation,
         transferToLocation,
       });
     }
-  }, [isPurchaseMode, isTransferMode, isReturnMode, selectedSupplier, selectedWarehouse, transferFromLocation, transferToLocation, isLoadingTabs, activePOSTab, updateActiveTabMode]);
+  }, [isPurchaseMode, isTransferMode, isReturnMode, isEditMode, editInvoiceData, selectedSupplier, selectedWarehouse, transferFromLocation, transferToLocation, isLoadingTabs, activePOSTab, updateActiveTabMode]);
 
   // OPTIMIZED: Memoized product filtering to prevent unnecessary re-renders
   // Returns Set of matching product IDs for O(1) lookup
@@ -1491,8 +1541,12 @@ function POSPageContent() {
 
     try {
       // Handle Edit Mode - Update existing invoice
-      if (isEditMode && editInvoiceData) {
-        const saleId = editInvoiceData.saleId;
+      // Use tab's edit mode state directly to avoid sync issues
+      const tabIsEditMode = activePOSTab?.isEditMode || false;
+      const tabEditInvoiceData = activePOSTab?.editInvoiceData || null;
+
+      if (tabIsEditMode && tabEditInvoiceData) {
+        const saleId = tabEditInvoiceData.saleId;
 
         // Get the original sale total
         const { data: originalSale } = await supabase
@@ -1525,8 +1579,9 @@ function POSPageContent() {
           product_id: item.product.id,
           quantity: item.quantity,
           unit_price: item.price,
-          total_price: item.totalPrice || (item.price * item.quantity),
-          discount: item.discount || 0
+          cost_price: item.product.cost_price || 0,
+          discount: item.discount || 0,
+          notes: ''
         }));
 
         const { error: insertError } = await supabase
@@ -1541,8 +1596,7 @@ function POSPageContent() {
         const { error: updateError } = await supabase
           .from('sales')
           .update({
-            total_amount: newTotal,
-            updated_at: new Date().toISOString()
+            total_amount: newTotal
           })
           .eq('id', saleId);
 
@@ -1569,16 +1623,22 @@ function POSPageContent() {
           }
         }
 
-        // Success! Show message and close window
-        alert(`تم تعديل الفاتورة رقم ${editInvoiceData.invoiceNumber} بنجاح`);
+        // Success! Show message
+        alert(`تم تعديل الفاتورة رقم ${tabEditInvoiceData.invoiceNumber} بنجاح`);
 
-        // Clear cart and reset edit mode
+        // Clear cart and close the edit tab
         clearCart();
-        setIsEditMode(false);
-        setEditInvoiceData(null);
 
-        // Close the window since it was opened for editing
-        window.close();
+        // Clean URL params (remove edit mode params)
+        const url = new URL(window.location.href);
+        url.searchParams.delete('edit');
+        url.searchParams.delete('saleId');
+        window.history.replaceState({}, '', url.toString());
+
+        // Close the current edit tab (returns to main tab or previous tab)
+        if (activeTabId !== 'main') {
+          closeTab(activeTabId);
+        }
 
         return;
       }
@@ -2879,27 +2939,7 @@ function POSPageContent() {
                 {/* Separator */}
                 <div className="h-8 w-px bg-gray-600 mx-1"></div>
 
-                {isEditMode ? (
-                  <div className="flex items-center gap-2 bg-amber-900/30 px-3 py-1 rounded-lg border border-amber-600/50">
-                    <span className="text-amber-400 text-sm font-medium">
-                      تعديل فاتورة رقم: {editInvoiceData?.invoiceNumber}
-                    </span>
-                    <div className="text-xs text-gray-300">
-                      العميل: {editInvoiceData?.customerName}
-                    </div>
-                    <button
-                      onClick={() => {
-                        if (confirm('هل تريد إلغاء التعديل؟')) {
-                          window.close();
-                        }
-                      }}
-                      className="flex flex-col items-center p-2 text-red-400 hover:text-red-300 cursor-pointer min-w-[60px] transition-all"
-                    >
-                      <XMarkIcon className="h-4 w-4" />
-                      <span className="text-xs">إلغاء</span>
-                    </button>
-                  </div>
-                ) : isPurchaseMode ? (
+                {isPurchaseMode ? (
                   <div className="flex items-center gap-2">
                     <span className="text-green-400 text-sm font-medium">
                       وضع الشراء مفعل
@@ -3683,7 +3723,7 @@ function POSPageContent() {
                   {/* Cart Footer */}
                   <div className="p-4 border-t border-gray-600 bg-[#2B3544] flex-shrink-0">
                     {/* Payment Split Component - Only show in sales mode (not transfer, purchase, or edit mode) */}
-                    {!isTransferMode && !isPurchaseMode && !isReturnMode && !isEditMode && (
+                    {!isTransferMode && !isPurchaseMode && !isReturnMode && !activePOSTab?.isEditMode && (
                       <PaymentSplit
                         totalAmount={calculateTotalWithDiscounts()}
                         onPaymentsChange={(payments, credit) => {
@@ -3740,7 +3780,7 @@ function POSPageContent() {
                           isProcessingInvoice
                         }
                         className={`flex-1 py-2 px-4 rounded-lg font-medium text-sm transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed text-white ${
-                          isEditMode
+                          activePOSTab?.isEditMode
                             ? "bg-amber-600 hover:bg-amber-700"
                             : isTransferMode
                               ? "bg-orange-600 hover:bg-orange-700"
@@ -3758,7 +3798,7 @@ function POSPageContent() {
                             ? "السلة فارغة"
                             : !hasAllRequiredSelections()
                               ? "يجب إكمال التحديدات"
-                              : isEditMode
+                              : activePOSTab?.isEditMode
                                 ? `تعديل الفاتورة (${cartItems.length}) [Y]`
                                 : isTransferMode
                                   ? `تأكيد النقل (${cartItems.length}) [Y]`
@@ -4136,7 +4176,7 @@ function POSPageContent() {
             {/* Cart Footer */}
             <div className="p-4 border-t border-gray-600 bg-[#2B3544] flex-shrink-0">
               {/* Payment Split Component - Only show in sales mode (not transfer, purchase, or edit mode) */}
-              {!isTransferMode && !isPurchaseMode && !isReturnMode && !isEditMode && (
+              {!isTransferMode && !isPurchaseMode && !isReturnMode && !activePOSTab?.isEditMode && (
                 <PaymentSplit
                   totalAmount={calculateTotalWithDiscounts()}
                   onPaymentsChange={(payments, credit) => {
@@ -4193,7 +4233,7 @@ function POSPageContent() {
                   isProcessingInvoice
                 }
                 className={`flex-1 py-2 px-4 rounded-lg font-medium text-sm transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed text-white ${
-                  isEditMode
+                  activePOSTab?.isEditMode
                     ? "bg-amber-600 hover:bg-amber-700"
                     : isTransferMode
                       ? "bg-orange-600 hover:bg-orange-700"
@@ -4211,7 +4251,7 @@ function POSPageContent() {
                     ? "السلة فارغة"
                     : !hasAllRequiredSelections()
                       ? "يجب إكمال التحديدات"
-                      : isEditMode
+                      : activePOSTab?.isEditMode
                         ? `تعديل الفاتورة (${cartItems.length}) [Y]`
                         : isTransferMode
                           ? `تأكيد النقل (${cartItems.length}) [Y]`
