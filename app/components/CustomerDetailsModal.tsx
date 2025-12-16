@@ -432,13 +432,19 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
       salesData?.forEach(sale => {
         if (sale.created_at) {
           const saleDate = new Date(sale.created_at)
+          const isReturn = sale.invoice_type === 'Sale Return'
+          const typeName = isReturn ? 'مرتجع بيع' : 'فاتورة بيع'
           statements.push({
             id: `sale-${sale.id}`,
+            saleId: sale.id,
             date: saleDate,
-            description: `${sale.invoice_number} فاتورة`,
-            type: sale.invoice_type === 'Sale Invoice' ? 'فاتورة' : 'مرتجع',
+            description: `${typeName} - ${sale.invoice_number}`,
+            type: typeName,
             amount: sale.total_amount, // Already negative for returns
-            balance: 0 // Will be calculated
+            invoiceValue: Math.abs(sale.total_amount),
+            paidAmount: Math.abs(sale.total_amount),
+            balance: 0, // Will be calculated
+            isNegative: isReturn
           })
         }
       })
@@ -453,7 +459,10 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
             description: payment.notes ? `دفعة - ${payment.notes}` : 'دفعة',
             type: 'دفعة',
             amount: -payment.amount, // Negative because it reduces balance
-            balance: 0 // Will be calculated
+            invoiceValue: 0,
+            paidAmount: payment.amount,
+            balance: 0, // Will be calculated
+            isNegative: false
           })
         }
       })
@@ -1155,7 +1164,7 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
       id: 'description',
       header: 'البيان',
       accessor: 'description',
-      width: 300,
+      width: 250,
       render: (value: string) => <span className="text-white">{value}</span>
     },
     {
@@ -1165,34 +1174,45 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
       width: 120,
       render: (value: string) => (
         <span className={`px-2 py-1 rounded text-xs font-medium ${
-          value === 'فاتورة'
-            ? 'bg-blue-600/20 text-blue-400 border border-blue-600'
-            : value === 'دفعة'
+          value === 'فاتورة بيع'
             ? 'bg-green-600/20 text-green-400 border border-green-600'
-            : value === 'مرتجع'
+            : value === 'دفعة'
+            ? 'bg-blue-600/20 text-blue-400 border border-blue-600'
+            : value === 'مرتجع بيع'
             ? 'bg-orange-600/20 text-orange-400 border border-orange-600'
-            : 'bg-blue-600/20 text-blue-400 border border-blue-600'
+            : 'bg-gray-600/20 text-gray-400 border border-gray-600'
         }`}>
           {value}
         </span>
       )
     },
     {
-      id: 'amount',
-      header: 'المبلغ',
-      accessor: 'amount',
-      width: 140,
-      render: (value: number, item: any) => {
-        const isDafeaa = item.type === 'دفعة'
-        const isPositive = value > 0
-        return (
-          <span className={`font-medium ${
-            isDafeaa ? 'text-green-400' : 'text-blue-400'
-          }`}>
-            {isPositive ? '' : ''}{formatPrice(Math.abs(value), 'system')}
-          </span>
-        )
-      }
+      id: 'invoiceValue',
+      header: 'قيمة الفاتورة',
+      accessor: 'invoiceValue',
+      width: 130,
+      render: (value: number, item: any) => (
+        <span className="text-gray-300 font-medium">
+          {value > 0 ? formatPrice(value, 'system') : '-'}
+        </span>
+      )
+    },
+    {
+      id: 'paidAmount',
+      header: 'المبلغ المدفوع',
+      accessor: 'paidAmount',
+      width: 130,
+      render: (value: number, item: any) => (
+        <span className={`font-medium ${
+          item.type === 'مرتجع بيع'
+            ? 'text-red-400'
+            : item.type === 'دفعة'
+            ? 'text-green-400'
+            : 'text-blue-400'
+        }`}>
+          {item.type === 'مرتجع بيع' ? '-' : item.type === 'دفعة' ? '-' : '+'}{formatPrice(value, 'system')}
+        </span>
+      )
     },
     {
       id: 'balance',

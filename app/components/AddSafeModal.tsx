@@ -12,6 +12,7 @@ interface AddSafeModalProps {
 
 export default function AddSafeModal({ isOpen, onClose, onSafeAdded }: AddSafeModalProps) {
   const [safeName, setSafeName] = useState('')
+  const [initialBalance, setInitialBalance] = useState<string>('0')
   const [isLoading, setIsLoading] = useState(false)
 
   const handleSave = async () => {
@@ -19,12 +20,14 @@ export default function AddSafeModal({ isOpen, onClose, onSafeAdded }: AddSafeMo
 
     setIsLoading(true)
     try {
+      const balance = parseFloat(initialBalance) || 0
       const { error } = await supabase
         .from('records')
         .insert({
           name: safeName.trim(),
           is_primary: false,
-          is_active: true
+          is_active: true,
+          initial_balance: balance
         })
 
       if (error) {
@@ -44,6 +47,7 @@ export default function AddSafeModal({ isOpen, onClose, onSafeAdded }: AddSafeMo
 
   const handleClose = () => {
     setSafeName('')
+    setInitialBalance('0')
     onClose()
   }
 
@@ -77,6 +81,23 @@ export default function AddSafeModal({ isOpen, onClose, onSafeAdded }: AddSafeMo
               className="w-full bg-gray-700 text-white placeholder-gray-400 px-4 py-2 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
               disabled={isLoading}
             />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              الرصيد الافتتاحي
+            </label>
+            <input
+              type="number"
+              value={initialBalance}
+              onChange={(e) => setInitialBalance(e.target.value)}
+              placeholder="0"
+              min="0"
+              step="0.01"
+              className="w-full bg-gray-700 text-white placeholder-gray-400 px-4 py-2 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 text-left"
+              dir="ltr"
+              disabled={isLoading}
+            />
+            <p className="text-xs text-gray-500 mt-1">يمكنك تركه صفر إذا كانت الخزنة فارغة</p>
           </div>
         </div>
 

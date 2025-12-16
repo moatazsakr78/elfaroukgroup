@@ -65,6 +65,10 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
   const [isWithdrawing, setIsWithdrawing] = useState(false)
   const [withdrawNotes, setWithdrawNotes] = useState('')
 
+  // Account statement state
+  const [accountStatementData, setAccountStatementData] = useState<any[]>([])
+  const [isLoadingStatement, setIsLoadingStatement] = useState(false)
+
   // The safe balance is the actual cash drawer balance (paid amounts, not invoice totals)
   // This is fetched from the cash_drawers table
   const safeBalance = cashDrawerBalance
@@ -308,6 +312,169 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
     } catch (error) {
       console.error('Error fetching cash drawer balance:', error)
       setCashDrawerBalance(0)
+    }
+  }
+
+  // Fetch account statement data from database
+  const fetchAccountStatement = async () => {
+    if (!safe?.id) return
+
+    try {
+      setIsLoadingStatement(true)
+      const statements: any[] = []
+      let runningBalance = 0
+
+      // 1. Get record info including initial_balance
+      const { data: recordData, error: recordError } = await (supabase as any)
+        .from('records')
+        .select('initial_balance, created_at')
+        .eq('id', safe.id)
+        .single()
+
+      if (!recordError && recordData) {
+        const initialBalance = parseFloat(String(recordData.initial_balance || 0)) || 0
+        if (initialBalance > 0) {
+          runningBalance = initialBalance
+          const createdDate = recordData.created_at ? new Date(recordData.created_at) : new Date()
+          statements.push({
+            id: 'initial',
+            date: createdDate.toLocaleDateString('en-GB'),
+            time: createdDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
+            description: 'الرصيد الأولي',
+            type: 'رصيد أولي',
+            paidAmount: initialBalance,
+            invoiceValue: 0,
+            balance: runningBalance,
+            created_at: recordData.created_at || new Date().toISOString()
+          })
+        }
+      }
+
+      // 2. Get all sales for this record (فواتير البيع و مرتجعات البيع)
+      const { data: salesData, error: salesError } = await supabase
+        .from('sales')
+        .select('id, invoice_number, total_amount, invoice_type, created_at, time, notes')
+        .eq('record_id', safe.id)
+        .order('created_at', { ascending: true })
+
+      // 3. Get cash drawer transactions for actual paid amounts
+      const { data: transactionsData, error: transactionsError } = await supabase
+        .from('cash_drawer_transactions')
+        .select('id, sale_id, amount, balance_after, transaction_type, notes, created_at')
+        .eq('record_id', safe.id)
+        .order('created_at', { ascending: true })
+
+      // Create a map of sale_id to transaction amount
+      const saleTransactionMap = new Map()
+      if (transactionsData) {
+        for (const tx of transactionsData) {
+          if (tx.sale_id) {
+            saleTransactionMap.set(tx.sale_id, tx.amount)
+          }
+        }
+      }
+
+      // Process sales data
+      if (salesData) {
+        for (const sale of salesData) {
+          const invoiceValue = parseFloat(String(sale.total_amount || 0)) || 0
+          const paidAmount = saleTransactionMap.get(sale.id) || invoiceValue // fallback to total if no transaction
+          runningBalance += paidAmount
+
+          // Determine type based on invoice_type
+          let typeName = 'فاتورة بيع'
+          if (sale.invoice_type === 'Sale Return') {
+            typeName = 'مرتجع بيع'
+          }
+
+          // Check if this is a payment only (دفعة) - payment without goods
+          const isPaymentOnly = sale.notes && sale.notes.includes('دفعة')
+          if (isPaymentOnly) {
+            typeName = 'دفعة'
+          }
+
+          const createdDate = sale.created_at ? new Date(sale.created_at) : new Date()
+          const timeStr = sale.time ? String(sale.time).substring(0, 5) : createdDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
+
+          statements.push({
+            id: sale.id,
+            date: createdDate.toLocaleDateString('en-GB'),
+            time: timeStr,
+            description: `${typeName} - ${sale.invoice_number}`,
+            type: typeName,
+            paidAmount: Math.abs(paidAmount),
+            invoiceValue: Math.abs(invoiceValue),
+            balance: runningBalance,
+            created_at: sale.created_at || new Date().toISOString(),
+            isPositive: paidAmount >= 0
+          })
+        }
+      }
+
+      // Process non-sale transactions (deposits, withdrawals, adjustments)
+      if (transactionsData) {
+        for (const tx of transactionsData) {
+          if (!tx.sale_id) {
+            // This is a deposit, withdrawal, or adjustment
+            const amount = parseFloat(String(tx.amount || 0)) || 0
+            runningBalance += amount
+
+            let typeName = 'دفعة'
+            if (tx.transaction_type === 'withdrawal') {
+              typeName = 'سحب'
+            } else if (tx.transaction_type === 'adjustment') {
+              typeName = 'تسوية'
+            } else if (tx.transaction_type === 'deposit') {
+              typeName = 'دفعة'
+            }
+
+            const createdDate = tx.created_at ? new Date(tx.created_at) : new Date()
+
+            statements.push({
+              id: tx.id,
+              date: createdDate.toLocaleDateString('en-GB'),
+              time: createdDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
+              description: tx.notes || typeName,
+              type: typeName,
+              paidAmount: Math.abs(amount),
+              invoiceValue: 0,
+              balance: runningBalance,
+              created_at: tx.created_at || new Date().toISOString(),
+              isPositive: amount >= 0
+            })
+          }
+        }
+      }
+
+      // Sort by created_at descending (newest first)
+      statements.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
+      // Recalculate running balance from oldest to newest, then reverse for display
+      let recalcBalance = 0
+      const sortedAsc = [...statements].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+      for (const stmt of sortedAsc) {
+        if (stmt.type === 'رصيد أولي') {
+          recalcBalance = stmt.paidAmount
+        } else if (stmt.type === 'مرتجع بيع' || stmt.type === 'سحب') {
+          recalcBalance -= stmt.paidAmount
+        } else {
+          recalcBalance += stmt.paidAmount
+        }
+        stmt.balance = recalcBalance
+      }
+
+      // Sort descending for display and add index
+      const finalStatements = sortedAsc.reverse().map((stmt, index) => ({
+        ...stmt,
+        index: index + 1
+      }))
+
+      setAccountStatementData(finalStatements)
+    } catch (error) {
+      console.error('Error fetching account statement:', error)
+      setAccountStatementData([])
+    } finally {
+      setIsLoadingStatement(false)
     }
   }
 
@@ -814,6 +981,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
       fetchSales()
       fetchPurchaseInvoices()
       fetchCashDrawerBalance()
+      fetchAccountStatement()
 
       // Set up real-time subscription for sales
       const salesChannel = supabase
@@ -1319,83 +1487,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
 
   if (!safe) return null
 
-  // Sample account statement data - opening balance, transactions, and payments
-  const accountStatements = [
-    {
-      id: 1,
-      date: '7/15/2025',
-      time: '07:46 AM',
-      description: 'REC-175254784358 قيد محاسبي',
-      type: 'قيد محاسبي',
-      amount: `${formatPrice(1677)}+`,
-      balance: formatPrice(190322)
-    },
-    {
-      id: 2,
-      date: '7/3/2025',
-      time: '01:22 AM',
-      description: 'تحويل داخلي',
-      type: 'تحويل',
-      amount: `${formatPrice(6000)}-`,
-      balance: formatPrice(188645)
-    },
-    {
-      id: 3,
-      date: '7/2/2025',
-      time: '04:44 AM',
-      description: 'REC-175142668178 قيد محاسبي',
-      type: 'قيد محاسبي',
-      amount: `${formatPrice(210)}+`,
-      balance: formatPrice(194645)
-    },
-    {
-      id: 4,
-      date: '6/30/2025',
-      time: '12:33 AM',
-      description: 'تسوية حسابية',
-      type: 'تسوية',
-      amount: `${formatPrice(7000)}-`,
-      balance: formatPrice(194435)
-    },
-    {
-      id: 5,
-      date: '6/29/2025',
-      time: '06:05 PM',
-      description: 'REC-175120953803 قيد محاسبي',
-      type: 'قيد محاسبي',
-      amount: `${formatPrice(850)}+`,
-      balance: formatPrice(201435)
-    },
-    {
-      id: 6,
-      date: '6/29/2025',
-      time: '05:42 PM',
-      description: 'REC-175120816250 قيد محاسبي',
-      type: 'قيد محاسبي',
-      amount: `${formatPrice(100)}+`,
-      balance: formatPrice(200585)
-    },
-    {
-      id: 7,
-      date: '6/28/2025',
-      time: '11:23 PM',
-      description: 'REC-175114219445 قيد محاسبي',
-      type: 'قيد محاسبي',
-      amount: `${formatPrice(485)}+`,
-      balance: formatPrice(200485)
-    },
-    {
-      id: 8,
-      date: '6/24/2025',
-      time: '04:35 PM',
-      description: 'الرصيد الأولي',
-      type: 'رصيد أولي',
-      amount: `${formatPrice(200000)}+`,
-      balance: formatPrice(200000)
-    }
-  ]
-
-  // Sample payments/transfers data
+  // Sample payments/transfers data - TODO: Replace with real data
   const payments = [
     {
       id: 1,
@@ -1548,76 +1640,93 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
 
   // Define columns for each table - exactly like Products page structure
   const statementColumns = [
-    { 
-      id: 'index', 
-      header: '#', 
-      accessor: '#', 
+    {
+      id: 'index',
+      header: '#',
+      accessor: 'index',
       width: 50,
-      render: (value: any, item: any, index: number) => (
-        <span className="text-gray-400">{item.id}</span>
+      render: (value: number) => (
+        <span className="text-gray-400">{value}</span>
       )
     },
-    { 
-      id: 'date', 
-      header: 'التاريخ', 
-      accessor: 'date', 
+    {
+      id: 'date',
+      header: 'التاريخ',
+      accessor: 'date',
       width: 120,
       render: (value: string) => <span className="text-white">{value}</span>
     },
-    { 
-      id: 'time', 
-      header: '⏰ الساعة', 
-      accessor: 'time', 
+    {
+      id: 'time',
+      header: '⏰ الساعة',
+      accessor: 'time',
       width: 80,
       render: (value: string) => <span className="text-blue-400">{value}</span>
     },
-    { 
-      id: 'description', 
-      header: 'البيان', 
-      accessor: 'description', 
-      width: 300,
+    {
+      id: 'description',
+      header: 'البيان',
+      accessor: 'description',
+      width: 250,
       render: (value: string) => <span className="text-white">{value}</span>
     },
-    { 
-      id: 'type', 
-      header: 'نوع العملية', 
-      accessor: 'type', 
+    {
+      id: 'type',
+      header: 'نوع العملية',
+      accessor: 'type',
       width: 120,
       render: (value: string) => (
         <span className={`px-2 py-1 rounded text-xs font-medium ${
-          value === 'قيد محاسبي' 
-            ? 'bg-purple-600/20 text-purple-400 border border-purple-600' 
-            : value === 'تحويل'
-            ? 'bg-blue-600/20 text-blue-400 border border-blue-600'
-            : value === 'تسوية'
+          value === 'فاتورة بيع'
+            ? 'bg-green-600/20 text-green-400 border border-green-600'
+            : value === 'مرتجع بيع'
             ? 'bg-orange-600/20 text-orange-400 border border-orange-600'
-            : 'bg-green-600/20 text-green-400 border border-green-600'
+            : value === 'دفعة'
+            ? 'bg-blue-600/20 text-blue-400 border border-blue-600'
+            : value === 'سحب'
+            ? 'bg-red-600/20 text-red-400 border border-red-600'
+            : value === 'تسوية'
+            ? 'bg-purple-600/20 text-purple-400 border border-purple-600'
+            : value === 'رصيد أولي'
+            ? 'bg-cyan-600/20 text-cyan-400 border border-cyan-600'
+            : 'bg-gray-600/20 text-gray-400 border border-gray-600'
         }`}>
           {value}
         </span>
       )
     },
-    { 
-      id: 'amount', 
-      header: 'المبلغ', 
-      accessor: 'amount', 
-      width: 140,
-      render: (value: string) => (
+    {
+      id: 'invoiceValue',
+      header: 'قيمة الفاتورة',
+      accessor: 'invoiceValue',
+      width: 130,
+      render: (value: number, item: any) => (
+        <span className="text-gray-300 font-medium">
+          {value > 0 ? formatPrice(value, 'system') : '-'}
+        </span>
+      )
+    },
+    {
+      id: 'paidAmount',
+      header: 'المبلغ المدفوع',
+      accessor: 'paidAmount',
+      width: 130,
+      render: (value: number, item: any) => (
         <span className={`font-medium ${
-          value && value.includes('+') 
-            ? 'text-green-400' 
-            : 'text-red-400'
+          item.type === 'مرتجع بيع' || item.type === 'سحب'
+            ? 'text-red-400'
+            : 'text-green-400'
         }`}>
-          {value}
+          {item.type === 'مرتجع بيع' || item.type === 'سحب' ? '-' : '+'}{formatPrice(value, 'system')}
         </span>
       )
     },
-    { 
-      id: 'balance', 
-      header: 'الرصيد', 
-      accessor: 'balance', 
+    {
+      id: 'balance',
+      header: 'الرصيد',
+      accessor: 'balance',
       width: 140,
-      render: (value: string) => <span className="text-blue-400 font-medium">{value}</span>
+      render: (value: number) => <span className="text-blue-400 font-medium">{formatPrice(value, 'system')}</span>
     }
   ]
 
@@ -1930,11 +2039,6 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
               <div className="flex items-center gap-8">
                 {/* Action Buttons - Same style as customer list */}
                 <div className="flex items-center gap-1">
-                  <button className="flex flex-col items-center p-2 text-gray-300 hover:text-white cursor-pointer min-w-[80px] transition-colors">
-                    <PencilSquareIcon className="h-5 w-5 mb-1" />
-                    <span className="text-sm">تحرير الفاتورة</span>
-                  </button>
-
                   <button
                     onClick={() => {
                       if (allTransactions.length > 0 && selectedTransaction < allTransactions.length) {
@@ -2268,22 +2372,31 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
                   <div className="h-full flex flex-col">
                     {/* Account Statement Header */}
                     <div className="bg-[#2B3544] border-b border-gray-600 p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="bg-purple-600 text-white px-4 py-2 rounded text-sm font-medium">
-                          رصيد {formatPrice(190322)}
-                        </div>
+                      <div className="flex items-center justify-end">
                         <div className="text-white text-lg font-medium">كشف حساب الخزنة</div>
                       </div>
-                      <div className="text-gray-400 text-sm mt-2">آخر تحديث: 7/24/2025</div>
                     </div>
-                    
+
                     {/* Account Statement Table */}
                     <div className="flex-1">
-                      <ResizableTable
-                        className="h-full w-full"
-                        columns={statementColumns}
-                        data={accountStatements}
-                      />
+                      {isLoadingStatement ? (
+                        <div className="flex items-center justify-center h-full">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mr-3"></div>
+                          <span className="text-gray-400">جاري تحميل كشف الحساب...</span>
+                        </div>
+                      ) : accountStatementData.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center h-full p-8">
+                          <div className="text-6xl mb-4">📊</div>
+                          <p className="text-gray-400 text-lg mb-2">لا توجد عمليات في كشف الحساب</p>
+                          <p className="text-gray-500 text-sm">سيتم عرض العمليات هنا عند إجرائها</p>
+                        </div>
+                      ) : (
+                        <ResizableTable
+                          className="h-full w-full"
+                          columns={statementColumns}
+                          data={accountStatementData}
+                        />
+                      )}
                     </div>
                   </div>
                 )}
@@ -2386,13 +2499,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
                   <div className="h-full flex flex-col">
                     {/* Payments Header */}
                     <div className="bg-[#2B3544] border-b border-gray-600 p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <button className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded text-sm font-medium flex items-center gap-2 transition-colors">
-                            <PlusIcon className="h-4 w-4" />
-                            إضافة تحويل
-                          </button>
-                        </div>
+                      <div className="flex items-center justify-end">
                         <div className="text-right">
                           <div className="text-white text-lg font-medium">تحويلات الخزنة</div>
                           <div className="text-gray-400 text-sm mt-1">إجمالي التحويلات: {formatPrice(13000)}</div>
