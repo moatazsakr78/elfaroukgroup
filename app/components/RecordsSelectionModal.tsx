@@ -4,7 +4,7 @@ import { Fragment, useState, useEffect } from "react";
 import { Dialog, Transition } from "@headlessui/react";
 import {
   XMarkIcon,
-  DocumentTextIcon,
+  BanknotesIcon,
   BuildingOfficeIcon,
   StarIcon,
 } from "@heroicons/react/24/outline";
@@ -118,7 +118,7 @@ export default function RecordsSelectionModal({
                 {/* Header */}
                 <div className="flex items-center justify-between mb-6">
                   <Dialog.Title className="text-xl font-bold text-white flex items-center gap-2">
-                    <DocumentTextIcon className="h-6 w-6 text-blue-400" />
+                    <BanknotesIcon className="h-6 w-6 text-blue-400" />
                     اختيار الخزنة
                   </Dialog.Title>
                   <button
@@ -138,7 +138,7 @@ export default function RecordsSelectionModal({
                     </div>
                   ) : error ? (
                     <div className="flex flex-col items-center justify-center py-12">
-                      <DocumentTextIcon className="h-12 w-12 text-red-500 mb-4" />
+                      <BanknotesIcon className="h-12 w-12 text-red-500 mb-4" />
                       <p className="text-red-400 mb-2">{error}</p>
                       <button
                         onClick={fetchRecords}
@@ -156,7 +156,7 @@ export default function RecordsSelectionModal({
                       >
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-full bg-[#374151] flex items-center justify-center">
-                            <DocumentTextIcon className="h-5 w-5" />
+                            <BanknotesIcon className="h-5 w-5" />
                           </div>
                           <div className="text-right">
                             <div className="font-semibold flex items-center gap-2">
@@ -189,7 +189,7 @@ export default function RecordsSelectionModal({
                     ))
                   ) : (
                     <div className="flex flex-col items-center justify-center py-12">
-                      <DocumentTextIcon className="h-12 w-12 text-gray-500 mb-4" />
+                      <BanknotesIcon className="h-12 w-12 text-gray-500 mb-4" />
                       <p className="text-gray-400 mb-2">لا توجد خزن نشطة</p>
                       <p className="text-gray-500 text-sm">
                         لا توجد خزن متاحة في قاعدة البيانات

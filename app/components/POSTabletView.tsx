@@ -19,7 +19,7 @@ import {
   BuildingOfficeIcon,
   ArrowsRightLeftIcon,
   UserIcon,
-  DocumentTextIcon,
+  BanknotesIcon,
   ArrowUturnLeftIcon,
   ClockIcon,
 } from '@heroicons/react/24/outline'
@@ -372,7 +372,7 @@ export default function POSTabletView({
               onClick={() => setIsRecordsModalOpen(true)}
               className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-300 hover:text-white hover:bg-gray-600/30 rounded-md transition-all relative"
             >
-              <DocumentTextIcon className="h-4 w-4" />
+              <BanknotesIcon className="h-4 w-4" />
               <span>الخزنة</span>
               {!selections.record && (
                 <div className="w-1.5 h-1.5 bg-red-400 rounded-full absolute top-1 right-1"></div>
@@ -793,6 +793,7 @@ export default function POSTabletView({
                       setPaymentSplitData(payments)
                       setCreditAmount(credit)
                     }}
+                    isDefaultCustomer={selections.customer?.id === '00000000-0000-0000-0000-000000000001'}
                   />
                 )}
 

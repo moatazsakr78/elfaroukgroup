@@ -969,7 +969,72 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
     try {
       setIsDeleting(true)
 
-      // Delete sale items first (foreign key constraint)
+      // 1. أولاً: نجيب معاملات الخزنة المرتبطة بهذه الفاتورة لتحديث رصيد الخزنة
+      const { data: drawerTransactions, error: transError } = await supabase
+        .from('cash_drawer_transactions')
+        .select('id, drawer_id, amount, record_id')
+        .eq('sale_id', invoiceToDelete.id)
+
+      if (!transError && drawerTransactions && drawerTransactions.length > 0) {
+        // لكل معاملة، نخصم المبلغ من الخزنة
+        for (const transaction of drawerTransactions) {
+          // جلب رصيد الخزنة الحالي
+          const { data: drawer } = await supabase
+            .from('cash_drawers')
+            .select('id, current_balance')
+            .eq('id', transaction.drawer_id)
+            .single()
+
+          if (drawer) {
+            // خصم المبلغ من رصيد الخزنة (المبلغ موجب للبيع، سالب للمرتجع)
+            const newBalance = (drawer.current_balance || 0) - transaction.amount
+
+            // تحديث رصيد الخزنة
+            await supabase
+              .from('cash_drawers')
+              .update({
+                current_balance: newBalance,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', drawer.id)
+
+            // إضافة سجل حذف الفاتورة
+            await supabase
+              .from('cash_drawer_transactions')
+              .insert({
+                drawer_id: drawer.id,
+                record_id: transaction.record_id,
+                transaction_type: 'invoice_delete',
+                amount: -transaction.amount, // عكس المبلغ الأصلي
+                balance_after: newBalance,
+                sale_id: invoiceToDelete.id,
+                notes: `حذف فاتورة رقم ${invoiceToDelete.invoice_number}`,
+                performed_by: 'system'
+              })
+
+            console.log(`✅ Cash drawer updated after delete: ${-transaction.amount}, new balance: ${newBalance}`)
+          }
+        }
+
+        // حذف معاملات الخزنة الأصلية المرتبطة بالفاتورة
+        await supabase
+          .from('cash_drawer_transactions')
+          .delete()
+          .eq('sale_id', invoiceToDelete.id)
+          .neq('transaction_type', 'invoice_delete') // لا نحذف سجل الحذف الجديد
+      }
+
+      // 2. حذف المدفوعات المرتبطة بالفاتورة من جدول customer_payments
+      const { error: paymentsError } = await supabase
+        .from('customer_payments')
+        .delete()
+        .ilike('notes', `%${invoiceToDelete.invoice_number}%`)
+
+      if (paymentsError) {
+        console.warn('Error deleting customer payments:', paymentsError)
+      }
+
+      // 3. حذف عناصر الفاتورة
       const { error: saleItemsError } = await supabase
         .from('sale_items')
         .delete()
@@ -980,7 +1045,7 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
         throw saleItemsError
       }
 
-      // Delete the sale
+      // 4. حذف الفاتورة نفسها
       const { error: saleError } = await supabase
         .from('sales')
         .delete()
@@ -994,10 +1059,10 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
       // Close modal and reset state
       setShowDeleteModal(false)
       setInvoiceToDelete(null)
-      
+
       // Refresh data (real-time will handle it but this ensures immediate update)
       fetchSales()
-      
+
       // Reset selected transaction if needed
       if (selectedTransaction >= sales.length - 1) {
         setSelectedTransaction(Math.max(0, sales.length - 2))
@@ -1046,8 +1111,15 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
 
   if (!customer) return null
 
+  // العميل الافتراضي
+  const isDefaultCustomer = customer.id === '00000000-0000-0000-0000-000000000001'
+
   // Calculate total payments amount
   const totalPayments = customerPayments.reduce((sum, payment) => sum + (payment.amount || 0), 0)
+
+  // حساب مجموع الفواتير المعروضة (للعميل الافتراضي - يتغير حسب الفلتر)
+  // المبيعات موجبة والمرتجعات سالبة في قاعدة البيانات
+  const displayedInvoicesSum = sales.reduce((sum, sale) => sum + (parseFloat(sale.total_amount) || 0), 0)
 
   // Calculate average order value
   const averageOrderValue = sales.length > 0
@@ -1420,27 +1492,32 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
                         فواتير ({sales.length})
                       </button>
 
-                      <button
-                        onClick={() => setActiveTab('payments')}
-                        className={`px-4 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 whitespace-nowrap ${
-                          activeTab === 'payments'
-                            ? 'bg-blue-600 text-white shadow-sm'
-                            : 'text-gray-300 hover:text-white hover:bg-gray-600/50'
-                        }`}
-                      >
-                        الدفعات
-                      </button>
+                      {/* إخفاء الدفعات وكشف الحساب للعميل الافتراضي */}
+                      {!isDefaultCustomer && (
+                        <>
+                          <button
+                            onClick={() => setActiveTab('payments')}
+                            className={`px-4 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 whitespace-nowrap ${
+                              activeTab === 'payments'
+                                ? 'bg-blue-600 text-white shadow-sm'
+                                : 'text-gray-300 hover:text-white hover:bg-gray-600/50'
+                            }`}
+                          >
+                            الدفعات
+                          </button>
 
-                      <button
-                        onClick={() => setActiveTab('statement')}
-                        className={`px-4 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 whitespace-nowrap ${
-                          activeTab === 'statement'
-                            ? 'bg-blue-600 text-white shadow-sm'
-                            : 'text-gray-300 hover:text-white hover:bg-gray-600/50'
-                        }`}
-                      >
-                        كشف الحساب
-                      </button>
+                          <button
+                            onClick={() => setActiveTab('statement')}
+                            className={`px-4 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 whitespace-nowrap ${
+                              activeTab === 'statement'
+                                ? 'bg-blue-600 text-white shadow-sm'
+                                : 'text-gray-300 hover:text-white hover:bg-gray-600/50'
+                            }`}
+                          >
+                            كشف الحساب
+                          </button>
+                        </>
+                      )}
 
                       {/* View Mode Toggle Button - Only for invoices tab */}
                       {activeTab === 'invoices' && (
@@ -1484,43 +1561,46 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
                       {/* Action Buttons - Only for invoices tab */}
                       {activeTab === 'invoices' && (
                         <>
-                          <button
-                            onClick={() => {
-                              // Get the selected sale
-                              const selectedSale = sales[selectedTransaction]
-                              if (!selectedSale) {
-                                alert('يرجى اختيار فاتورة للتعديل')
-                                return
-                              }
+                          {/* إخفاء زرار التعديل للعميل الافتراضي - يمكن الحذف فقط */}
+                          {!isDefaultCustomer && (
+                            <button
+                              onClick={() => {
+                                // Get the selected sale
+                                const selectedSale = sales[selectedTransaction]
+                                if (!selectedSale) {
+                                  alert('يرجى اختيار فاتورة للتعديل')
+                                  return
+                                }
 
-                              // Store invoice data in localStorage for the POS page to read (localStorage is shared between tabs)
-                              const editData = {
-                                saleId: selectedSale.id,
-                                invoiceNumber: selectedSale.invoice_number,
-                                customerId: customer.id,
-                                customerName: customer.name,
-                                customerPhone: customer.phone,
-                                items: saleItems.map(item => ({
-                                  productId: item.product?.id,
-                                  productName: item.product?.name,
-                                  quantity: item.quantity,
-                                  unitPrice: item.unit_price,
-                                  discount: item.discount || 0,
-                                  barcode: item.product?.barcode,
-                                  main_image_url: item.product?.main_image_url
-                                }))
-                              }
-                              localStorage.setItem('pos_edit_invoice', JSON.stringify(editData))
+                                // Store invoice data in localStorage for the POS page to read (localStorage is shared between tabs)
+                                const editData = {
+                                  saleId: selectedSale.id,
+                                  invoiceNumber: selectedSale.invoice_number,
+                                  customerId: customer.id,
+                                  customerName: customer.name,
+                                  customerPhone: customer.phone,
+                                  items: saleItems.map(item => ({
+                                    productId: item.product?.id,
+                                    productName: item.product?.name,
+                                    quantity: item.quantity,
+                                    unitPrice: item.unit_price,
+                                    discount: item.discount || 0,
+                                    barcode: item.product?.barcode,
+                                    main_image_url: item.product?.main_image_url
+                                  }))
+                                }
+                                localStorage.setItem('pos_edit_invoice', JSON.stringify(editData))
 
-                              // Open POS in a new window with edit mode
-                              window.open(`/pos?edit=true&saleId=${selectedSale.id}`, '_blank')
-                            }}
-                            disabled={sales.length === 0 || selectedTransaction >= sales.length || isLoadingItems}
-                            className="flex items-center gap-2 px-3 py-2.5 text-sm text-gray-300 hover:text-white disabled:text-gray-500 disabled:cursor-not-allowed hover:bg-gray-600/30 rounded-lg transition-all whitespace-nowrap"
-                          >
-                            <PencilSquareIcon className="h-4 w-4" />
-                            <span>تحرير</span>
-                          </button>
+                                // Open POS in a new window with edit mode
+                                window.open(`/pos?edit=true&saleId=${selectedSale.id}`, '_blank')
+                              }}
+                              disabled={sales.length === 0 || selectedTransaction >= sales.length || isLoadingItems}
+                              className="flex items-center gap-2 px-3 py-2.5 text-sm text-gray-300 hover:text-white disabled:text-gray-500 disabled:cursor-not-allowed hover:bg-gray-600/30 rounded-lg transition-all whitespace-nowrap"
+                            >
+                              <PencilSquareIcon className="h-4 w-4" />
+                              <span>تحرير</span>
+                            </button>
+                          )}
 
                           <button
                             onClick={() => {
@@ -1552,43 +1632,46 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
                   <div className="flex items-center gap-8">
                     {/* Action Buttons - Same style as customer list */}
                     <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => {
-                          // Get the selected sale
-                          const selectedSale = sales[selectedTransaction]
-                          if (!selectedSale) {
-                            alert('يرجى اختيار فاتورة للتعديل')
-                            return
-                          }
+                      {/* إخفاء زرار التعديل للعميل الافتراضي - يمكن الحذف فقط */}
+                      {!isDefaultCustomer && (
+                        <button
+                          onClick={() => {
+                            // Get the selected sale
+                            const selectedSale = sales[selectedTransaction]
+                            if (!selectedSale) {
+                              alert('يرجى اختيار فاتورة للتعديل')
+                              return
+                            }
 
-                          // Store invoice data in localStorage for the POS page to read (localStorage is shared between tabs)
-                          const editData = {
-                            saleId: selectedSale.id,
-                            invoiceNumber: selectedSale.invoice_number,
-                            customerId: customer.id,
-                            customerName: customer.name,
-                            customerPhone: customer.phone,
-                            items: saleItems.map(item => ({
-                              productId: item.product?.id,
-                              productName: item.product?.name,
-                              quantity: item.quantity,
-                              unitPrice: item.unit_price,
-                              discount: item.discount || 0,
-                              barcode: item.product?.barcode,
-                              main_image_url: item.product?.main_image_url
-                            }))
-                          }
-                          localStorage.setItem('pos_edit_invoice', JSON.stringify(editData))
+                            // Store invoice data in localStorage for the POS page to read (localStorage is shared between tabs)
+                            const editData = {
+                              saleId: selectedSale.id,
+                              invoiceNumber: selectedSale.invoice_number,
+                              customerId: customer.id,
+                              customerName: customer.name,
+                              customerPhone: customer.phone,
+                              items: saleItems.map(item => ({
+                                productId: item.product?.id,
+                                productName: item.product?.name,
+                                quantity: item.quantity,
+                                unitPrice: item.unit_price,
+                                discount: item.discount || 0,
+                                barcode: item.product?.barcode,
+                                main_image_url: item.product?.main_image_url
+                              }))
+                            }
+                            localStorage.setItem('pos_edit_invoice', JSON.stringify(editData))
 
-                          // Open POS in a new window with edit mode
-                          window.open(`/pos?edit=true&saleId=${selectedSale.id}`, '_blank')
-                        }}
-                        disabled={sales.length === 0 || selectedTransaction >= sales.length || isLoadingItems}
-                        className="flex flex-col items-center p-2 text-gray-300 hover:text-white disabled:text-gray-500 disabled:cursor-not-allowed cursor-pointer min-w-[80px] transition-colors"
-                      >
-                        <PencilSquareIcon className="h-5 w-5 mb-1" />
-                        <span className="text-sm">تحرير الفاتورة</span>
-                      </button>
+                            // Open POS in a new window with edit mode
+                            window.open(`/pos?edit=true&saleId=${selectedSale.id}`, '_blank')
+                          }}
+                          disabled={sales.length === 0 || selectedTransaction >= sales.length || isLoadingItems}
+                          className="flex flex-col items-center p-2 text-gray-300 hover:text-white disabled:text-gray-500 disabled:cursor-not-allowed cursor-pointer min-w-[80px] transition-colors"
+                        >
+                          <PencilSquareIcon className="h-5 w-5 mb-1" />
+                          <span className="text-sm">تحرير الفاتورة</span>
+                        </button>
+                      )}
 
                       <button
                         onClick={() => {
@@ -1611,26 +1694,31 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
 
                     {/* Tab Navigation - Same row */}
                     <div className="flex gap-2">
-                      <button
-                        onClick={() => setActiveTab('payments')}
-                        className={`px-6 py-3 text-base font-medium border-b-2 rounded-t-lg transition-all duration-200 ${
-                          activeTab === 'payments'
-                            ? 'text-blue-400 border-blue-400 bg-blue-600/10'
-                            : 'text-gray-300 hover:text-white border-transparent hover:border-gray-400 hover:bg-gray-600/20'
-                        }`}
-                      >
-                        الدفعات
-                      </button>
-                      <button
-                        onClick={() => setActiveTab('statement')}
-                        className={`px-6 py-3 text-base font-medium border-b-2 rounded-t-lg transition-all duration-200 ${
-                          activeTab === 'statement'
-                            ? 'text-blue-400 border-blue-400 bg-blue-600/10'
-                            : 'text-gray-300 hover:text-white border-transparent hover:border-gray-400 hover:bg-gray-600/20'
-                        }`}
-                      >
-                        كشف الحساب
-                      </button>
+                      {/* إخفاء الدفعات وكشف الحساب للعميل الافتراضي */}
+                      {!isDefaultCustomer && (
+                        <>
+                          <button
+                            onClick={() => setActiveTab('payments')}
+                            className={`px-6 py-3 text-base font-medium border-b-2 rounded-t-lg transition-all duration-200 ${
+                              activeTab === 'payments'
+                                ? 'text-blue-400 border-blue-400 bg-blue-600/10'
+                                : 'text-gray-300 hover:text-white border-transparent hover:border-gray-400 hover:bg-gray-600/20'
+                            }`}
+                          >
+                            الدفعات
+                          </button>
+                          <button
+                            onClick={() => setActiveTab('statement')}
+                            className={`px-6 py-3 text-base font-medium border-b-2 rounded-t-lg transition-all duration-200 ${
+                              activeTab === 'statement'
+                                ? 'text-blue-400 border-blue-400 bg-blue-600/10'
+                                : 'text-gray-300 hover:text-white border-transparent hover:border-gray-400 hover:bg-gray-600/20'
+                            }`}
+                          >
+                            كشف الحساب
+                          </button>
+                        </>
+                      )}
                       <button
                         onClick={() => setActiveTab('invoices')}
                         className={`px-6 py-3 text-base font-semibold border-b-2 rounded-t-lg transition-all duration-200 ${
@@ -1715,14 +1803,14 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
                 isTabletDevice ? 'w-64' : 'w-80'
               }`}>
 
-                {/* Customer Balance */}
+                {/* Customer Balance / Invoices Sum */}
                 <div className={`border-b border-gray-600 ${isTabletDevice ? 'p-3' : 'p-4'}`}>
                   <div className={`bg-blue-600 rounded text-center ${isTabletDevice ? 'p-3' : 'p-4'}`}>
                     <div className={`font-bold text-white ${isTabletDevice ? 'text-xl' : 'text-2xl'}`}>
-                      {formatPrice(customerBalance, 'system')}
+                      {formatPrice(isDefaultCustomer ? displayedInvoicesSum : customerBalance, 'system')}
                     </div>
                     <div className={`text-blue-200 ${isTabletDevice ? 'text-xs' : 'text-sm'}`}>
-                      رصيد العميل
+                      {isDefaultCustomer ? 'مجموع الفواتير' : 'رصيد العميل'}
                     </div>
                   </div>
                 </div>

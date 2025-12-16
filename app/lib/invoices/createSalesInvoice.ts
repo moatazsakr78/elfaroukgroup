@@ -381,6 +381,10 @@ export async function createSalesInvoice({
           }
         }
       }
+      // للمرتجعات: الفلوس تخرج من الخزنة (قيمة سالبة)
+      if (isReturn) {
+        cashToDrawer = -cashToDrawer
+      }
     } else if (paymentMethod === 'cash' || paymentMethod === 'نقدي') {
       // If no split payment and payment method is cash, entire amount goes to drawer
       // For returns, this will be negative (money out of drawer)

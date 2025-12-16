@@ -127,7 +127,7 @@ import {
   BuildingOfficeIcon,
   ArrowsRightLeftIcon,
   UserIcon,
-  DocumentTextIcon,
+  BanknotesIcon,
   TableCellsIcon,
   CogIcon,
   EyeIcon,
@@ -403,6 +403,15 @@ function POSPageContent() {
           customerData = editData;
           localStorageItems = editData.items || [];
 
+          // العميل الافتراضي: لا يمكن تعديل فواتيره - حذف فقط
+          if (customerData?.customerId === '00000000-0000-0000-0000-000000000001') {
+            alert('لا يمكن تعديل فواتير العميل الافتراضي - يمكن الحذف فقط');
+            localStorage.removeItem('pos_edit_invoice');
+            // Clear URL params and reload
+            window.history.replaceState({}, '', '/pos');
+            return;
+          }
+
           // Clear localStorage after reading
           localStorage.removeItem('pos_edit_invoice');
         } catch (error) {
@@ -440,6 +449,13 @@ function POSPageContent() {
           .select('invoice_number, customer_id')
           .eq('id', saleId)
           .single();
+
+        // العميل الافتراضي: لا يمكن تعديل فواتيره - حذف فقط (تحقق إضافي من قاعدة البيانات)
+        if (saleData?.customer_id === '00000000-0000-0000-0000-000000000001') {
+          alert('لا يمكن تعديل فواتير العميل الافتراضي - يمكن الحذف فقط');
+          window.history.replaceState({}, '', '/pos');
+          return;
+        }
 
         // Store invoice number for later use (don't set state here)
         const invoiceNumber = saleData?.invoice_number || '';
@@ -1521,6 +1537,33 @@ function POSPageContent() {
         alert("يجب تحديد الخزنة والعميل والفرع قبل تأكيد الطلب");
         return;
       }
+
+      // حساب إجمالي المبلغ المدفوع من بيانات تقسيم الدفع
+      const totalPaid = paymentSplitData.reduce((sum, p) => sum + (p.amount || 0), 0);
+      const isDefaultCustomer = selections.customer?.id === '00000000-0000-0000-0000-000000000001';
+
+      // التحقق من صحة المدفوعات للعميل الافتراضي
+      if (isDefaultCustomer) {
+        // العميل الافتراضي: المبلغ المدفوع يجب أن يساوي قيمة الفاتورة بالضبط
+        if (totalPaid < cartTotal) {
+          alert('العميل الافتراضي لا يقبل البيع بالآجل - يجب دفع قيمة الفاتورة كاملة');
+          return;
+        }
+        if (totalPaid > cartTotal) {
+          alert('المبلغ المدفوع أعلى من قيمة الفاتورة - العميل الافتراضي يقبل الدفع بقيمة الفاتورة فقط');
+          return;
+        }
+      } else {
+        // العملاء العاديين: يمكنهم الدفع أكثر من الفاتورة بشرط أن لا يتجاوز رصيدهم
+        const customerBalance = selections.customer?.credit_balance || selections.customer?.calculatedBalance || 0;
+        // الحد الأقصى للدفع = قيمة الفاتورة + رصيد العميل (ما عليه)
+        const maxPaymentAllowed = cartTotal + customerBalance;
+
+        if (totalPaid > maxPaymentAllowed) {
+          alert(`المبلغ المدفوع (${totalPaid.toFixed(0)}) أعلى من رصيد العميل (${customerBalance.toFixed(0)}) + قيمة الفاتورة (${cartTotal.toFixed(0)})`);
+          return;
+        }
+      }
     }
 
     // In edit mode, allow empty cart (user might want to delete all items)
@@ -1622,6 +1665,64 @@ function POSPageContent() {
               .from('customers')
               .update({ account_balance: newBalance })
               .eq('id', originalSale.customer_id);
+          }
+        }
+
+        // تحديث رصيد الخزنة عند تعديل الفاتورة
+        if (totalDifference !== 0) {
+          // جلب معاملة الخزنة الأصلية لهذه الفاتورة
+          const { data: originalTransaction } = await supabase
+            .from('cash_drawer_transactions')
+            .select('id, drawer_id, amount, record_id')
+            .eq('sale_id', saleId)
+            .eq('transaction_type', 'sale')
+            .single();
+
+          if (originalTransaction) {
+            // جلب رصيد الخزنة الحالي
+            const { data: drawer } = await supabase
+              .from('cash_drawers')
+              .select('id, current_balance')
+              .eq('id', originalTransaction.drawer_id)
+              .single();
+
+            if (drawer) {
+              // تحديث رصيد الخزنة بالفرق
+              const newDrawerBalance = (drawer.current_balance || 0) + totalDifference;
+
+              await supabase
+                .from('cash_drawers')
+                .update({
+                  current_balance: newDrawerBalance,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', drawer.id);
+
+              // تحديث المعاملة الأصلية بالمبلغ الجديد
+              await supabase
+                .from('cash_drawer_transactions')
+                .update({
+                  amount: originalTransaction.amount + totalDifference,
+                  balance_after: newDrawerBalance
+                })
+                .eq('id', originalTransaction.id);
+
+              // إضافة سجل تعديل الفاتورة
+              await supabase
+                .from('cash_drawer_transactions')
+                .insert({
+                  drawer_id: drawer.id,
+                  record_id: originalTransaction.record_id,
+                  transaction_type: 'invoice_edit',
+                  amount: totalDifference,
+                  balance_after: newDrawerBalance,
+                  sale_id: saleId,
+                  notes: `تعديل فاتورة رقم ${tabEditInvoiceData.invoiceNumber} - الفرق: ${totalDifference}`,
+                  performed_by: 'system'
+                });
+
+              console.log(`✅ Cash drawer updated after edit: ${totalDifference >= 0 ? '+' : ''}${totalDifference}, new balance: ${newDrawerBalance}`);
+            }
           }
         }
 
@@ -3580,7 +3681,7 @@ function POSPageContent() {
                   onClick={toggleRecordsModal}
                   className="flex flex-col items-center p-2 text-gray-300 hover:text-white cursor-pointer min-w-[80px] transition-all relative"
                 >
-                  <DocumentTextIcon className="h-5 w-5 mb-1" />
+                  <BanknotesIcon className="h-5 w-5 mb-1" />
                   <span className="text-sm">الخزنة</span>
                   {!selections.record && (
                     <div className="w-1 h-1 bg-red-400 rounded-full mt-1"></div>
@@ -3851,7 +3952,7 @@ function POSPageContent() {
                 onClick={toggleRecordsModal}
                 className="flex items-center gap-2 px-3 py-2 bg-[#2B3544] border border-gray-600 rounded text-gray-300 hover:text-white hover:bg-[#374151] cursor-pointer whitespace-nowrap flex-shrink-0 transition-colors relative"
               >
-                <DocumentTextIcon className="h-4 w-4" />
+                <BanknotesIcon className="h-4 w-4" />
                 <span className="text-xs">الخزنة</span>
                 {!selections.record && (
                   <div className="w-1 h-1 bg-red-400 rounded-full absolute -top-1 -right-1"></div>
@@ -4606,6 +4707,7 @@ function POSPageContent() {
                           setPaymentSplitData(payments);
                           setCreditAmount(credit);
                         }}
+                        isDefaultCustomer={selections.customer?.id === '00000000-0000-0000-0000-000000000001'}
                       />
                     )}
 
@@ -5064,6 +5166,7 @@ function POSPageContent() {
                     setPaymentSplitData(payments);
                     setCreditAmount(credit);
                   }}
+                  isDefaultCustomer={selections.customer?.id === '00000000-0000-0000-0000-000000000001'}
                 />
               )}
 

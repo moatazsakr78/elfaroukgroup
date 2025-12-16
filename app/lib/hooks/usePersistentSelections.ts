@@ -42,6 +42,34 @@ export function usePersistentSelections() {
     }
   }
 
+  // Refresh record data from database to get latest name
+  const refreshRecordData = async (recordId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('records')
+        .select(`
+          id,
+          name,
+          branch_id,
+          is_primary,
+          is_active,
+          branch:branches(name)
+        `)
+        .eq('id', recordId)
+        .single()
+
+      if (error) {
+        console.error('Error refreshing record data:', error)
+        return null
+      }
+
+      return data
+    } catch (error) {
+      console.error('Error in refreshRecordData:', error)
+      return null
+    }
+  }
+
   // Load from localStorage on mount
   useEffect(() => {
     const initializeSelections = async () => {
@@ -62,6 +90,14 @@ export function usePersistentSelections() {
           const defaultCustomer = await loadDefaultCustomer()
           if (defaultCustomer) {
             loadedSelections.customer = defaultCustomer
+          }
+        }
+
+        // Refresh record data from database to get latest name
+        if (loadedSelections.record && loadedSelections.record.id) {
+          const freshRecordData = await refreshRecordData(loadedSelections.record.id)
+          if (freshRecordData) {
+            loadedSelections.record = freshRecordData
           }
         }
 

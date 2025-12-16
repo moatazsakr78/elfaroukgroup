@@ -20,9 +20,13 @@ interface PaymentEntry {
 interface PaymentSplitProps {
   totalAmount: number
   onPaymentsChange: (payments: PaymentEntry[], creditAmount: number) => void
+  isDefaultCustomer?: boolean // العميل الافتراضي - لا يسمح بالآجل
 }
 
-export default function PaymentSplit({ totalAmount, onPaymentsChange }: PaymentSplitProps) {
+// Default customer ID constant
+const DEFAULT_CUSTOMER_ID = '00000000-0000-0000-0000-000000000001'
+
+export default function PaymentSplit({ totalAmount, onPaymentsChange, isDefaultCustomer = false }: PaymentSplitProps) {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
   const [payments, setPayments] = useState<PaymentEntry[]>([
     {
@@ -61,9 +65,19 @@ export default function PaymentSplit({ totalAmount, onPaymentsChange }: PaymentS
   // Notify parent component when payments change
   useEffect(() => {
     const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0)
-    const creditAmount = Math.max(0, totalAmount - totalPaid)
+    // العميل الافتراضي: لا آجل - المبلغ المتبقي دائماً 0
+    const creditAmount = isDefaultCustomer ? 0 : Math.max(0, totalAmount - totalPaid)
     onPaymentsChange(payments, creditAmount)
-  }, [payments, totalAmount, onPaymentsChange])
+  }, [payments, totalAmount, onPaymentsChange, isDefaultCustomer])
+
+  // Force full payment for default customer - reset amount when customer changes
+  useEffect(() => {
+    if (isDefaultCustomer && payments.length === 1) {
+      const updatedPayments = [...payments]
+      updatedPayments[0].amount = totalAmount
+      setPayments(updatedPayments)
+    }
+  }, [isDefaultCustomer])
 
   const loadPaymentMethods = async () => {
     try {
@@ -115,7 +129,8 @@ export default function PaymentSplit({ totalAmount, onPaymentsChange }: PaymentS
   }
 
   const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0)
-  const creditAmount = Math.max(0, totalAmount - totalPaid)
+  // العميل الافتراضي: لا آجل
+  const creditAmount = isDefaultCustomer ? 0 : Math.max(0, totalAmount - totalPaid)
 
   return (
     <div className="mb-2">
@@ -152,36 +167,38 @@ export default function PaymentSplit({ totalAmount, onPaymentsChange }: PaymentS
               </select>
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex items-center gap-0.5">
-              {/* Add Button (only show on last row) */}
-              {index === payments.length - 1 && (
-                <button
-                  onClick={addPaymentRow}
-                  className="p-1 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
-                  title="إضافة"
-                >
-                  <PlusIcon className="h-3 w-3" />
-                </button>
-              )}
+            {/* Action Buttons - مخفية للعميل الافتراضي */}
+            {!isDefaultCustomer && (
+              <div className="flex items-center gap-0.5">
+                {/* Add Button (only show on last row) */}
+                {index === payments.length - 1 && (
+                  <button
+                    onClick={addPaymentRow}
+                    className="p-1 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+                    title="إضافة"
+                  >
+                    <PlusIcon className="h-3 w-3" />
+                  </button>
+                )}
 
-              {/* Remove Button (only show if more than one payment) */}
-              {payments.length > 1 && (
-                <button
-                  onClick={() => removePaymentRow(payment.id)}
-                  className="p-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
-                  title="حذف"
-                >
-                  <XMarkIcon className="h-3 w-3" />
-                </button>
-              )}
-            </div>
+                {/* Remove Button (only show if more than one payment) */}
+                {payments.length > 1 && (
+                  <button
+                    onClick={() => removePaymentRow(payment.id)}
+                    className="p-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+                    title="حذف"
+                  >
+                    <XMarkIcon className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         ))}
       </div>
 
       {/* Compact Summary - Only show if there's credit or multiple payments */}
-      {(creditAmount > 0 || payments.length > 1) && (
+      {(creditAmount > 0 || payments.length > 1) && !isDefaultCustomer && (
         <div className="mt-2 pt-2 border-t border-gray-600 flex items-center justify-between text-xs">
           <div className="flex items-center gap-3">
             <span className="text-gray-400">مدفوع: <span className="text-green-400 font-medium">{totalPaid.toFixed(0)}</span></span>
@@ -191,6 +208,7 @@ export default function PaymentSplit({ totalAmount, onPaymentsChange }: PaymentS
           </div>
         </div>
       )}
+
     </div>
   )
 }

@@ -267,22 +267,16 @@ export default function SafesPage() {
                 <td className="p-3">
                   <div className="flex items-center gap-2">
                     <div className={`w-8 h-8 ${
-                      safe.name === 'خزنة النقل'
-                        ? 'bg-green-600'
-                        : safe.is_primary
-                          ? 'bg-purple-600'
-                          : 'bg-blue-600'
-                    } rounded flex items-center justify-center text-white text-sm`}>
-                      {safe.name === 'خزنة النقل' ? '🔄' : '🏦'}
+                      safe.is_primary
+                        ? 'bg-purple-600'
+                        : 'bg-blue-600'
+                    } rounded flex items-center justify-center`}>
+                      <BanknotesIcon className="h-5 w-5 text-white" />
                     </div>
                     <span className="text-white font-medium">{safe.name}</span>
                     {safe.is_primary && (
-                      <span className={`px-2 py-1 rounded-full text-xs mr-2 ${
-                        safe.name === 'خزنة النقل'
-                          ? 'bg-green-900 text-green-300'
-                          : 'bg-purple-900 text-purple-300'
-                      }`}>
-                        {safe.name === 'خزنة النقل' ? 'نقل' : 'رئيسية'}
+                      <span className="px-2 py-1 rounded-full text-xs mr-2 bg-purple-900 text-purple-300">
+                        رئيسية
                       </span>
                     )}
                   </div>
