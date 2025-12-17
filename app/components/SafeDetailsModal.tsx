@@ -59,7 +59,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
   // Withdraw modal state
   const [showWithdrawModal, setShowWithdrawModal] = useState(false)
   const [withdrawAmount, setWithdrawAmount] = useState<string>('')
-  const [withdrawType, setWithdrawType] = useState<'withdraw' | 'transfer'>('withdraw')
+  const [withdrawType, setWithdrawType] = useState<'withdraw' | 'transfer' | 'deposit'>('withdraw')
   const [targetSafeId, setTargetSafeId] = useState<string>('')
   const [allSafes, setAllSafes] = useState<any[]>([])
   const [isWithdrawing, setIsWithdrawing] = useState(false)
@@ -1361,7 +1361,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
     setShowWithdrawModal(true)
   }
 
-  // Handle withdraw/transfer
+  // Handle withdraw/deposit/transfer
   const handleWithdraw = async () => {
     const amount = parseFloat(withdrawAmount)
 
@@ -1370,8 +1370,15 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
       return
     }
 
-    if (amount > safeBalance) {
-      alert('المبلغ المطلوب سحبه أكبر من رصيد الخزنة')
+    // فقط للسحب والتحويل: التحقق من الرصيد الكافي
+    if ((withdrawType === 'withdraw' || withdrawType === 'transfer') && amount > safeBalance) {
+      alert('لا يوجد رصيد كافي في الخزنة')
+      return
+    }
+
+    // منع السحب إذا كان الرصيد بالسالب أو صفر
+    if ((withdrawType === 'withdraw' || withdrawType === 'transfer') && safeBalance <= 0) {
+      alert('لا يوجد رصيد كافي في الخزنة للسحب')
       return
     }
 
@@ -1384,19 +1391,49 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
 
     try {
       // 1. Get current safe's drawer
-      const { data: sourceDrawer, error: sourceError } = await supabase
+      let { data: sourceDrawer, error: sourceError } = await supabase
         .from('cash_drawers')
         .select('*')
         .eq('record_id', safe.id)
         .single()
 
-      if (sourceError || !sourceDrawer) {
-        throw new Error('لم يتم العثور على خزنة المصدر')
+      // إنشاء الخزنة إذا لم تكن موجودة (للإيداع)
+      if (sourceError && sourceError.code === 'PGRST116' && withdrawType === 'deposit') {
+        const { data: newDrawer, error: createError } = await supabase
+          .from('cash_drawers')
+          .insert({ record_id: safe.id, current_balance: 0 })
+          .select()
+          .single()
+
+        if (createError) throw createError
+        sourceDrawer = newDrawer
+      } else if (sourceError || !sourceDrawer) {
+        throw new Error('لم يتم العثور على الخزنة')
       }
 
-      // 2. Deduct from source safe
-      const newSourceBalance = (sourceDrawer.current_balance || 0) - amount
+      // 2. حساب الرصيد الجديد بناءً على نوع العملية
+      let newSourceBalance: number
+      let transactionAmount: number
+      let transactionType: string
+      let transactionNotes: string
 
+      if (withdrawType === 'deposit') {
+        // إيداع: إضافة للرصيد
+        newSourceBalance = (sourceDrawer.current_balance || 0) + amount
+        transactionAmount = amount
+        transactionType = 'deposit'
+        transactionNotes = `إيداع في الخزنة${withdrawNotes ? ` - ${withdrawNotes}` : ''}`
+      } else {
+        // سحب أو تحويل: خصم من الرصيد
+        newSourceBalance = (sourceDrawer.current_balance || 0) - amount
+        transactionAmount = -amount
+        transactionType = withdrawType === 'transfer' ? 'transfer_out' : 'withdrawal'
+        transactionNotes = withdrawType === 'transfer'
+          ? `تحويل إلى خزنة أخرى${withdrawNotes ? ` - ${withdrawNotes}` : ''}`
+          : `سحب من الخزنة${withdrawNotes ? ` - ${withdrawNotes}` : ''}`
+      }
+
+      // تحديث رصيد الخزنة
       await supabase
         .from('cash_drawers')
         .update({
@@ -1405,22 +1442,20 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
         })
         .eq('id', sourceDrawer.id)
 
-      // 3. Create withdrawal transaction record
+      // 3. إنشاء سجل المعاملة
       await supabase
         .from('cash_drawer_transactions')
         .insert({
           drawer_id: sourceDrawer.id,
           record_id: safe.id,
-          transaction_type: withdrawType === 'transfer' ? 'transfer_out' : 'withdrawal',
-          amount: -amount,
+          transaction_type: transactionType,
+          amount: transactionAmount,
           balance_after: newSourceBalance,
-          notes: withdrawType === 'transfer'
-            ? `تحويل إلى خزنة أخرى${withdrawNotes ? ` - ${withdrawNotes}` : ''}`
-            : `سحب من الخزنة${withdrawNotes ? ` - ${withdrawNotes}` : ''}`,
+          notes: transactionNotes,
           performed_by: 'system'
         })
 
-      // 4. If transfer, add to target safe
+      // 4. في حالة التحويل، إضافة للخزنة المستهدفة
       if (withdrawType === 'transfer' && targetSafeId) {
         // Get or create target drawer
         let { data: targetDrawer, error: targetError } = await supabase
@@ -1471,14 +1506,24 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
       // 5. Update local state
       setCashDrawerBalance(newSourceBalance)
 
-      // 6. Close modal and show success
+      // 6. Reset form
+      setWithdrawAmount('')
+      setWithdrawNotes('')
+      setTargetSafeId('')
+
+      // 7. Close modal and show success
       setShowWithdrawModal(false)
-      alert(withdrawType === 'transfer'
-        ? `تم تحويل ${amount} بنجاح`
-        : `تم سحب ${amount} بنجاح`)
+
+      const successMessage = withdrawType === 'deposit'
+        ? `تم إيداع ${amount} بنجاح`
+        : withdrawType === 'transfer'
+          ? `تم تحويل ${amount} بنجاح`
+          : `تم سحب ${amount} بنجاح`
+
+      alert(successMessage)
 
     } catch (error: any) {
-      console.error('Error withdrawing:', error)
+      console.error('Error in transaction:', error)
       alert(`حدث خطأ: ${error.message}`)
     } finally {
       setIsWithdrawing(false)
@@ -2542,7 +2587,9 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
               >
                 <XMarkIcon className="h-5 w-5" />
               </button>
-              <h3 className="text-white font-medium text-lg">سحب من الخزنة</h3>
+              <h3 className="text-white font-medium text-lg">
+                {withdrawType === 'deposit' ? 'إيداع في الخزنة' : withdrawType === 'transfer' ? 'تحويل من الخزنة' : 'سحب من الخزنة'}
+              </h3>
             </div>
 
             {/* Content */}
@@ -2553,29 +2600,39 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
                 <div className="text-white text-xl font-bold">{formatPrice(safeBalance, 'system')}</div>
               </div>
 
-              {/* Withdraw Type */}
+              {/* Operation Type */}
               <div>
                 <label className="block text-gray-300 text-sm mb-2 text-right">نوع العملية</label>
                 <div className="flex gap-2">
                   <button
                     onClick={() => setWithdrawType('withdraw')}
-                    className={`flex-1 py-2 px-4 rounded text-sm font-medium transition-colors ${
+                    className={`flex-1 py-2 px-3 rounded text-sm font-medium transition-colors ${
                       withdrawType === 'withdraw'
                         ? 'bg-red-600 text-white'
                         : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                     }`}
                   >
-                    سحب فقط
+                    سحب
+                  </button>
+                  <button
+                    onClick={() => setWithdrawType('deposit')}
+                    className={`flex-1 py-2 px-3 rounded text-sm font-medium transition-colors ${
+                      withdrawType === 'deposit'
+                        ? 'bg-green-600 text-white'
+                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    إيداع
                   </button>
                   <button
                     onClick={() => setWithdrawType('transfer')}
-                    className={`flex-1 py-2 px-4 rounded text-sm font-medium transition-colors ${
+                    className={`flex-1 py-2 px-3 rounded text-sm font-medium transition-colors ${
                       withdrawType === 'transfer'
                         ? 'bg-blue-600 text-white'
                         : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                     }`}
                   >
-                    تحويل لخزنة أخرى
+                    تحويل
                   </button>
                 </div>
               </div>
@@ -2607,15 +2664,18 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
                   placeholder="أدخل المبلغ"
                   className="w-full bg-gray-700 text-white rounded px-3 py-2 text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 text-right"
                   min="0"
-                  max={safeBalance}
+                  max={withdrawType === 'deposit' ? undefined : safeBalance}
                   step="0.01"
                 />
-                <button
-                  onClick={() => setWithdrawAmount(safeBalance.toString())}
-                  className="mt-2 text-xs text-blue-400 hover:text-blue-300"
-                >
-                  سحب الرصيد بالكامل ({formatPrice(safeBalance, 'system')})
-                </button>
+                {/* زر سحب الرصيد بالكامل - فقط للسحب والتحويل */}
+                {withdrawType !== 'deposit' && safeBalance > 0 && (
+                  <button
+                    onClick={() => setWithdrawAmount(safeBalance.toString())}
+                    className="mt-2 text-xs text-blue-400 hover:text-blue-300"
+                  >
+                    سحب الرصيد بالكامل ({formatPrice(safeBalance, 'system')})
+                  </button>
+                )}
               </div>
 
               {/* Notes */}
@@ -2643,12 +2703,14 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
                 onClick={handleWithdraw}
                 disabled={isWithdrawing || !withdrawAmount || parseFloat(withdrawAmount) <= 0}
                 className={`flex-1 py-2 px-4 rounded text-sm font-medium transition-colors ${
-                  withdrawType === 'transfer'
-                    ? 'bg-blue-600 hover:bg-blue-700 text-white disabled:bg-blue-800 disabled:cursor-not-allowed'
-                    : 'bg-red-600 hover:bg-red-700 text-white disabled:bg-red-800 disabled:cursor-not-allowed'
+                  withdrawType === 'deposit'
+                    ? 'bg-green-600 hover:bg-green-700 text-white disabled:bg-green-800 disabled:cursor-not-allowed'
+                    : withdrawType === 'transfer'
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white disabled:bg-blue-800 disabled:cursor-not-allowed'
+                      : 'bg-red-600 hover:bg-red-700 text-white disabled:bg-red-800 disabled:cursor-not-allowed'
                 }`}
               >
-                {isWithdrawing ? 'جاري...' : withdrawType === 'transfer' ? 'تحويل' : 'سحب'}
+                {isWithdrawing ? 'جاري...' : withdrawType === 'deposit' ? 'إيداع' : withdrawType === 'transfer' ? 'تحويل' : 'سحب'}
               </button>
             </div>
           </div>

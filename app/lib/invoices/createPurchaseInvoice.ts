@@ -18,6 +18,29 @@ export interface CreatePurchaseInvoiceParams {
   isReturn?: boolean
 }
 
+// Helper function to create new products in database
+async function createNewProductInDatabase(product: any): Promise<string> {
+  const { data, error } = await supabase
+    .from('products')
+    .insert({
+      name: product.name,
+      price: product.price || 0,
+      cost_price: product.cost_price || 0,
+      barcode: product.barcode || null,
+      description: product.description || null,
+      main_image_url: product.main_image_url || null,
+      is_active: true
+    })
+    .select('id')
+    .single()
+
+  if (error) {
+    throw new Error(`فشل في إنشاء المنتج "${product.name}": ${error.message}`)
+  }
+
+  return data.id
+}
+
 export async function createPurchaseInvoice({
   cartItems,
   selections,
@@ -37,8 +60,41 @@ export async function createPurchaseInvoice({
   }
 
   try {
+    // First, handle new products (those with temp- IDs)
+    // Create them in database and update their IDs
+    const processedCartItems = await Promise.all(
+      cartItems.map(async (item) => {
+        const productId = String(item.product.id)
+
+        // Check if this is a temporary product (new product from QuickAddProductModal)
+        if (productId.startsWith('temp-')) {
+          console.log(`🆕 Creating new product in database: ${item.product.name}`)
+
+          // Create the product in database and get real ID
+          const realProductId = await createNewProductInDatabase(item.product)
+
+          console.log(`✅ Product created with ID: ${realProductId}`)
+
+          // Return updated cart item with real product ID
+          return {
+            ...item,
+            product: {
+              ...item.product,
+              id: realProductId
+            }
+          }
+        }
+
+        // Return unchanged item for existing products
+        return item
+      })
+    )
+
+    // Use processed cart items with real product IDs
+    const finalCartItems = processedCartItems
+
     // Calculate totals (negative for returns)
-    const baseTotal = cartItems.reduce((sum, item) => sum + item.total, 0)
+    const baseTotal = finalCartItems.reduce((sum, item) => sum + item.total, 0)
     const totalAmount = isReturn ? -baseTotal : baseTotal
     const taxAmount = 0 // You can add tax calculation here if needed
     const discountAmount = 0 // You can add discount calculation here if needed
@@ -83,7 +139,7 @@ export async function createPurchaseInvoice({
     }
 
     // Create purchase invoice items
-    const purchaseItems = cartItems.map(item => ({
+    const purchaseItems = finalCartItems.map(item => ({
       purchase_invoice_id: purchaseData.id,
       product_id: item.product.id,
       quantity: item.quantity,
@@ -160,8 +216,8 @@ export async function createPurchaseInvoice({
 
     // Update inventory quantities (increase for purchases)
     const locationId = branchId || warehouseId
-    
-    for (const item of cartItems) {
+
+    for (const item of finalCartItems) {
       // Check if inventory record exists for this product and location
       const { data: existingInventory, error: getInventoryError } = await supabase
         .from('inventory')
@@ -296,7 +352,7 @@ export async function createPurchaseInvoice({
 
     // Update product costs using weighted average cost method
     console.log('🔄 Updating product costs after purchase...')
-    for (const item of cartItems) {
+    for (const item of finalCartItems) {
       try {
         const costUpdate = await updateProductCostAfterPurchase(
           item.product.id,
