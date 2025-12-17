@@ -9,9 +9,10 @@ interface SupplierSelectionModalProps {
   onClose: () => void
   onSelect: (supplier: any) => void
   selectedSupplier: any
+  isPurchaseMode?: boolean // لتمييز أن هذا لوضع الشراء
 }
 
-export default function SupplierSelectionModal({ isOpen, onClose, onSelect, selectedSupplier }: SupplierSelectionModalProps) {
+export default function SupplierSelectionModal({ isOpen, onClose, onSelect, selectedSupplier, isPurchaseMode = false }: SupplierSelectionModalProps) {
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [loading, setLoading] = useState(false)
@@ -62,14 +63,14 @@ export default function SupplierSelectionModal({ isOpen, onClose, onSelect, sele
         <div className="bg-[#2B3544] rounded-2xl shadow-2xl border border-[#4A5568] w-full max-w-2xl max-h-[80vh] overflow-hidden">
           
           {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-[#4A5568]">
+          <div className={`flex items-center justify-between p-6 border-b ${isPurchaseMode ? 'border-blue-600/50 bg-gradient-to-r from-blue-900/30 to-blue-800/20' : 'border-[#4A5568]'}`}>
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-r from-green-500 to-blue-500 rounded-full flex items-center justify-center">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isPurchaseMode ? 'bg-gradient-to-r from-blue-500 to-blue-600' : 'bg-gradient-to-r from-green-500 to-blue-500'}`}>
                 <TruckIcon className="h-5 w-5 text-white" />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-white">اختيار المورد</h2>
-                <p className="text-gray-400 text-sm">اختر المورد للفاتورة</p>
+                <h2 className="text-lg font-bold text-white">{isPurchaseMode ? 'اختيار مورد للشراء' : 'اختيار المورد'}</h2>
+                <p className="text-gray-400 text-sm">{isPurchaseMode ? 'اختر المورد لبدء فاتورة شراء جديدة' : 'اختر المورد للفاتورة'}</p>
               </div>
             </div>
             <button
@@ -112,8 +113,10 @@ export default function SupplierSelectionModal({ isOpen, onClose, onSelect, sele
                   <div
                     key={supplier.id}
                     onClick={() => handleSupplierSelect(supplier)}
-                    className={`bg-[#374151] rounded-xl p-4 border cursor-pointer transition-all hover:border-blue-500 ${
-                      selectedSupplier?.id === supplier.id ? 'border-blue-500 bg-blue-500/10' : 'border-[#4A5568]'
+                    className={`bg-[#374151] rounded-xl p-4 border cursor-pointer transition-all hover:border-blue-500 hover:bg-blue-500/5 ${
+                      selectedSupplier?.id === supplier.id
+                        ? 'border-blue-500 bg-blue-500/10'
+                        : 'border-[#4A5568]'
                     }`}
                   >
                     <div className="flex items-center justify-between">
@@ -135,7 +138,7 @@ export default function SupplierSelectionModal({ isOpen, onClose, onSelect, sele
                       </div>
                       <div className="text-left flex-shrink-0">
                         <div className="text-blue-400 font-bold">
-                          {supplier.account_balance ? `${parseFloat(supplier.account_balance).toFixed(2)} ريال` : '0.00 ريال'}
+                          {supplier.account_balance ? `${parseFloat(supplier.account_balance).toFixed(2)} جنيه` : '0.00 جنيه'}
                         </div>
                         <div className="text-xs text-gray-400">الرصيد</div>
                       </div>

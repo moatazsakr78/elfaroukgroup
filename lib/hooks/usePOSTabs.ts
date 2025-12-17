@@ -34,6 +34,8 @@ interface InheritedSelections {
   branch?: any;
   record?: any;
   priceType?: string;
+  isPurchaseMode?: boolean;
+  selectedSupplier?: any;
 }
 
 interface EditModeOptions {
@@ -167,6 +169,8 @@ export function usePOSTabs(): UsePOSTabsReturn {
             record: inheritedSelections?.record || null,
             priceType: inheritedSelections?.priceType as any || 'price',
           },
+          isPurchaseMode: inheritedSelections?.isPurchaseMode || false,
+          selectedSupplier: inheritedSelections?.selectedSupplier || null,
         },
       ];
       // Instant save

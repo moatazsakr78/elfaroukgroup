@@ -22,12 +22,13 @@ interface PaymentSplitProps {
   onPaymentsChange: (payments: PaymentEntry[], creditAmount: number) => void
   isDefaultCustomer?: boolean // العميل الافتراضي - لا يسمح بالآجل
   isReturnMode?: boolean // وضع المرتجع
+  isPurchaseMode?: boolean // وضع الشراء من المورد
 }
 
 // Default customer ID constant
 const DEFAULT_CUSTOMER_ID = '00000000-0000-0000-0000-000000000001'
 
-export default function PaymentSplit({ totalAmount, onPaymentsChange, isDefaultCustomer = false, isReturnMode = false }: PaymentSplitProps) {
+export default function PaymentSplit({ totalAmount, onPaymentsChange, isDefaultCustomer = false, isReturnMode = false, isPurchaseMode = false }: PaymentSplitProps) {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
   const [payments, setPayments] = useState<PaymentEntry[]>([
     {
@@ -144,10 +145,12 @@ export default function PaymentSplit({ totalAmount, onPaymentsChange, isDefaultC
                 type="number"
                 value={payment.amount}
                 onChange={(e) => handleAmountChange(payment.id, e.target.value)}
-                placeholder={isReturnMode ? "مبلغ المرتجع" : "المبلغ"}
+                placeholder={isReturnMode ? "مبلغ المرتجع" : isPurchaseMode ? "المبلغ المدفوع للمورد" : "المبلغ"}
                 className={`w-full px-2 py-1 bg-gray-700 text-white rounded border focus:outline-none focus:ring-1 text-xs h-[26px] ${
                   isReturnMode
                     ? "border-red-500 focus:ring-red-500 text-red-400"
+                    : isPurchaseMode
+                    ? "border-purple-500 focus:ring-purple-500"
                     : "border-gray-600 focus:ring-blue-500"
                 }`}
                 min="0"
@@ -206,9 +209,15 @@ export default function PaymentSplit({ totalAmount, onPaymentsChange, isDefaultC
       {(creditAmount > 0 || payments.length > 1) && !isDefaultCustomer && (
         <div className="mt-2 pt-2 border-t border-gray-600 flex items-center justify-between text-xs">
           <div className="flex items-center gap-3">
-            <span className="text-gray-400">مدفوع: <span className="text-green-400 font-medium">{totalPaid.toFixed(0)}</span></span>
+            <span className="text-gray-400">
+              {isPurchaseMode ? "مدفوع للمورد: " : "مدفوع: "}
+              <span className={`font-medium ${isPurchaseMode ? "text-purple-400" : "text-green-400"}`}>{totalPaid.toFixed(0)}</span>
+            </span>
             {creditAmount > 0 && (
-              <span className="text-gray-400">آجل: <span className="text-orange-400 font-medium">{creditAmount.toFixed(0)}</span></span>
+              <span className="text-gray-400">
+                {isPurchaseMode ? "متبقي للمورد: " : "آجل: "}
+                <span className="text-orange-400 font-medium">{creditAmount.toFixed(0)}</span>
+              </span>
             )}
           </div>
         </div>

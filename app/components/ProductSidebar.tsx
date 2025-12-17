@@ -7,7 +7,9 @@ import { useShapes } from '../lib/hooks/useShapes'
 import { uploadProductImage, PRODUCT_STORAGE_BUCKETS, getProductImageUrl } from '../lib/supabase/storage'
 import { uploadAndSetMainImage, uploadAndSetSubImage, addAdditionalVersionedImage, uploadVersionedProductImage } from '../lib/services/simpleImageVersioning'
 import { Product } from '../lib/hooks/useProducts'
-import { checkProductPurchaseHistory, PurchaseHistoryCheck } from '../lib/utils/purchase-cost-management'
+import { checkProductPurchaseHistory, PurchaseHistoryCheck, getLastPurchaseInfo, LastPurchaseInfo } from '../lib/utils/purchase-cost-management'
+import PurchaseHistoryModal from './PurchaseHistoryModal'
+import { useAuth } from '../lib/hooks/useAuth'
 import { useProductVideos, ProductVideo } from '../lib/hooks/useProductVideos'
 import ProductVideoUpload from './ProductVideoUpload'
 
@@ -111,6 +113,7 @@ interface ImageUploadAreaProps {
 }
 
 export default function ProductSidebar({ isOpen, onClose, onProductCreated, createProduct, updateProduct, categories, editProduct, selectedCategory }: ProductSidebarProps) {
+  const { isAdmin } = useAuth()
   const [activeTab, setActiveTab] = useState('تفاصيل المنتج')
   const [activeShapeColorTab, setActiveShapeColorTab] = useState('شكل وصف')
   const [branches, setBranches] = useState<Branch[]>([])
@@ -174,6 +177,14 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
     lastPurchaseDate: null,
     totalPurchases: 0
   })
+
+  // Last purchase info state
+  const [lastPurchaseInfo, setLastPurchaseInfo] = useState<LastPurchaseInfo | null>(null)
+  const [showPurchaseHistoryModal, setShowPurchaseHistoryModal] = useState(false)
+
+  // Admin override for cost price editing
+  const [showCostOverrideConfirm, setShowCostOverrideConfirm] = useState(false)
+  const [costOverrideEnabled, setCostOverrideEnabled] = useState(false)
   
   const [formData, setFormData] = useState({
     name: '',
@@ -465,6 +476,8 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
         lastPurchaseDate: null,
         totalPurchases: 0
       })
+      // Reset cost override when product changes
+      setCostOverrideEnabled(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editProduct, isOpen, branches, warehouses, selectedCategory])
@@ -615,14 +628,20 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
     }
   }
 
-  // Check purchase history permissions
+  // Check purchase history permissions and get last purchase info
   const checkProductPurchasePermissions = async () => {
     if (!editProduct?.id) return
-    
+
     try {
+      // جلب تاريخ الصلاحيات
       const historyCheck = await checkProductPurchaseHistory(editProduct.id)
       setPurchaseHistory(historyCheck)
       console.log('📊 Purchase history check:', historyCheck)
+
+      // جلب آخر سعر شراء
+      const lastPurchase = await getLastPurchaseInfo(editProduct.id)
+      setLastPurchaseInfo(lastPurchase)
+      console.log('📊 Last purchase info:', lastPurchase)
     } catch (error) {
       console.error('Error checking purchase permissions:', error)
       setPurchaseHistory({
@@ -632,6 +651,7 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
         totalPurchases: 0,
         message: 'حدث خطأ في التحقق من الصلاحيات'
       })
+      setLastPurchaseInfo(null)
     }
   }
 
@@ -2345,41 +2365,105 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
       case 'السعر':
         return (
           <div className="space-y-4">
+            {/* Cost Override Confirmation Modal */}
+            {showCostOverrideConfirm && (
+              <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center">
+                <div className="bg-[#1F2937] rounded-xl p-6 max-w-md mx-4 border border-gray-600 shadow-xl">
+                  <div className="text-center">
+                    <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-yellow-900/30 mb-4">
+                      <LockClosedIcon className="h-6 w-6 text-yellow-400" />
+                    </div>
+                    <h3 className="text-lg font-bold text-white mb-2">
+                      هل أنت متأكد أنك تريد تعديل سعر الشراء؟
+                    </h3>
+                    <p className="text-gray-400 text-sm mb-6">
+                      هذا الإجراء لا يجب استخدامه إلا في الضرورة
+                    </p>
+                    <div className="flex gap-3 justify-center">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCostOverrideEnabled(true)
+                          setShowCostOverrideConfirm(false)
+                        }}
+                        className="px-6 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors font-medium"
+                      >
+                        نعم
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowCostOverrideConfirm(false)}
+                        className="px-6 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors font-medium"
+                      >
+                        لا
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Purchase Price */}
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="text-white text-sm font-medium text-right">
                   سعر الشراء *
                 </label>
-                {!purchaseHistory.canEditCost && (
-                  <div className="flex items-center gap-2">
+                {!purchaseHistory.canEditCost && !costOverrideEnabled && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isAdmin) {
+                        setShowCostOverrideConfirm(true)
+                      }
+                    }}
+                    className={`flex items-center gap-2 ${isAdmin ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
+                  >
                     <LockClosedIcon className="h-4 w-4 text-yellow-400" />
                     <span className="text-xs text-yellow-400">محسوب تلقائياً</span>
-                  </div>
+                  </button>
                 )}
               </div>
-              
+
               <div className="relative">
                 <input
                   type="number"
                   value={formData.purchasePrice}
                   onChange={(e) => handleInputChange('purchasePrice', e.target.value)}
                   placeholder=""
-                  disabled={!purchaseHistory.canEditCost}
+                  disabled={!purchaseHistory.canEditCost && !costOverrideEnabled}
                   className={`w-full px-3 py-2 border rounded text-right text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
-                    purchaseHistory.canEditCost
+                    purchaseHistory.canEditCost || costOverrideEnabled
                       ? 'bg-[#2B3441] border-[#4A5568] text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-[#5DADE2] focus:border-[#5DADE2]'
                       : 'bg-gray-600/30 border-gray-600/50 text-gray-300 cursor-not-allowed'
                   }`}
                 />
-                {!purchaseHistory.canEditCost && (
+                {!purchaseHistory.canEditCost && !costOverrideEnabled && (
                   <div className="absolute left-2 top-1/2 transform -translate-y-1/2">
                     <LockClosedIcon className="h-4 w-4 text-gray-400" />
                   </div>
                 )}
               </div>
-              
             </div>
+
+            {/* Last Purchase Price - Inline Field */}
+            {lastPurchaseInfo && (
+              <div className="flex items-center gap-3">
+                <label className="text-gray-400 text-sm whitespace-nowrap">آخر سعر شراء</label>
+                <div className="flex-1 flex items-center gap-2 bg-[#2B3441]/50 border border-[#4A5568]/50 rounded px-3 py-2">
+                  <span className="text-white font-medium text-sm">
+                    {lastPurchaseInfo.unitPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPurchaseHistoryModal(true)}
+                  className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition-colors"
+                >
+                  عرض
+                </button>
+              </div>
+            )}
 
             {/* Sale Price */}
             <div>
@@ -3511,6 +3595,16 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
           <div className="h-14 bg-[#3A4553] md:hidden"></div>
         </div>
       </div>
+
+      {/* Purchase History Modal */}
+      {editProduct && (
+        <PurchaseHistoryModal
+          isOpen={showPurchaseHistoryModal}
+          onClose={() => setShowPurchaseHistoryModal(false)}
+          productId={editProduct.id}
+          productName={editProduct.name}
+        />
+      )}
     </>
   )
 }

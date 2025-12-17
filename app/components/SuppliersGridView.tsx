@@ -207,7 +207,7 @@ export default function SuppliersGridView({
                 <CurrencyDollarIcon className="h-3 w-3 text-green-400 flex-shrink-0" />
                 <span className="text-xs text-gray-300">الرصيد:</span>
                 <span className="text-white font-medium text-xs">
-                  {formatCurrency(supplier.account_balance)} ر.س
+                  {formatCurrency(supplier.account_balance)} جنيه
                 </span>
               </div>
 

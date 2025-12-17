@@ -204,6 +204,7 @@ function POSPageContent() {
   const [isPurchaseMode, setIsPurchaseMode] = useState(false);
   const [showPurchaseModeConfirm, setShowPurchaseModeConfirm] = useState(false);
   const [isSupplierModalOpen, setIsSupplierModalOpen] = useState(false);
+  const [isSupplierModalForNewPurchase, setIsSupplierModalForNewPurchase] = useState(false); // لتمييز إذا كان لبدء شراء جديد
   const [isWarehouseModalOpen, setIsWarehouseModalOpen] = useState(false);
   const [showQuickAddProductModal, setShowQuickAddProductModal] =
     useState(false);
@@ -1982,7 +1983,14 @@ function POSPageContent() {
 
   // Purchase Mode Functions
   const handlePurchaseModeToggle = () => {
-    setShowPurchaseModeConfirm(true);
+    if (isPurchaseMode) {
+      // إذا كان وضع الشراء مفعل، أظهر رسالة التأكيد للخروج
+      setShowPurchaseModeConfirm(true);
+    } else {
+      // إذا لم يكن مفعل، افتح نافذة اختيار المورد مباشرة لبدء شراء جديد
+      setIsSupplierModalForNewPurchase(true);
+      setIsSupplierModalOpen(true);
+    }
   };
 
   const confirmPurchaseMode = () => {
@@ -2002,6 +2010,35 @@ function POSPageContent() {
     setIsReturnMode(false); // Also exit return mode
     clearSelections();
     clearCart();
+  };
+
+  // Handler لاختيار المورد وتفعيل وضع الشراء
+  const handleSupplierSelectForPurchase = (supplier: any) => {
+    // تفعيل وضع الشراء
+    setIsPurchaseMode(true);
+    setSelectedSupplier(supplier);
+
+    // إنشاء tab جديد باسم المورد
+    const tabName = `شراء: ${supplier.name}`;
+    addTab(tabName, {
+      customer: null,
+      branch: globalSelections.branch,
+      record: globalSelections.record,
+      priceType: 'cost_price',
+      isPurchaseMode: true,
+      selectedSupplier: supplier,
+    });
+
+    // إغلاق نافذة المورد وإعادة تعيين الـ flag
+    setIsSupplierModalOpen(false);
+    setIsSupplierModalForNewPurchase(false);
+  };
+
+  // Handler لتغيير المورد في وضع الشراء (بدون فتح tab جديد)
+  const handleSupplierChange = (supplier: any) => {
+    setSelectedSupplier(supplier);
+    setIsSupplierModalOpen(false);
+    setIsSupplierModalForNewPurchase(false);
   };
 
   // Transfer Mode Functions
@@ -3416,9 +3453,13 @@ function POSPageContent() {
 
         <SupplierSelectionModal
           isOpen={isSupplierModalOpen}
-          onClose={() => setIsSupplierModalOpen(false)}
-          onSelect={setSelectedSupplier}
+          onClose={() => {
+            setIsSupplierModalOpen(false);
+            setIsSupplierModalForNewPurchase(false);
+          }}
+          onSelect={isSupplierModalForNewPurchase ? handleSupplierSelectForPurchase : handleSupplierChange}
           selectedSupplier={selectedSupplier}
+          isPurchaseMode={isSupplierModalForNewPurchase}
         />
 
         <WarehouseSelectionModal
@@ -4702,16 +4743,17 @@ function POSPageContent() {
 
                   {/* Cart Footer */}
                   <div className="p-4 border-t border-gray-600 bg-[#2B3544] flex-shrink-0">
-                    {/* Payment Split Component - Only show in sales/return mode (not transfer, purchase, or edit mode) */}
-                    {!isTransferMode && !isPurchaseMode && !activePOSTab?.isEditMode && (
+                    {/* Payment Split Component - Show in sales, return, and purchase mode (not transfer or edit mode) */}
+                    {!isTransferMode && !activePOSTab?.isEditMode && (
                       <PaymentSplit
                         totalAmount={calculateTotalWithDiscounts()}
                         onPaymentsChange={(payments, credit) => {
                           setPaymentSplitData(payments);
                           setCreditAmount(credit);
                         }}
-                        isDefaultCustomer={selections.customer?.id === '00000000-0000-0000-0000-000000000001'}
+                        isDefaultCustomer={isPurchaseMode ? false : selections.customer?.id === '00000000-0000-0000-0000-000000000001'}
                         isReturnMode={isReturnMode}
+                        isPurchaseMode={isPurchaseMode}
                       />
                     )}
 
@@ -5162,16 +5204,17 @@ function POSPageContent() {
 
             {/* Cart Footer */}
             <div className="p-4 border-t border-gray-600 bg-[#2B3544] flex-shrink-0">
-              {/* Payment Split Component - Only show in sales/return mode (not transfer, purchase, or edit mode) */}
-              {!isTransferMode && !isPurchaseMode && !activePOSTab?.isEditMode && (
+              {/* Payment Split Component - Show in sales, return, and purchase mode (not transfer or edit mode) */}
+              {!isTransferMode && !activePOSTab?.isEditMode && (
                 <PaymentSplit
                   totalAmount={calculateTotalWithDiscounts()}
                   onPaymentsChange={(payments, credit) => {
                     setPaymentSplitData(payments);
                     setCreditAmount(credit);
                   }}
-                  isDefaultCustomer={selections.customer?.id === '00000000-0000-0000-0000-000000000001'}
+                  isDefaultCustomer={isPurchaseMode ? false : selections.customer?.id === '00000000-0000-0000-0000-000000000001'}
                   isReturnMode={isReturnMode}
+                  isPurchaseMode={isPurchaseMode}
                 />
               )}
 
@@ -5331,9 +5374,13 @@ function POSPageContent() {
       {/* Supplier Selection Modal */}
       <SupplierSelectionModal
         isOpen={isSupplierModalOpen}
-        onClose={() => setIsSupplierModalOpen(false)}
-        onSelect={setSelectedSupplier}
+        onClose={() => {
+          setIsSupplierModalOpen(false);
+          setIsSupplierModalForNewPurchase(false);
+        }}
+        onSelect={isSupplierModalForNewPurchase ? handleSupplierSelectForPurchase : handleSupplierChange}
         selectedSupplier={selectedSupplier}
+        isPurchaseMode={isSupplierModalForNewPurchase}
       />
 
       {/* Warehouse Selection Modal */}

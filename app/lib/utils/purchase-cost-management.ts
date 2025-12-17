@@ -97,6 +97,9 @@ export async function checkProductPurchaseHistory(productId: string): Promise<Pu
 /**
  * حساب وتحديث تكلفة المنتج بعد شراء جديد
  * Calculate and update product cost after new purchase
+ *
+ * ✨ ملاحظة مهمة: المخزون يتم تحديثه قبل استدعاء هذه الدالة،
+ * لذلك نطرح كمية الشراء الجديدة للحصول على المخزون قبل الشراء
  */
 export async function updateProductCostAfterPurchase(
   productId: string,
@@ -127,8 +130,33 @@ export async function updateProductCostAfterPurchase(
       return null
     }
 
-    const currentStockQuantity = inventory?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0
-    const currentCostPerUnit = costTracking?.average_cost || 0
+    // ✨ المخزون الحالي يشمل الكمية الجديدة (لأن المخزون يتحدث قبل هذه الدالة)
+    // لذلك نطرح كمية الشراء الجديدة للحصول على المخزون قبل الشراء
+    const inventoryAfterPurchase = inventory?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0
+    const currentStockQuantity = Math.max(0, inventoryAfterPurchase - newPurchaseQuantity)
+
+    // ✨ سعر الشراء الحالي: نحاول من cost_tracking أولاً، ثم من products table
+    let currentCostPerUnit = costTracking?.average_cost || 0
+
+    // لو مفيش cost_tracking، نجيب من products table
+    if (!costTracking) {
+      const { data: product } = await supabase
+        .from('products')
+        .select('cost_price')
+        .eq('id', productId)
+        .single()
+
+      currentCostPerUnit = product?.cost_price || 0
+    }
+
+    console.log('📊 Cost calculation inputs:', {
+      productId,
+      inventoryAfterPurchase,
+      currentStockQuantity,
+      currentCostPerUnit,
+      newPurchaseQuantity,
+      newPurchaseUnitCost
+    })
 
     // حساب متوسط التكلفة المرجح الجديد
     const costParams: WeightedAverageCostParams = {
@@ -139,6 +167,8 @@ export async function updateProductCostAfterPurchase(
     }
 
     const result = calculateWeightedAverageCost(costParams)
+
+    console.log('📊 Cost calculation result:', result)
 
     // تحديث أو إنشاء سجل product_cost_tracking
     const updateData = {
@@ -243,6 +273,134 @@ export async function previewCostUpdate(
 
   } catch (error) {
     console.error('Error in previewCostUpdate:', error)
+    return null
+  }
+}
+
+/**
+ * بيانات سجل شراء واحد
+ */
+export interface PurchaseHistoryItem {
+  id: string
+  invoiceNumber: string
+  invoiceDate: string
+  supplierName: string
+  supplierId: string
+  quantity: number
+  unitPrice: number
+  totalPrice: number
+  createdAt: string
+}
+
+/**
+ * بيانات آخر سعر شراء
+ */
+export interface LastPurchaseInfo {
+  unitPrice: number
+  supplierName: string
+  supplierId: string
+  quantity: number
+  invoiceDate: string
+  invoiceNumber: string
+}
+
+/**
+ * جلب تاريخ أسعار الشراء للمنتج
+ * Get purchase price history for a product
+ */
+export async function getProductPurchaseHistory(productId: string): Promise<PurchaseHistoryItem[]> {
+  try {
+    const { data, error } = await supabase
+      .from('purchase_invoice_items')
+      .select(`
+        id,
+        quantity,
+        unit_purchase_price,
+        total_price,
+        created_at,
+        purchase_invoices (
+          id,
+          invoice_number,
+          invoice_date,
+          supplier_id,
+          suppliers (
+            id,
+            name
+          )
+        )
+      `)
+      .eq('product_id', productId)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error('Error fetching purchase history:', error)
+      return []
+    }
+
+    return (data || []).map((item: any) => ({
+      id: item.id,
+      invoiceNumber: item.purchase_invoices?.invoice_number || '-',
+      invoiceDate: item.purchase_invoices?.invoice_date || item.created_at,
+      supplierName: item.purchase_invoices?.suppliers?.name || 'غير معروف',
+      supplierId: item.purchase_invoices?.supplier_id || '',
+      quantity: item.quantity || 0,
+      unitPrice: item.unit_purchase_price || 0,
+      totalPrice: item.total_price || 0,
+      createdAt: item.created_at
+    }))
+
+  } catch (error) {
+    console.error('Error in getProductPurchaseHistory:', error)
+    return []
+  }
+}
+
+/**
+ * جلب آخر سعر شراء للمنتج
+ * Get last purchase price info for a product
+ */
+export async function getLastPurchaseInfo(productId: string): Promise<LastPurchaseInfo | null> {
+  try {
+    const { data, error } = await supabase
+      .from('purchase_invoice_items')
+      .select(`
+        quantity,
+        unit_purchase_price,
+        purchase_invoices (
+          invoice_number,
+          invoice_date,
+          supplier_id,
+          suppliers (
+            id,
+            name
+          )
+        )
+      `)
+      .eq('product_id', productId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single()
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // No purchase history
+        return null
+      }
+      console.error('Error fetching last purchase info:', error)
+      return null
+    }
+
+    return {
+      unitPrice: data.unit_purchase_price || 0,
+      supplierName: (data.purchase_invoices as any)?.suppliers?.name || 'غير معروف',
+      supplierId: (data.purchase_invoices as any)?.supplier_id || '',
+      quantity: data.quantity || 0,
+      invoiceDate: (data.purchase_invoices as any)?.invoice_date || '',
+      invoiceNumber: (data.purchase_invoices as any)?.invoice_number || ''
+    }
+
+  } catch (error) {
+    console.error('Error in getLastPurchaseInfo:', error)
     return null
   }
 }
