@@ -26,6 +26,9 @@ export interface WebsiteSettings {
   products_per_page: number;
   enable_product_reviews: boolean;
   auto_approve_reviews: boolean;
+  // Store display settings
+  show_quantity_in_store: boolean;
+  show_product_star_rating: boolean;
 }
 
 // UI/Theme settings
@@ -152,7 +155,9 @@ export const DEFAULT_SETTINGS: SystemSettingsObject = {
     default_language: 'ar',
     products_per_page: 20,
     enable_product_reviews: true,
-    auto_approve_reviews: false
+    auto_approve_reviews: false,
+    show_quantity_in_store: true,
+    show_product_star_rating: true
   },
   ui: {
     theme: 'dark',

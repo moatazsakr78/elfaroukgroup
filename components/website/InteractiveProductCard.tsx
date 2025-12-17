@@ -7,6 +7,7 @@ import { useCart } from '../../lib/contexts/CartContext';
 import { useUserProfile } from '../../lib/hooks/useUserProfile';
 import { useWebsiteCurrency } from '@/lib/hooks/useCurrency';
 import { useRatingsDisplay } from '../../lib/hooks/useRatingSettings';
+import { useStoreDisplaySettings } from '../../lib/hooks/useStoreDisplaySettings';
 import { useProductVoting } from '@/app/lib/hooks/useProductVoting';
 import ProductVoteModal from './ProductVoteModal';
 import ShapeSelector from './ShapeSelector';
@@ -48,6 +49,9 @@ export default function InteractiveProductCard({
 
   // Get rating settings
   const { showRatings } = useRatingsDisplay();
+
+  // Get store display settings
+  const { showQuantityInStore, showProductStarRating } = useStoreDisplaySettings();
 
   // Vote modal state
   const [isVoteModalOpen, setIsVoteModalOpen] = useState(false);
@@ -457,8 +461,8 @@ export default function InteractiveProductCard({
               {profile?.role === 'جملة' && currentProduct.wholesale_price && (
                 <span className="text-xs text-blue-600 font-medium">سعر الجملة</span>
               )}
-              {/* Static stock - updated every 60 seconds via ISR */}
-              {(product.totalQuantity !== undefined || product.stock !== undefined) && (
+              {/* Static stock - updated every 60 seconds via ISR - only show if enabled in settings */}
+              {showQuantityInStore && (product.totalQuantity !== undefined || product.stock !== undefined) && (
                 <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
                   (product.totalQuantity || product.stock || 0) > 0
                     ? 'bg-green-100 text-green-700'
@@ -470,8 +474,8 @@ export default function InteractiveProductCard({
             </div>
           </div>
         </div>
-        {/* Ratings Section - Only show if enabled in settings */}
-        {showRatings && (
+        {/* Ratings Section - Only show if enabled in both global ratings setting and store display setting */}
+        {showRatings && showProductStarRating && (
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1">
               <span className="text-yellow-400">⭐</span>

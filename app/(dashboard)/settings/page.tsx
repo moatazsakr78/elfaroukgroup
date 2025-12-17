@@ -17,6 +17,7 @@ import { Currency, DEFAULT_SYSTEM_CURRENCY, DEFAULT_WEBSITE_CURRENCY, DEFAULT_UN
 import { useCurrencySettings } from '@/lib/hooks/useCurrency';
 import { useCurrencySettings as useDbCurrencySettings } from '@/lib/hooks/useSystemSettings';
 import { useRatingsDisplay } from '@/lib/hooks/useRatingSettings';
+import { useStoreDisplaySettings } from '@/lib/hooks/useStoreDisplaySettings';
 import { useCompanySettings } from '@/lib/hooks/useCompanySettings';
 import { useStoreThemes } from '@/lib/hooks/useStoreTheme';
 import { supabase } from '@/app/lib/supabase/client';
@@ -300,10 +301,13 @@ export default function SettingsPage() {
   const [isLogoEditorOpen, setIsLogoEditorOpen] = useState(false);
   const [selectedLogoFile, setSelectedLogoFile] = useState<File | null>(null);
 
-  // Store Settings State
-  const [showQuantityInStore, setShowQuantityInStore] = useState(true);
-  const [showProductStarRating, setShowProductStarRating] = useState(true);
-  const [isLoadingStoreSettings, setIsLoadingStoreSettings] = useState(true);
+  // Store Display Settings using hook
+  const {
+    showQuantityInStore,
+    showProductStarRating,
+    updateStoreDisplaySettings,
+    isLoading: isLoadingStoreSettings
+  } = useStoreDisplaySettings();
 
   // Update pending state when database values change
   useEffect(() => {
@@ -383,42 +387,6 @@ export default function SettingsPage() {
     };
 
     loadProductDisplaySettings();
-  }, []);
-
-  // Load store settings from database
-  useEffect(() => {
-    const loadStoreSettings = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('system_settings')
-          .select('settings_data')
-          .eq('is_active', true)
-          .single();
-
-        if (error && error.code !== 'PGRST116') {
-          console.error('Error loading store settings:', error);
-          setIsLoadingStoreSettings(false);
-          return;
-        }
-
-        if (data?.settings_data) {
-          const settingsData = data.settings_data as any;
-          if (typeof settingsData.show_quantity_in_store === 'boolean') {
-            setShowQuantityInStore(settingsData.show_quantity_in_store);
-          }
-          if (typeof settingsData.show_product_star_rating === 'boolean') {
-            setShowProductStarRating(settingsData.show_product_star_rating);
-          }
-        }
-
-        setIsLoadingStoreSettings(false);
-      } catch (err) {
-        console.error('Error loading store settings:', err);
-        setIsLoadingStoreSettings(false);
-      }
-    };
-
-    loadStoreSettings();
   }, []);
 
   // Use dynamic currency list from database
@@ -1454,72 +1422,10 @@ export default function SettingsPage() {
 
   const handleStoreSettingChange = async (settingKey: string, value: boolean) => {
     try {
-      // Update local state first
       if (settingKey === 'show_quantity_in_store') {
-        setShowQuantityInStore(value);
+        await updateStoreDisplaySettings({ showQuantityInStore: value });
       } else if (settingKey === 'show_product_star_rating') {
-        setShowProductStarRating(value);
-      }
-
-      // Check if active settings exist
-      const { data: existingData, error: fetchError } = await supabase
-        .from('system_settings')
-        .select('id, settings_data')
-        .eq('is_active', true)
-        .single();
-
-      if (fetchError && fetchError.code !== 'PGRST116') {
-        console.error('Error fetching store settings:', fetchError);
-        return;
-      }
-
-      if (existingData?.id) {
-        // Update existing settings_data
-        const currentSettings = (existingData.settings_data as any) || {};
-        const updatedSettings = {
-          ...currentSettings,
-          [settingKey]: value
-        };
-
-        const { error } = await supabase
-          .from('system_settings')
-          .update({
-            settings_data: updatedSettings,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', existingData.id);
-
-        if (error) {
-          console.error('Error updating store setting:', error);
-          // Revert state on error
-          if (settingKey === 'show_quantity_in_store') {
-            setShowQuantityInStore(!value);
-          } else if (settingKey === 'show_product_star_rating') {
-            setShowProductStarRating(!value);
-          }
-        }
-      } else {
-        // Insert new settings record
-        const newSettings = {
-          [settingKey]: value
-        };
-
-        const { error } = await supabase
-          .from('system_settings')
-          .insert({
-            settings_data: newSettings,
-            is_active: true
-          });
-
-        if (error) {
-          console.error('Error inserting store setting:', error);
-          // Revert state on error
-          if (settingKey === 'show_quantity_in_store') {
-            setShowQuantityInStore(!value);
-          } else if (settingKey === 'show_product_star_rating') {
-            setShowProductStarRating(!value);
-          }
-        }
+        await updateStoreDisplaySettings({ showProductStarRating: value });
       }
     } catch (err) {
       console.error('Error saving store setting:', err);

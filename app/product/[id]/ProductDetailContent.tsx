@@ -6,6 +6,7 @@ import { detectDeviceClient, DeviceInfo } from '../../../lib/device-detection';
 import { UserInfo, Product, ProductColor } from '../../../components/website/shared/types';
 import { supabase } from '../../lib/supabase/client';
 import { useRatingsDisplay } from '../../../lib/hooks/useRatingSettings';
+import { useStoreDisplaySettings } from '../../../lib/hooks/useStoreDisplaySettings';
 import { useCart } from '../../../lib/contexts/CartContext';
 import { useFormatPrice } from '../../../lib/hooks/useCurrency';
 import { useCompanySettings } from '../../../lib/hooks/useCompanySettings';
@@ -310,6 +311,7 @@ export default function ProductDetailContent({ productId, serverData }: ProductD
 
   const router = useRouter();
   const { showRatings } = useRatingsDisplay();
+  const { showProductStarRating } = useStoreDisplaySettings();
   const { cartItems, addToCart } = useCart();
   const formatPrice = useFormatPrice();
   const [showCartModal, setShowCartModal] = useState(false);
@@ -1126,7 +1128,7 @@ export default function ProductDetailContent({ productId, serverData }: ProductD
             </div>
 
             {/* Rating and Reviews - conditionally shown based on settings */}
-            {showRatings && (
+            {showRatings && showProductStarRating && (
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-1">
                   {[...Array(5)].map((_, i) => (
@@ -1427,13 +1429,13 @@ export default function ProductDetailContent({ productId, serverData }: ProductD
                         </div>
                       </div>
                       <div className="flex items-center justify-between">
-                        {showRatings && (
+                        {showRatings && showProductStarRating && (
                           <div className="flex items-center gap-1">
                             <span className="text-yellow-400">⭐</span>
                             <span className="text-sm text-gray-400">{product.rating} ({product.reviews})</span>
                           </div>
                         )}
-                        {!showRatings && <div></div>}
+                        {(!showRatings || !showProductStarRating) && <div></div>}
                         <button
                           onClick={async (e) => {
                             e.stopPropagation();
