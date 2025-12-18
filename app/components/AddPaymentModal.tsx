@@ -95,8 +95,9 @@ export default function AddPaymentModal({
 
     const paymentAmount = parseFloat(amount)
 
-    // للسلفة: المبلغ يُسجّل كسالب لأنها تزيد من الرصيد المستحق على العميل
-    const actualAmount = paymentType === 'loan' ? -paymentAmount : paymentAmount
+    // المبلغ يُسجّل دائماً كقيمة موجبة في قاعدة البيانات
+    // نوع العملية (سلفة/دفعة) يُحدد من خلال حقل الملاحظات
+    const actualAmount = paymentAmount
 
     // Check if payment exceeds balance (فقط للدفعة العادية)
     if (paymentType === 'payment' && paymentAmount > currentBalance) {
@@ -195,6 +196,11 @@ export default function AddPaymentModal({
           }
         }
       } else {
+        // إعداد الملاحظات مع توضيح نوع العملية للمورد
+        const supplierPaymentNotes = paymentType === 'loan'
+          ? `سلفة${notes ? ` - ${notes}` : ''}`
+          : notes || null
+
         const { data, error } = await supabase
           .from('supplier_payments')
           .insert([
@@ -202,7 +208,7 @@ export default function AddPaymentModal({
               supplier_id: entityId,
               amount: paymentAmount,
               payment_method: paymentMethod,
-              notes: notes || null,
+              notes: supplierPaymentNotes,
               payment_date: new Date().toISOString().split('T')[0],
             }
           ])
@@ -210,12 +216,12 @@ export default function AddPaymentModal({
 
         if (error) {
           console.error('Error adding payment:', error)
-          alert('حدث خطأ أثناء إضافة الدفعة')
+          alert(paymentType === 'loan' ? 'حدث خطأ أثناء إضافة السلفة' : 'حدث خطأ أثناء إضافة الدفعة')
           return
         }
 
         // Record payment in the selected safe (if a safe was selected)
-        // For supplier payments, money goes OUT of the drawer (negative)
+        // للدفعة: المال يخرج من الخزنة (سلبي) / للسلفة: المال يدخل للخزنة (إيجابي)
         if (recordId && paymentMethod === 'cash') {
           try {
             // Get or create drawer for this record
@@ -239,8 +245,9 @@ export default function AddPaymentModal({
             }
 
             if (drawer) {
-              // Calculate new balance (supplier payment removes from drawer)
-              const newBalance = (drawer.current_balance || 0) - paymentAmount
+              // للدفعة: خصم من الخزنة / للسلفة: إضافة للخزنة
+              const drawerChange = paymentType === 'loan' ? paymentAmount : -paymentAmount
+              const newBalance = (drawer.current_balance || 0) + drawerChange
 
               // Update drawer balance
               await supabase
@@ -257,14 +264,16 @@ export default function AddPaymentModal({
                 .insert({
                   drawer_id: drawer.id,
                   record_id: recordId,
-                  transaction_type: 'withdrawal',
-                  amount: -paymentAmount,
+                  transaction_type: paymentType === 'loan' ? 'deposit' : 'withdrawal',
+                  amount: drawerChange,
                   balance_after: newBalance,
-                  notes: `دفعة لمورد: ${entityName}${notes ? ` - ${notes}` : ''}`,
+                  notes: paymentType === 'loan'
+                    ? `سلفة من مورد: ${entityName}${notes ? ` - ${notes}` : ''}`
+                    : `دفعة لمورد: ${entityName}${notes ? ` - ${notes}` : ''}`,
                   performed_by: 'system'
                 })
 
-              console.log(`✅ Cash drawer updated with supplier payment: -${paymentAmount}, new balance: ${newBalance}`)
+              console.log(`✅ Cash drawer updated with supplier ${paymentType}: ${drawerChange}, new balance: ${newBalance}`)
             }
           } catch (drawerError) {
             console.warn('Failed to update cash drawer with supplier payment:', drawerError)
@@ -341,7 +350,7 @@ export default function AddPaymentModal({
                     : 'text-gray-400 hover:text-white hover:bg-gray-700'
                 }`}
               >
-                سلفة
+                إضافة
               </button>
             </div>
 

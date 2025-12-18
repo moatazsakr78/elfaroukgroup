@@ -112,6 +112,122 @@ interface ImageUploadAreaProps {
   multiple?: boolean
 }
 
+// Image Upload Area Component - Extracted outside to prevent re-creation on each render
+const ImageUploadArea = ({ onImageSelect, images, onImageRemove, label, multiple = false }: ImageUploadAreaProps) => {
+  const [isDragOver, setIsDragOver] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  // Use a unique key for mobile file input to ensure it works correctly
+  const [inputKey, setInputKey] = useState(Date.now())
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragOver(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragOver(false)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragOver(false)
+
+    const files = Array.from(e.dataTransfer.files).filter(file =>
+      file.type.startsWith('image/')
+    )
+
+    if (files.length > 0) {
+      onImageSelect(files)
+    }
+  }
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (files && files.length > 0) {
+      onImageSelect(Array.from(files))
+    }
+    // Reset input by changing key - this ensures mobile file picker works on subsequent tries
+    setInputKey(Date.now())
+  }
+
+  const openFileDialog = () => {
+    fileInputRef.current?.click()
+  }
+
+  return (
+    <div className="space-y-3">
+      <label className="block text-gray-300 text-sm font-medium mb-2">
+        {label}
+      </label>
+
+      {/* Drop Zone */}
+      <div
+        className={`border-2 border-dashed p-8 text-center transition-all duration-200 ${
+          isDragOver
+            ? 'border-blue-400 bg-blue-400/10'
+            : 'border-gray-600 bg-[#4A5568]/30'
+        }`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        <div className="flex flex-col items-center gap-2">
+          <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+          </svg>
+          <p className="text-gray-400 text-sm">
+            {isDragOver ? 'أفلت الصورة هنا' : 'اسحب وأفلت الصورة هنا أو'}
+          </p>
+          <button
+            type="button"
+            onClick={openFileDialog}
+            className="bg-[#4A5568] hover:bg-[#5A6478] text-white px-4 py-2 text-sm border border-gray-600 transition-colors"
+          >
+            اختر الصورة
+          </button>
+          <input
+            key={inputKey}
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple={multiple}
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+        </div>
+      </div>
+
+      {/* Image Previews */}
+      {images.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-4">
+          {images.map((image) => (
+            <div key={image.id} className="relative group">
+              <img
+                src={image.preview}
+                alt="معاينة الصورة"
+                className="w-full h-24 object-cover rounded border border-gray-600"
+              />
+              <button
+                type="button"
+                onClick={() => onImageRemove(image.id)}
+                className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+              <div className="absolute bottom-1 left-1 right-1 bg-black/70 text-white text-xs p-1 rounded truncate">
+                {image.file.name}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function ProductSidebar({ isOpen, onClose, onProductCreated, createProduct, updateProduct, categories, editProduct, selectedCategory }: ProductSidebarProps) {
   const { isAdmin } = useAuth()
   const [activeTab, setActiveTab] = useState('تفاصيل المنتج')
@@ -1379,119 +1495,6 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
       additionalImages.forEach(img => URL.revokeObjectURL(img.preview))
     }
   }, [])
-
-  // Image Upload Area Component
-  const ImageUploadArea = ({ onImageSelect, images, onImageRemove, label, multiple = false }: ImageUploadAreaProps) => {
-    const [isDragOver, setIsDragOver] = useState(false)
-    const fileInputRef = useRef<HTMLInputElement>(null)
-
-    const handleDragOver = (e: React.DragEvent) => {
-      e.preventDefault()
-      setIsDragOver(true)
-    }
-
-    const handleDragLeave = (e: React.DragEvent) => {
-      e.preventDefault()
-      setIsDragOver(false)
-    }
-
-    const handleDrop = (e: React.DragEvent) => {
-      e.preventDefault()
-      setIsDragOver(false)
-      
-      const files = Array.from(e.dataTransfer.files).filter(file => 
-        file.type.startsWith('image/')
-      )
-      
-      if (files.length > 0) {
-        onImageSelect(files)
-      }
-    }
-
-    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const files = e.target.files
-      if (files) {
-        onImageSelect(Array.from(files))
-      }
-      // Reset input value
-      e.target.value = ''
-    }
-
-    const openFileDialog = () => {
-      fileInputRef.current?.click()
-    }
-
-    return (
-      <div className="space-y-3">
-        <label className="block text-gray-300 text-sm font-medium mb-2">
-          {label}
-        </label>
-        
-        {/* Drop Zone */}
-        <div 
-          className={`border-2 border-dashed p-8 text-center transition-all duration-200 ${
-            isDragOver 
-              ? 'border-blue-400 bg-blue-400/10' 
-              : 'border-gray-600 bg-[#4A5568]/30'
-          }`}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-        >
-          <div className="flex flex-col items-center gap-2">
-            <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-            </svg>
-            <p className="text-gray-400 text-sm">
-              {isDragOver ? 'أفلت الصورة هنا' : 'اسحب وأفلت الصورة هنا أو'}
-            </p>
-            <button 
-              type="button"
-              onClick={openFileDialog}
-              className="bg-[#4A5568] hover:bg-[#5A6478] text-white px-4 py-2 text-sm border border-gray-600 transition-colors"
-            >
-              اختر الصورة
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              multiple={multiple}
-              onChange={handleFileSelect}
-              className="hidden"
-            />
-          </div>
-        </div>
-
-        {/* Image Previews */}
-        {images.length > 0 && (
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-4">
-            {images.map((image) => (
-              <div key={image.id} className="relative group">
-                <img 
-                  src={image.preview} 
-                  alt="معاينة الصورة"
-                  className="w-full h-24 object-cover rounded border border-gray-600"
-                />
-                <button
-                  type="button"
-                  onClick={() => onImageRemove(image.id)}
-                  className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-                <div className="absolute bottom-1 left-1 right-1 bg-black/70 text-white text-xs p-1 rounded truncate">
-                  {image.file.name}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    )
-  }
 
   // Location variant management functions
   const handleLocationSelect = (location: Branch | Warehouse, type: 'branch' | 'warehouse') => {

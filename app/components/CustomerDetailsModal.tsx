@@ -591,17 +591,36 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
       paymentsData?.forEach(payment => {
         if (payment.created_at) {
           const paymentDate = new Date(payment.created_at)
-          statements.push({
-            id: `payment-${payment.id}`,
-            date: paymentDate,
-            description: payment.notes ? `دفعة - ${payment.notes}` : 'دفعة',
-            type: 'دفعة',
-            amount: -payment.amount, // Negative because it reduces balance
-            invoiceValue: 0,
-            paidAmount: payment.amount,
-            balance: 0, // Will be calculated
-            isNegative: false
-          })
+          // التحقق إذا كانت سلفة من خلال الملاحظات
+          const isLoan = payment.notes?.startsWith('سلفة')
+
+          if (isLoan) {
+            // السلفة تزيد الرصيد المستحق على العميل
+            statements.push({
+              id: `payment-${payment.id}`,
+              date: paymentDate,
+              description: payment.notes,
+              type: 'سلفة',
+              amount: payment.amount, // Positive because it increases balance
+              invoiceValue: payment.amount,
+              paidAmount: 0,
+              balance: 0,
+              isNegative: false
+            })
+          } else {
+            // الدفعة العادية تنقص الرصيد المستحق على العميل
+            statements.push({
+              id: `payment-${payment.id}`,
+              date: paymentDate,
+              description: payment.notes ? `دفعة - ${payment.notes}` : 'دفعة',
+              type: 'دفعة',
+              amount: -payment.amount, // Negative because it reduces balance
+              invoiceValue: 0,
+              paidAmount: payment.amount,
+              balance: 0,
+              isNegative: false
+            })
+          }
         }
       })
 
@@ -1883,6 +1902,8 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
             ? 'bg-blue-600/20 text-blue-400 border border-blue-600'
             : value === 'مرتجع بيع'
             ? 'bg-orange-600/20 text-orange-400 border border-orange-600'
+            : value === 'سلفة'
+            ? 'bg-purple-600/20 text-purple-400 border border-purple-600'
             : 'bg-gray-600/20 text-gray-400 border border-gray-600'
         }`}>
           {value}
@@ -1911,9 +1932,11 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
             ? 'text-red-400'
             : item.type === 'دفعة'
             ? 'text-green-400'
+            : item.type === 'سلفة'
+            ? 'text-purple-400'
             : 'text-blue-400'
         }`}>
-          {item.type === 'مرتجع بيع' ? '-' : item.type === 'دفعة' ? '-' : '+'}{formatPrice(value, 'system')}
+          {item.type === 'مرتجع بيع' ? '-' : item.type === 'دفعة' ? '-' : item.type === 'سلفة' ? '+' : '+'}{formatPrice(value, 'system')}
         </span>
       )
     },

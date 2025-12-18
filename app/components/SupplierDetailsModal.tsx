@@ -440,14 +440,30 @@ export default function SupplierDetailsModal({ isOpen, onClose, supplier }: Supp
       // Add payments
       payments?.forEach((payment) => {
         if (payment.created_at) {  // Add null check
-          statements.push({
-            id: statements.length + 1,
-            date: new Date(payment.created_at),
-            description: payment.notes || 'دفعة',
-            type: 'دفعة',
-            amount: -payment.amount, // Negative because it reduces the balance
-            paymentId: payment.id
-          })
+          // التحقق إذا كانت سلفة من خلال الملاحظات
+          const isLoan = payment.notes?.startsWith('سلفة')
+
+          if (isLoan) {
+            // السلفة من المورد تزيد الرصيد المستحق له
+            statements.push({
+              id: statements.length + 1,
+              date: new Date(payment.created_at),
+              description: payment.notes,
+              type: 'سلفة',
+              amount: payment.amount, // Positive because it increases the balance
+              paymentId: payment.id
+            })
+          } else {
+            // الدفعة للمورد تنقص الرصيد المستحق له
+            statements.push({
+              id: statements.length + 1,
+              date: new Date(payment.created_at),
+              description: payment.notes || 'دفعة',
+              type: 'دفعة',
+              amount: -payment.amount, // Negative because it reduces the balance
+              paymentId: payment.id
+            })
+          }
         }
       })
 
@@ -1185,6 +1201,10 @@ export default function SupplierDetailsModal({ isOpen, onClose, supplier }: Supp
             ? 'bg-blue-600/20 text-blue-400 border border-blue-600'
             : value === 'دفعة'
             ? 'bg-green-600/20 text-green-400 border border-green-600'
+            : value === 'مرتجع شراء'
+            ? 'bg-orange-600/20 text-orange-400 border border-orange-600'
+            : value === 'سلفة'
+            ? 'bg-purple-600/20 text-purple-400 border border-purple-600'
             : 'bg-blue-600/20 text-blue-400 border border-blue-600'
         }`}>
           {value}
@@ -1198,12 +1218,13 @@ export default function SupplierDetailsModal({ isOpen, onClose, supplier }: Supp
       width: 140,
       render: (value: number, item: any) => {
         const isDafeaa = item.type === 'دفعة'
+        const isSalfa = item.type === 'سلفة'
         const isPositive = value > 0
         return (
           <span className={`font-medium ${
-            isDafeaa ? 'text-green-400' : 'text-blue-400'
+            isDafeaa ? 'text-green-400' : isSalfa ? 'text-purple-400' : 'text-blue-400'
           }`}>
-            {isPositive ? '' : ''}{formatPrice(Math.abs(value))}
+            {isPositive ? '+' : '-'}{formatPrice(Math.abs(value))}
           </span>
         )
       }
