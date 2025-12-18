@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { MagnifyingGlassIcon, XMarkIcon, ChevronLeftIcon, ChevronRightIcon, PlusIcon, PencilSquareIcon, TrashIcon, TableCellsIcon, CalendarDaysIcon, PrinterIcon } from '@heroicons/react/24/outline'
+import { MagnifyingGlassIcon, XMarkIcon, ChevronLeftIcon, ChevronRightIcon, PlusIcon, PencilSquareIcon, TrashIcon, TableCellsIcon, CalendarDaysIcon, PrinterIcon, DocumentIcon, ArrowDownTrayIcon, DocumentArrowDownIcon } from '@heroicons/react/24/outline'
 import ResizableTable from './tables/ResizableTable'
 import { supabase } from '../lib/supabase/client'
 import ConfirmDeleteModal from './ConfirmDeleteModal'
@@ -73,10 +73,17 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
 
   // Add Payment Modal state
   const [showAddPaymentModal, setShowAddPaymentModal] = useState(false)
+  const [paymentType, setPaymentType] = useState<'payment' | 'loan'>('payment')
 
   // Customer payments state
   const [customerPayments, setCustomerPayments] = useState<any[]>([])
   const [isLoadingPayments, setIsLoadingPayments] = useState(false)
+  const [selectedPayment, setSelectedPayment] = useState<any>(null)
+  const [showDeletePaymentModal, setShowDeletePaymentModal] = useState(false)
+  const [isDeletingPayment, setIsDeletingPayment] = useState(false)
+
+  // Context menu state for payments
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; payment: any } | null>(null)
 
   // Account statement state
   const [accountStatements, setAccountStatements] = useState<any[]>([])
@@ -87,6 +94,112 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
   const [selectedStatementInvoice, setSelectedStatementInvoice] = useState<any>(null)
   const [statementInvoiceItems, setStatementInvoiceItems] = useState<any[]>([])
   const [isLoadingStatementInvoiceItems, setIsLoadingStatementInvoiceItems] = useState(false)
+
+  // Save dropdown state
+  const [showSaveDropdown, setShowSaveDropdown] = useState(false)
+  const [showSaveDropdownStatement, setShowSaveDropdownStatement] = useState(false)
+  const saveDropdownRef = useRef<HTMLDivElement>(null)
+  const saveDropdownStatementRef = useRef<HTMLDivElement>(null)
+
+  // Column manager state
+  const [showColumnManager, setShowColumnManager] = useState(false)
+  const [columnManagerTab, setColumnManagerTab] = useState<'invoices' | 'details' | 'print'>('invoices')
+
+  // Visible columns state - default all visible
+  const [visibleInvoiceColumns, setVisibleInvoiceColumns] = useState<string[]>([
+    'index', 'invoice_number', 'created_at', 'time', 'invoice_type',
+    'customer_name', 'customer_phone', 'total_amount', 'payment_method', 'notes'
+  ])
+  const [visibleDetailsColumns, setVisibleDetailsColumns] = useState<string[]>([
+    'index', 'category', 'productName', 'quantity', 'barcode',
+    'unit_price', 'discount', 'total', 'notes'
+  ])
+  const [visiblePrintColumns, setVisiblePrintColumns] = useState<string[]>([
+    'index', 'productName', 'category', 'quantity', 'unit_price', 'discount', 'total'
+  ])
+
+  // Column definitions for the manager
+  const allInvoiceColumnDefs = [
+    { id: 'index', label: '#', required: true },
+    { id: 'invoice_number', label: 'رقم الفاتورة', required: true },
+    { id: 'created_at', label: 'التاريخ', required: false },
+    { id: 'time', label: 'الوقت', required: false },
+    { id: 'invoice_type', label: 'نوع الفاتورة', required: false },
+    { id: 'customer_name', label: 'العميل', required: false },
+    { id: 'customer_phone', label: 'الهاتف', required: false },
+    { id: 'total_amount', label: 'المبلغ الإجمالي', required: true },
+    { id: 'payment_method', label: 'طريقة الدفع', required: false },
+    { id: 'notes', label: 'البيان', required: false }
+  ]
+
+  const allDetailsColumnDefs = [
+    { id: 'index', label: '#', required: true },
+    { id: 'category', label: 'المجموعة', required: false },
+    { id: 'productName', label: 'اسم المنتج', required: true },
+    { id: 'quantity', label: 'الكمية', required: true },
+    { id: 'barcode', label: 'الباركود', required: false },
+    { id: 'unit_price', label: 'السعر', required: true },
+    { id: 'discount', label: 'خصم', required: false },
+    { id: 'total', label: 'الإجمالي', required: true },
+    { id: 'notes', label: 'ملاحظات', required: false }
+  ]
+
+  const allPrintColumnDefs = [
+    { id: 'index', label: '#', required: true },
+    { id: 'productName', label: 'اسم المنتج', required: true },
+    { id: 'category', label: 'المجموعة', required: false },
+    { id: 'quantity', label: 'الكمية', required: true },
+    { id: 'barcode', label: 'الباركود', required: false },
+    { id: 'unit_price', label: 'السعر', required: true },
+    { id: 'discount', label: 'الخصم', required: false },
+    { id: 'total', label: 'الإجمالي', required: true }
+  ]
+
+  // Toggle column visibility
+  const toggleColumn = (columnId: string, type: 'invoices' | 'details' | 'print') => {
+    if (type === 'invoices') {
+      const colDef = allInvoiceColumnDefs.find(c => c.id === columnId)
+      if (colDef?.required) return // Can't toggle required columns
+
+      setVisibleInvoiceColumns(prev =>
+        prev.includes(columnId)
+          ? prev.filter(id => id !== columnId)
+          : [...prev, columnId]
+      )
+    } else if (type === 'details') {
+      const colDef = allDetailsColumnDefs.find(c => c.id === columnId)
+      if (colDef?.required) return
+
+      setVisibleDetailsColumns(prev =>
+        prev.includes(columnId)
+          ? prev.filter(id => id !== columnId)
+          : [...prev, columnId]
+      )
+    } else {
+      const colDef = allPrintColumnDefs.find(c => c.id === columnId)
+      if (colDef?.required) return
+
+      setVisiblePrintColumns(prev =>
+        prev.includes(columnId)
+          ? prev.filter(id => id !== columnId)
+          : [...prev, columnId]
+      )
+    }
+  }
+
+  // Close save dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (saveDropdownRef.current && !saveDropdownRef.current.contains(e.target as Node)) {
+        setShowSaveDropdown(false)
+      }
+      if (saveDropdownStatementRef.current && !saveDropdownStatementRef.current.contains(e.target as Node)) {
+        setShowSaveDropdownStatement(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (viewMode !== 'split' || activeTab !== 'invoices') return
@@ -910,6 +1023,513 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
     }
   }
 
+  // Print A4 Invoice function - Professional customer statement
+  const printA4Invoice = async (sale: any, items: any[]) => {
+    if (!sale || items.length === 0) {
+      alert('لا توجد بيانات للطباعة')
+      return
+    }
+
+    // Calculate totals
+    const total = Math.abs(sale.total_amount)
+
+    // Logo as base64 SVG for reliability
+    const logoSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="60" height="60">
+      <circle cx="50" cy="50" r="45" fill="white" stroke="#3B82F6" stroke-width="3"/>
+      <text x="50" y="58" text-anchor="middle" font-family="Arial, sans-serif" font-size="24" font-weight="bold" fill="#3B82F6">EF</text>
+    </svg>`
+
+    const a4InvoiceContent = `
+      <!DOCTYPE html>
+      <html dir="rtl" lang="ar">
+        <head>
+          <meta charset="UTF-8">
+          <title>فاتورة رقم ${sale.invoice_number}</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap');
+
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+
+            body {
+              font-family: 'Cairo', 'Arial', sans-serif;
+              font-size: 14px;
+              line-height: 1.5;
+              color: #333;
+              background: white;
+              padding: 15px;
+            }
+
+            .invoice-container {
+              max-width: 800px;
+              margin: 0 auto;
+              border: 2px solid #3B82F6;
+              border-radius: 10px;
+              overflow: hidden;
+            }
+
+            .invoice-header {
+              background: linear-gradient(135deg, #2B3544 0%, #3B82F6 100%);
+              color: white;
+              padding: 15px 25px;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+            }
+
+            .header-right {
+              display: flex;
+              align-items: center;
+              gap: 15px;
+            }
+
+            .company-logo {
+              width: 50px;
+              height: 50px;
+              background: white;
+              border-radius: 50%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-size: 20px;
+              font-weight: bold;
+              color: #3B82F6;
+            }
+
+            .company-name {
+              font-size: 24px;
+              font-weight: 700;
+            }
+
+            .invoice-title {
+              text-align: center;
+              padding: 12px;
+              background: #f8fafc;
+              border-bottom: 2px solid #e2e8f0;
+            }
+
+            .invoice-title h2 {
+              font-size: 20px;
+              color: #3B82F6;
+              margin-bottom: 3px;
+            }
+
+            .invoice-number {
+              font-size: 14px;
+              color: #64748b;
+            }
+
+            .invoice-body { padding: 20px; }
+
+            .info-section {
+              display: flex;
+              justify-content: space-between;
+              margin-bottom: 20px;
+              gap: 15px;
+            }
+
+            .info-box {
+              flex: 1;
+              background: #f8fafc;
+              border: 1px solid #e2e8f0;
+              border-radius: 8px;
+              padding: 12px;
+            }
+
+            .info-box h4 {
+              color: #3B82F6;
+              font-size: 13px;
+              margin-bottom: 8px;
+              border-bottom: 2px solid #3B82F6;
+              padding-bottom: 4px;
+            }
+
+            .info-row {
+              display: flex;
+              justify-content: space-between;
+              padding: 3px 0;
+              font-size: 12px;
+            }
+
+            .info-label { color: #64748b; }
+            .info-value { font-weight: 600; color: #1e293b; }
+
+            .items-table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-bottom: 15px;
+            }
+
+            .items-table th {
+              background: #3B82F6;
+              color: white;
+              padding: 10px 8px;
+              text-align: center;
+              font-size: 12px;
+              font-weight: 600;
+            }
+
+            .items-table th:first-child { border-radius: 0 6px 0 0; }
+            .items-table th:last-child { border-radius: 6px 0 0 0; }
+
+            .items-table td {
+              padding: 8px;
+              text-align: center;
+              border-bottom: 1px solid #e2e8f0;
+              font-size: 12px;
+            }
+
+            .items-table tr:nth-child(even) { background: #f8fafc; }
+            .product-name { text-align: right !important; font-weight: 500; }
+
+            .summary-bar {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              background: linear-gradient(135deg, #2B3544 0%, #3B82F6 100%);
+              color: white;
+              padding: 12px 20px;
+              border-radius: 8px;
+              margin-top: 15px;
+            }
+
+            .summary-item {
+              text-align: center;
+              flex: 1;
+              border-left: 1px solid rgba(255,255,255,0.3);
+            }
+
+            .summary-item:last-child { border-left: none; }
+
+            .summary-label {
+              font-size: 11px;
+              opacity: 0.9;
+              margin-bottom: 2px;
+            }
+
+            .summary-value {
+              font-size: 18px;
+              font-weight: 700;
+            }
+
+            .summary-value.negative { color: #fca5a5; }
+            .summary-value.positive { color: #86efac; }
+
+            .invoice-footer {
+              background: #f8fafc;
+              padding: 12px;
+              text-align: center;
+              border-top: 2px solid #e2e8f0;
+            }
+
+            .thank-you {
+              font-size: 14px;
+              font-weight: 600;
+              color: #3B82F6;
+            }
+
+            .no-print {
+              margin-top: 20px;
+              text-align: center;
+            }
+
+            .no-print button {
+              padding: 10px 25px;
+              font-size: 14px;
+              border: none;
+              border-radius: 6px;
+              cursor: pointer;
+              margin: 0 5px;
+              font-family: 'Cairo', sans-serif;
+            }
+
+            .btn-print { background: #3B82F6; color: white; }
+            .btn-print:hover { background: #2563eb; }
+            .btn-close { background: #64748b; color: white; }
+            .btn-close:hover { background: #475569; }
+
+            @media print {
+              @page { size: A4; margin: 10mm; }
+              body { padding: 0; }
+              .no-print { display: none; }
+              .invoice-container { border: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="invoice-container">
+            <div class="invoice-header">
+              <div class="header-right">
+                <div class="company-logo">EF</div>
+                <div class="company-name">El Farouk Group</div>
+              </div>
+            </div>
+
+            <div class="invoice-title">
+              <h2>${sale.invoice_type === 'Sale Return' ? 'فاتورة مرتجع' : 'فاتورة بيع'}</h2>
+              <div class="invoice-number">رقم الفاتورة: ${sale.invoice_number}</div>
+            </div>
+
+            <div class="invoice-body">
+              <div class="info-section">
+                <div class="info-box">
+                  <h4>معلومات العميل</h4>
+                  <div class="info-row">
+                    <span class="info-label">اسم العميل:</span>
+                    <span class="info-value">${customer?.name || 'عميل نقدي'}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">رقم الهاتف:</span>
+                    <span class="info-value">${customer?.phone || '-'}</span>
+                  </div>
+                  ${customer?.address ? `
+                  <div class="info-row">
+                    <span class="info-label">العنوان:</span>
+                    <span class="info-value">${customer.address}</span>
+                  </div>
+                  ` : ''}
+                </div>
+                <div class="info-box">
+                  <h4>معلومات الفاتورة</h4>
+                  <div class="info-row">
+                    <span class="info-label">التاريخ:</span>
+                    <span class="info-value">${new Date(sale.created_at).toLocaleDateString('ar-EG')}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">الوقت:</span>
+                    <span class="info-value">${sale.time || new Date(sale.created_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</span>
+                  </div>
+                  <div class="info-row">
+                    <span class="info-label">طريقة الدفع:</span>
+                    <span class="info-value">${sale.payment_method || 'نقدي'}</span>
+                  </div>
+                </div>
+              </div>
+
+              <table class="items-table">
+                <thead>
+                  <tr>
+                    ${visiblePrintColumns.includes('index') ? '<th>#</th>' : ''}
+                    ${visiblePrintColumns.includes('productName') ? '<th>اسم المنتج</th>' : ''}
+                    ${visiblePrintColumns.includes('category') ? '<th>المجموعة</th>' : ''}
+                    ${visiblePrintColumns.includes('quantity') ? '<th>الكمية</th>' : ''}
+                    ${visiblePrintColumns.includes('barcode') ? '<th>الباركود</th>' : ''}
+                    ${visiblePrintColumns.includes('unit_price') ? '<th>السعر</th>' : ''}
+                    ${visiblePrintColumns.includes('discount') ? '<th>الخصم</th>' : ''}
+                    ${visiblePrintColumns.includes('total') ? '<th>الإجمالي</th>' : ''}
+                  </tr>
+                </thead>
+                <tbody>
+                  ${items.map((item, index) => `
+                    <tr>
+                      ${visiblePrintColumns.includes('index') ? `<td>${index + 1}</td>` : ''}
+                      ${visiblePrintColumns.includes('productName') ? `<td class="product-name">${item.product?.name || 'منتج'}</td>` : ''}
+                      ${visiblePrintColumns.includes('category') ? `<td>${item.product?.category?.name || '-'}</td>` : ''}
+                      ${visiblePrintColumns.includes('quantity') ? `<td>${item.quantity}</td>` : ''}
+                      ${visiblePrintColumns.includes('barcode') ? `<td>${item.product?.barcode || '-'}</td>` : ''}
+                      ${visiblePrintColumns.includes('unit_price') ? `<td>${formatPrice(item.unit_price, 'system')}</td>` : ''}
+                      ${visiblePrintColumns.includes('discount') ? `<td>${item.discount ? formatPrice(item.discount, 'system') : '-'}</td>` : ''}
+                      ${visiblePrintColumns.includes('total') ? `<td>${formatPrice((item.quantity * item.unit_price) - (item.discount || 0), 'system')}</td>` : ''}
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+
+              <div class="summary-bar">
+                <div class="summary-item">
+                  <div class="summary-label">إجمالي الفاتورة</div>
+                  <div class="summary-value">${formatPrice(total, 'system')}</div>
+                </div>
+                ${customer && customer.id !== '00000000-0000-0000-0000-000000000001' ? `
+                <div class="summary-item">
+                  <div class="summary-label">رصيد العميل</div>
+                  <div class="summary-value ${customerBalance > 0 ? 'negative' : 'positive'}">${formatPrice(customerBalance, 'system')}</div>
+                </div>
+                ` : ''}
+              </div>
+            </div>
+
+            <div class="invoice-footer">
+              <div class="thank-you">شكراً لتعاملكم معنا</div>
+            </div>
+          </div>
+
+          <div class="no-print">
+            <button class="btn-print" onclick="window.print()">طباعة</button>
+            <button class="btn-close" onclick="window.close()">إغلاق</button>
+          </div>
+        </body>
+      </html>
+    `
+
+    const printWindow = window.open('', '_blank', 'width=900,height=700,scrollbars=yes,resizable=yes')
+    if (printWindow) {
+      printWindow.document.write(a4InvoiceContent)
+      printWindow.document.close()
+      printWindow.focus()
+    } else {
+      alert('يرجى السماح بالنوافذ المنبثقة لطباعة الفاتورة')
+    }
+  }
+
+  // Save document as PDF or PNG
+  const saveDocument = async (sale: any, items: any[], format: 'pdf' | 'png') => {
+    if (!sale || items.length === 0) {
+      alert('لا توجد بيانات للحفظ')
+      return
+    }
+
+    // For now, we'll generate an HTML document and use browser print to PDF
+    // For PNG, we'd need html2canvas library
+
+    if (format === 'pdf') {
+      // Generate the A4 invoice and use browser's print to PDF
+      const { data: branchData } = await supabase
+        .from('branches')
+        .select('name, phone, address')
+        .limit(1)
+        .single()
+
+      const logoUrl = window.location.origin + '/assets/logo/El Farouk Group2.png'
+      const subtotal = items.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0)
+      const totalDiscount = items.reduce((sum, item) => sum + (item.discount || 0), 0)
+      const total = Math.abs(sale.total_amount)
+
+      const pdfContent = `
+        <!DOCTYPE html>
+        <html dir="rtl" lang="ar">
+          <head>
+            <meta charset="UTF-8">
+            <title>فاتورة رقم ${sale.invoice_number} - PDF</title>
+            <style>
+              @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap');
+              * { margin: 0; padding: 0; box-sizing: border-box; }
+              body { font-family: 'Cairo', sans-serif; padding: 20px; background: white; }
+              .invoice-container { max-width: 800px; margin: 0 auto; border: 2px solid #1e40af; border-radius: 10px; }
+              .invoice-header { background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); color: white; padding: 25px; display: flex; justify-content: space-between; align-items: center; }
+              .company-name { font-size: 28px; font-weight: 700; }
+              .company-details { font-size: 12px; opacity: 0.9; }
+              .invoice-title { text-align: center; padding: 15px; background: #f8fafc; border-bottom: 2px solid #e2e8f0; }
+              .invoice-title h2 { font-size: 22px; color: #1e40af; }
+              .invoice-number { font-size: 16px; color: #64748b; }
+              .invoice-body { padding: 25px; }
+              .info-section { display: flex; gap: 20px; margin-bottom: 25px; }
+              .info-box { flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; }
+              .info-box h4 { color: #1e40af; margin-bottom: 10px; border-bottom: 2px solid #3b82f6; padding-bottom: 5px; }
+              .info-row { display: flex; justify-content: space-between; padding: 5px 0; }
+              .info-label { color: #64748b; }
+              .info-value { font-weight: 600; }
+              .items-table { width: 100%; border-collapse: collapse; margin-bottom: 25px; }
+              .items-table th { background: #1e40af; color: white; padding: 12px; text-align: center; }
+              .items-table td { padding: 12px; text-align: center; border-bottom: 1px solid #e2e8f0; }
+              .items-table tr:nth-child(even) { background: #f8fafc; }
+              .product-name { text-align: right !important; }
+              .totals-box { width: 300px; background: #f8fafc; border: 2px solid #1e40af; border-radius: 8px; }
+              .total-row { display: flex; justify-content: space-between; padding: 10px 15px; border-bottom: 1px solid #e2e8f0; }
+              .total-row:last-child { background: #1e40af; color: white; font-weight: 700; border-bottom: none; }
+              .customer-balance { margin-top: 20px; padding: 15px; background: ${customerBalance > 0 ? '#fef2f2' : '#f0fdf4'}; border: 2px solid ${customerBalance > 0 ? '#ef4444' : '#22c55e'}; border-radius: 8px; text-align: center; }
+              .balance-amount { font-size: 24px; font-weight: 700; color: ${customerBalance > 0 ? '#dc2626' : '#16a34a'}; }
+              .invoice-footer { background: #f8fafc; padding: 20px; text-align: center; border-top: 2px solid #e2e8f0; }
+              .thank-you { font-size: 16px; font-weight: 600; color: #1e40af; }
+              .no-print { margin-top: 30px; text-align: center; }
+              .no-print button { padding: 12px 30px; font-size: 16px; border: none; border-radius: 8px; cursor: pointer; margin: 5px; }
+              .btn-save { background: #1e40af; color: white; }
+              @media print { @page { size: A4; margin: 10mm; } .no-print { display: none; } }
+            </style>
+          </head>
+          <body>
+            <div class="invoice-container">
+              <div class="invoice-header">
+                <div>
+                  <div class="company-name">El Farouk Group</div>
+                  <div class="company-details">${branchData?.name || 'الفرع الرئيسي'}<br>${branchData?.phone || '01102862856'}</div>
+                </div>
+              </div>
+              <div class="invoice-title">
+                <h2>${sale.invoice_type === 'Sale Return' ? 'فاتورة مرتجع' : 'فاتورة بيع'}</h2>
+                <div class="invoice-number">رقم الفاتورة: ${sale.invoice_number}</div>
+              </div>
+              <div class="invoice-body">
+                <div class="info-section">
+                  <div class="info-box">
+                    <h4>معلومات العميل</h4>
+                    <div class="info-row"><span class="info-label">اسم العميل:</span><span class="info-value">${customer?.name || 'عميل نقدي'}</span></div>
+                    <div class="info-row"><span class="info-label">رقم الهاتف:</span><span class="info-value">${customer?.phone || '-'}</span></div>
+                    <div class="info-row"><span class="info-label">العنوان:</span><span class="info-value">${customer?.address || '-'}</span></div>
+                  </div>
+                  <div class="info-box">
+                    <h4>معلومات الفاتورة</h4>
+                    <div class="info-row"><span class="info-label">تاريخ الفاتورة:</span><span class="info-value">${new Date(sale.created_at).toLocaleDateString('ar-EG')}</span></div>
+                    <div class="info-row"><span class="info-label">الوقت:</span><span class="info-value">${sale.time || '-'}</span></div>
+                    <div class="info-row"><span class="info-label">طريقة الدفع:</span><span class="info-value">${sale.payment_method || 'نقدي'}</span></div>
+                  </div>
+                </div>
+                <table class="items-table">
+                  <thead>
+                    <tr>
+                      ${visiblePrintColumns.includes('index') ? '<th>#</th>' : ''}
+                      ${visiblePrintColumns.includes('productName') ? '<th>اسم المنتج</th>' : ''}
+                      ${visiblePrintColumns.includes('category') ? '<th>المجموعة</th>' : ''}
+                      ${visiblePrintColumns.includes('quantity') ? '<th>الكمية</th>' : ''}
+                      ${visiblePrintColumns.includes('barcode') ? '<th>الباركود</th>' : ''}
+                      ${visiblePrintColumns.includes('unit_price') ? '<th>السعر</th>' : ''}
+                      ${visiblePrintColumns.includes('discount') ? '<th>الخصم</th>' : ''}
+                      ${visiblePrintColumns.includes('total') ? '<th>الإجمالي</th>' : ''}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${items.map((item, index) => `
+                      <tr>
+                        ${visiblePrintColumns.includes('index') ? `<td>${index + 1}</td>` : ''}
+                        ${visiblePrintColumns.includes('productName') ? `<td class="product-name">${item.product?.name || 'منتج'}</td>` : ''}
+                        ${visiblePrintColumns.includes('category') ? `<td>${item.product?.category?.name || '-'}</td>` : ''}
+                        ${visiblePrintColumns.includes('quantity') ? `<td>${item.quantity}</td>` : ''}
+                        ${visiblePrintColumns.includes('barcode') ? `<td>${item.product?.barcode || '-'}</td>` : ''}
+                        ${visiblePrintColumns.includes('unit_price') ? `<td>${formatPrice(item.unit_price, 'system')}</td>` : ''}
+                        ${visiblePrintColumns.includes('discount') ? `<td>${item.discount ? formatPrice(item.discount, 'system') : '-'}</td>` : ''}
+                        ${visiblePrintColumns.includes('total') ? `<td>${formatPrice((item.quantity * item.unit_price) - (item.discount || 0), 'system')}</td>` : ''}
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+                <div class="totals-box">
+                  <div class="total-row"><span>المجموع الفرعي:</span><span>${formatPrice(subtotal, 'system')}</span></div>
+                  ${totalDiscount > 0 ? `<div class="total-row"><span>إجمالي الخصم:</span><span>-${formatPrice(totalDiscount, 'system')}</span></div>` : ''}
+                  <div class="total-row"><span>الإجمالي النهائي:</span><span>${formatPrice(total, 'system')}</span></div>
+                </div>
+                ${customer && customer.id !== '00000000-0000-0000-0000-000000000001' ? `
+                <div class="customer-balance">
+                  <div style="color: #64748b; margin-bottom: 5px;">رصيد العميل الحالي</div>
+                  <div class="balance-amount">${formatPrice(customerBalance, 'system')}</div>
+                </div>
+                ` : ''}
+              </div>
+              <div class="invoice-footer">
+                <div class="thank-you">شكراً لتعاملكم معنا</div>
+              </div>
+            </div>
+            <div class="no-print">
+              <p style="color: #64748b; margin-bottom: 15px;">اضغط Ctrl+P أو استخدم زر الطباعة واختر "حفظ كـ PDF" من الوجهة</p>
+              <button class="btn-save" onclick="window.print()">حفظ كـ PDF</button>
+              <button style="background: #64748b; color: white;" onclick="window.close()">إغلاق</button>
+            </div>
+          </body>
+        </html>
+      `
+
+      const pdfWindow = window.open('', '_blank', 'width=900,height=700')
+      if (pdfWindow) {
+        pdfWindow.document.write(pdfContent)
+        pdfWindow.document.close()
+      }
+    } else if (format === 'png') {
+      // For PNG, we'll create a canvas and convert to image
+      alert('لحفظ كصورة PNG: استخدم "طباعة A4" ثم اضغط Ctrl+Shift+S في المتصفح لحفظ الصفحة كصورة')
+    }
+
+    setShowSaveDropdown(false)
+    setShowSaveDropdownStatement(false)
+  }
+
   // Set up real-time subscriptions and fetch initial data
   useEffect(() => {
     if (isOpen && customer?.id) {
@@ -1109,6 +1729,73 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
       setIsDeleting(false)
     }
   }
+
+  // Handle delete payment
+  const handleDeletePayment = (payment: any) => {
+    setSelectedPayment(payment)
+    setShowDeletePaymentModal(true)
+  }
+
+  // Cancel delete payment
+  const cancelDeletePayment = () => {
+    setShowDeletePaymentModal(false)
+    setSelectedPayment(null)
+  }
+
+  // Confirm delete payment
+  const confirmDeletePayment = async () => {
+    if (!selectedPayment) return
+
+    try {
+      setIsDeletingPayment(true)
+
+      // حذف الدفعة من قاعدة البيانات
+      const { error } = await supabase
+        .from('customer_payments')
+        .delete()
+        .eq('id', selectedPayment.id)
+
+      if (error) {
+        console.error('Error deleting payment:', error)
+        alert('حدث خطأ أثناء حذف الدفعة')
+        return
+      }
+
+      // إغلاق المودال وتحديث البيانات
+      setShowDeletePaymentModal(false)
+      setSelectedPayment(null)
+
+      // تحديث البيانات
+      fetchCustomerPayments()
+      fetchCustomerBalance()
+      fetchAccountStatement()
+
+    } catch (error) {
+      console.error('Error deleting payment:', error)
+      alert('حدث خطأ أثناء حذف الدفعة')
+    } finally {
+      setIsDeletingPayment(false)
+    }
+  }
+
+  // Handle right-click context menu for payments
+  const handlePaymentContextMenu = (e: React.MouseEvent, payment: any) => {
+    e.preventDefault()
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      payment
+    })
+  }
+
+  // Close context menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => setContextMenu(null)
+    if (contextMenu) {
+      document.addEventListener('click', handleClickOutside)
+      return () => document.removeEventListener('click', handleClickOutside)
+    }
+  }, [contextMenu])
 
   // Calculate total invoices amount (for all sales, not filtered by date)
   const [totalInvoicesAmount, setTotalInvoicesAmount] = useState(0)
@@ -1343,14 +2030,14 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
       width: 120,
       render: (value: string) => <span className="text-blue-400">{value}</span>
     },
-    { 
-      id: 'notes', 
-      header: 'ملاحظات', 
-      accessor: 'notes', 
-      width: 150,
+    {
+      id: 'notes',
+      header: 'البيان',
+      accessor: 'notes',
+      width: 200,
       render: (value: string) => <span className="text-gray-400">{value || '-'}</span>
     }
-  ]
+  ].filter(col => visibleInvoiceColumns.includes(col.id))
 
   const paymentsColumns = [
     {
@@ -1407,7 +2094,7 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
     },
     {
       id: 'notes',
-      header: 'الملاحظات',
+      header: 'البيان',
       accessor: 'notes',
       width: 200,
       render: (value: string) => <span className="text-gray-400">{value || '-'}</span>
@@ -1482,14 +2169,14 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
         return <span className="text-green-400 font-bold">{formatPrice(total, 'system')}</span>
       }
     },
-    { 
-      id: 'notes', 
-      header: 'ملاحظات', 
-      accessor: 'notes', 
+    {
+      id: 'notes',
+      header: 'ملاحظات',
+      accessor: 'notes',
       width: 150,
       render: (value: string) => <span className="text-gray-400">{value || '-'}</span>
     }
-  ]
+  ].filter(col => visibleDetailsColumns.includes(col.id))
 
   return (
     <>
@@ -1731,7 +2418,10 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
                         <span className="text-sm">حذف الفاتورة</span>
                       </button>
 
-                      <button className="flex flex-col items-center p-2 text-gray-300 hover:text-white cursor-pointer min-w-[80px] transition-colors">
+                      <button
+                        onClick={() => setShowColumnManager(true)}
+                        className="flex flex-col items-center p-2 text-gray-300 hover:text-white cursor-pointer min-w-[80px] transition-colors"
+                      >
                         <TableCellsIcon className="h-5 w-5 mb-1" />
                         <span className="text-sm">إدارة الأعمدة</span>
                       </button>
@@ -2023,14 +2713,59 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
                           <h3 className="text-white font-medium text-lg">
                             تفاصيل الفاتورة {selectedStatementInvoice?.invoice_number || ''}
                           </h3>
-                          <button
-                            onClick={() => printReceipt(selectedStatementInvoice, statementInvoiceItems)}
-                            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-sm font-medium flex items-center gap-2 transition-colors"
-                            disabled={isLoadingStatementInvoiceItems || statementInvoiceItems.length === 0}
-                          >
-                            <PrinterIcon className="h-4 w-4" />
-                            طباعة الريسيت
-                          </button>
+                          <div className="flex items-center gap-2">
+                            {/* Print Receipt Button */}
+                            <button
+                              onClick={() => printReceipt(selectedStatementInvoice, statementInvoiceItems)}
+                              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-sm font-medium flex items-center gap-2 transition-colors"
+                              disabled={isLoadingStatementInvoiceItems || statementInvoiceItems.length === 0}
+                            >
+                              <PrinterIcon className="h-4 w-4" />
+                              طباعة الريسيت
+                            </button>
+
+                            {/* Print A4 Invoice Button */}
+                            <button
+                              onClick={() => printA4Invoice(selectedStatementInvoice, statementInvoiceItems)}
+                              className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded text-sm font-medium flex items-center gap-2 transition-colors"
+                              disabled={isLoadingStatementInvoiceItems || statementInvoiceItems.length === 0}
+                            >
+                              <DocumentIcon className="h-4 w-4" />
+                              طباعة A4
+                            </button>
+
+                            {/* Save Dropdown Button */}
+                            <div className="relative" ref={saveDropdownStatementRef}>
+                              <button
+                                onClick={() => setShowSaveDropdownStatement(!showSaveDropdownStatement)}
+                                className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded text-sm font-medium flex items-center gap-2 transition-colors"
+                                disabled={isLoadingStatementInvoiceItems || statementInvoiceItems.length === 0}
+                              >
+                                <ArrowDownTrayIcon className="h-4 w-4" />
+                                حفظ
+                              </button>
+
+                              {/* Dropdown Menu */}
+                              {showSaveDropdownStatement && (
+                                <div className="absolute top-full left-0 mt-1 bg-[#374151] border border-gray-600 rounded-lg shadow-xl z-50 min-w-[140px]">
+                                  <button
+                                    onClick={() => saveDocument(selectedStatementInvoice, statementInvoiceItems, 'pdf')}
+                                    className="w-full px-4 py-2 text-right text-white hover:bg-gray-600 flex items-center gap-2 rounded-t-lg transition-colors"
+                                  >
+                                    <DocumentArrowDownIcon className="h-4 w-4 text-red-400" />
+                                    <span>PDF</span>
+                                  </button>
+                                  <button
+                                    onClick={() => saveDocument(selectedStatementInvoice, statementInvoiceItems, 'png')}
+                                    className="w-full px-4 py-2 text-right text-white hover:bg-gray-600 flex items-center gap-2 rounded-b-lg transition-colors"
+                                  >
+                                    <DocumentArrowDownIcon className="h-4 w-4 text-blue-400" />
+                                    <span>PNG</span>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         </div>
 
                         {/* Invoice Details Table */}
@@ -2126,14 +2861,59 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
                       }}
                     >
                       <div className="flex items-center justify-between p-4 pb-2 flex-shrink-0 border-b border-gray-600">
-                        <button
-                          onClick={() => printReceipt(sales[selectedTransaction], saleItems)}
-                          className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-sm font-medium flex items-center gap-2 transition-colors"
-                          disabled={isLoadingItems || saleItems.length === 0}
-                        >
-                          <PrinterIcon className="h-4 w-4" />
-                          طباعة الريسيت
-                        </button>
+                        <div className="flex items-center gap-2">
+                          {/* Print Receipt Button */}
+                          <button
+                            onClick={() => printReceipt(sales[selectedTransaction], saleItems)}
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-sm font-medium flex items-center gap-2 transition-colors"
+                            disabled={isLoadingItems || saleItems.length === 0}
+                          >
+                            <PrinterIcon className="h-4 w-4" />
+                            طباعة الريسيت
+                          </button>
+
+                          {/* Print A4 Invoice Button */}
+                          <button
+                            onClick={() => printA4Invoice(sales[selectedTransaction], saleItems)}
+                            className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded text-sm font-medium flex items-center gap-2 transition-colors"
+                            disabled={isLoadingItems || saleItems.length === 0}
+                          >
+                            <DocumentIcon className="h-4 w-4" />
+                            طباعة A4
+                          </button>
+
+                          {/* Save Dropdown Button */}
+                          <div className="relative" ref={saveDropdownRef}>
+                            <button
+                              onClick={() => setShowSaveDropdown(!showSaveDropdown)}
+                              className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded text-sm font-medium flex items-center gap-2 transition-colors"
+                              disabled={isLoadingItems || saleItems.length === 0}
+                            >
+                              <ArrowDownTrayIcon className="h-4 w-4" />
+                              حفظ
+                            </button>
+
+                            {/* Dropdown Menu */}
+                            {showSaveDropdown && (
+                              <div className="absolute top-full left-0 mt-1 bg-[#374151] border border-gray-600 rounded-lg shadow-xl z-50 min-w-[140px]">
+                                <button
+                                  onClick={() => saveDocument(sales[selectedTransaction], saleItems, 'pdf')}
+                                  className="w-full px-4 py-2 text-right text-white hover:bg-gray-600 flex items-center gap-2 rounded-t-lg transition-colors"
+                                >
+                                  <DocumentArrowDownIcon className="h-4 w-4 text-red-400" />
+                                  <span>PDF</span>
+                                </button>
+                                <button
+                                  onClick={() => saveDocument(sales[selectedTransaction], saleItems, 'png')}
+                                  className="w-full px-4 py-2 text-right text-white hover:bg-gray-600 flex items-center gap-2 rounded-b-lg transition-colors"
+                                >
+                                  <DocumentArrowDownIcon className="h-4 w-4 text-blue-400" />
+                                  <span>PNG</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
                         <h3 className="text-blue-400 font-medium text-lg">
                           تفاصيل الفاتورة {sales[selectedTransaction]?.invoice_number || ''}
                         </h3>
@@ -2164,7 +2944,10 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
                       <div className="flex items-center justify-between">
                         <div>
                           <button
-                            onClick={() => setShowAddPaymentModal(true)}
+                            onClick={() => {
+                              setPaymentType('payment')
+                              setShowAddPaymentModal(true)
+                            }}
                             className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium flex items-center gap-2 transition-colors"
                           >
                             <PlusIcon className="h-4 w-4" />
@@ -2179,7 +2962,7 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
                     </div>
 
                     {/* Payments Table */}
-                    <div className="flex-1">
+                    <div className="flex-1 relative">
                       {isLoadingPayments ? (
                         <div className="flex items-center justify-center h-full">
                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mr-3"></div>
@@ -2194,7 +2977,32 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
                           className="h-full w-full"
                           columns={paymentsColumns}
                           data={customerPayments}
+                          selectedRowId={selectedPayment?.id}
+                          onRowClick={(payment: any) => setSelectedPayment(payment)}
+                          onRowContextMenu={(e: React.MouseEvent, payment: any) => handlePaymentContextMenu(e, payment)}
                         />
+                      )}
+
+                      {/* Context Menu for Payment */}
+                      {contextMenu && (
+                        <div
+                          className="fixed bg-[#2B3544] border border-gray-600 rounded-lg shadow-xl py-1 z-[100]"
+                          style={{
+                            left: contextMenu.x,
+                            top: contextMenu.y,
+                          }}
+                        >
+                          <button
+                            onClick={() => {
+                              handleDeletePayment(contextMenu.payment)
+                              setContextMenu(null)
+                            }}
+                            className="w-full px-4 py-2 text-right text-red-400 hover:bg-red-600/20 hover:text-red-300 flex items-center gap-2 transition-colors"
+                          >
+                            <TrashIcon className="h-4 w-4" />
+                            <span>حذف الدفعة</span>
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -2206,7 +3014,7 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
         </div>
       </div>
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete Invoice Confirmation Modal */}
       <ConfirmDeleteModal
         isOpen={showDeleteModal}
         onClose={cancelDelete}
@@ -2215,6 +3023,17 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
         title="تأكيد حذف الفاتورة"
         message="هل أنت متأكد أنك تريد حذف هذه الفاتورة؟"
         itemName={invoiceToDelete ? `فاتورة رقم: ${invoiceToDelete.invoice_number}` : ''}
+      />
+
+      {/* Delete Payment Confirmation Modal */}
+      <ConfirmDeleteModal
+        isOpen={showDeletePaymentModal}
+        onClose={cancelDeletePayment}
+        onConfirm={confirmDeletePayment}
+        isDeleting={isDeletingPayment}
+        title="تأكيد حذف الدفعة"
+        message="هل أنت متأكد أنك تريد حذف هذه الدفعة؟"
+        itemName={selectedPayment ? `دفعة بمبلغ: ${formatPrice(selectedPayment.amount, 'system')}` : ''}
       />
 
       {/* Date Filter Modal */}
@@ -2235,11 +3054,195 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
         entityType="customer"
         entityName={customer.name}
         currentBalance={customerBalance}
+        initialPaymentType={paymentType}
         onPaymentAdded={() => {
           fetchCustomerPayments()
           fetchCustomerBalance()
+          fetchAccountStatement()
         }}
       />
+
+      {/* Column Manager Modal */}
+      {showColumnManager && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black bg-opacity-60"
+            onClick={() => setShowColumnManager(false)}
+          />
+
+          {/* Modal Content */}
+          <div className="relative bg-[#2B3544] rounded-xl shadow-2xl w-[600px] max-h-[80vh] overflow-hidden border border-gray-600">
+            {/* Header */}
+            <div className="bg-[#374151] px-6 py-4 border-b border-gray-600 flex items-center justify-between">
+              <h3 className="text-white text-lg font-semibold flex items-center gap-2">
+                <TableCellsIcon className="h-5 w-5 text-blue-400" />
+                إدارة الأعمدة
+              </h3>
+              <button
+                onClick={() => setShowColumnManager(false)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <XMarkIcon className="h-6 w-6" />
+              </button>
+            </div>
+
+            {/* Tab Navigation */}
+            <div className="flex border-b border-gray-600 bg-[#374151]/50">
+              <button
+                onClick={() => setColumnManagerTab('invoices')}
+                className={`flex-1 px-4 py-3 text-sm font-medium transition-all ${
+                  columnManagerTab === 'invoices'
+                    ? 'text-blue-400 border-b-2 border-blue-400 bg-blue-600/10'
+                    : 'text-gray-400 hover:text-white hover:bg-gray-600/30'
+                }`}
+              >
+                📋 فواتير العميل
+              </button>
+              <button
+                onClick={() => setColumnManagerTab('details')}
+                className={`flex-1 px-4 py-3 text-sm font-medium transition-all ${
+                  columnManagerTab === 'details'
+                    ? 'text-blue-400 border-b-2 border-blue-400 bg-blue-600/10'
+                    : 'text-gray-400 hover:text-white hover:bg-gray-600/30'
+                }`}
+              >
+                📄 تفاصيل الفاتورة
+              </button>
+              <button
+                onClick={() => setColumnManagerTab('print')}
+                className={`flex-1 px-4 py-3 text-sm font-medium transition-all ${
+                  columnManagerTab === 'print'
+                    ? 'text-blue-400 border-b-2 border-blue-400 bg-blue-600/10'
+                    : 'text-gray-400 hover:text-white hover:bg-gray-600/30'
+                }`}
+              >
+                🖨️ طباعة A4
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 max-h-[50vh] overflow-y-auto">
+              {columnManagerTab === 'invoices' && (
+                <div className="space-y-3">
+                  <p className="text-gray-400 text-sm mb-4">
+                    اختر الأعمدة التي تريد عرضها في جدول فواتير العميل
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {allInvoiceColumnDefs.map((col) => (
+                      <label
+                        key={col.id}
+                        className={`flex items-center gap-3 p-3 rounded-lg border transition-all cursor-pointer ${
+                          visibleInvoiceColumns.includes(col.id)
+                            ? 'bg-blue-600/20 border-blue-500'
+                            : 'bg-gray-700/30 border-gray-600 hover:border-gray-500'
+                        } ${col.required ? 'opacity-60 cursor-not-allowed' : ''}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={visibleInvoiceColumns.includes(col.id)}
+                          onChange={() => toggleColumn(col.id, 'invoices')}
+                          disabled={col.required}
+                          className="w-4 h-4 rounded border-gray-500 bg-gray-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
+                        />
+                        <span className={`text-sm ${visibleInvoiceColumns.includes(col.id) ? 'text-white' : 'text-gray-400'}`}>
+                          {col.label}
+                        </span>
+                        {col.required && (
+                          <span className="text-xs text-yellow-500 mr-auto">مطلوب</span>
+                        )}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {columnManagerTab === 'details' && (
+                <div className="space-y-3">
+                  <p className="text-gray-400 text-sm mb-4">
+                    اختر الأعمدة التي تريد عرضها في جدول تفاصيل الفاتورة
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {allDetailsColumnDefs.map((col) => (
+                      <label
+                        key={col.id}
+                        className={`flex items-center gap-3 p-3 rounded-lg border transition-all cursor-pointer ${
+                          visibleDetailsColumns.includes(col.id)
+                            ? 'bg-blue-600/20 border-blue-500'
+                            : 'bg-gray-700/30 border-gray-600 hover:border-gray-500'
+                        } ${col.required ? 'opacity-60 cursor-not-allowed' : ''}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={visibleDetailsColumns.includes(col.id)}
+                          onChange={() => toggleColumn(col.id, 'details')}
+                          disabled={col.required}
+                          className="w-4 h-4 rounded border-gray-500 bg-gray-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
+                        />
+                        <span className={`text-sm ${visibleDetailsColumns.includes(col.id) ? 'text-white' : 'text-gray-400'}`}>
+                          {col.label}
+                        </span>
+                        {col.required && (
+                          <span className="text-xs text-yellow-500 mr-auto">مطلوب</span>
+                        )}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {columnManagerTab === 'print' && (
+                <div className="space-y-3">
+                  <p className="text-gray-400 text-sm mb-4">
+                    اختر الأعمدة التي تريد طباعتها في فاتورة A4
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {allPrintColumnDefs.map((col) => (
+                      <label
+                        key={col.id}
+                        className={`flex items-center gap-3 p-3 rounded-lg border transition-all cursor-pointer ${
+                          visiblePrintColumns.includes(col.id)
+                            ? 'bg-green-600/20 border-green-500'
+                            : 'bg-gray-700/30 border-gray-600 hover:border-gray-500'
+                        } ${col.required ? 'opacity-60 cursor-not-allowed' : ''}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={visiblePrintColumns.includes(col.id)}
+                          onChange={() => toggleColumn(col.id, 'print')}
+                          disabled={col.required}
+                          className="w-4 h-4 rounded border-gray-500 bg-gray-700 text-green-500 focus:ring-green-500 focus:ring-offset-0"
+                        />
+                        <span className={`text-sm ${visiblePrintColumns.includes(col.id) ? 'text-white' : 'text-gray-400'}`}>
+                          {col.label}
+                        </span>
+                        {col.required && (
+                          <span className="text-xs text-yellow-500 mr-auto">مطلوب</span>
+                        )}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="bg-[#374151]/50 px-6 py-4 border-t border-gray-600 flex justify-between items-center">
+              <div className="text-sm text-gray-400">
+                {columnManagerTab === 'invoices' && `${visibleInvoiceColumns.length} من ${allInvoiceColumnDefs.length} أعمدة مفعلة`}
+                {columnManagerTab === 'details' && `${visibleDetailsColumns.length} من ${allDetailsColumnDefs.length} أعمدة مفعلة`}
+                {columnManagerTab === 'print' && `${visiblePrintColumns.length} من ${allPrintColumnDefs.length} أعمدة مفعلة`}
+              </div>
+              <button
+                onClick={() => setShowColumnManager(false)}
+                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+              >
+                تم
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

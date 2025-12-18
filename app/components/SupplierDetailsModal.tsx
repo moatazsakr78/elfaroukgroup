@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { MagnifyingGlassIcon, XMarkIcon, ChevronLeftIcon, ChevronRightIcon, PlusIcon, PencilSquareIcon, TrashIcon, TableCellsIcon, CalendarDaysIcon } from '@heroicons/react/24/outline'
+import { MagnifyingGlassIcon, XMarkIcon, ChevronLeftIcon, ChevronRightIcon, PlusIcon, PencilSquareIcon, TrashIcon, TableCellsIcon, CalendarDaysIcon, PrinterIcon, DocumentIcon, ArrowDownTrayIcon, DocumentArrowDownIcon } from '@heroicons/react/24/outline'
 import ResizableTable from './tables/ResizableTable'
 import { supabase } from '../lib/supabase/client'
 import ConfirmDeleteModal from './ConfirmDeleteModal'
@@ -61,6 +61,26 @@ export default function SupplierDetailsModal({ isOpen, onClose, supplier }: Supp
   const [selectedStatementInvoice, setSelectedStatementInvoice] = useState<any>(null)
   const [statementInvoiceItems, setStatementInvoiceItems] = useState<any[]>([])
   const [isLoadingStatementInvoiceItems, setIsLoadingStatementInvoiceItems] = useState(false)
+
+  // Save dropdown state
+  const [showSaveDropdown, setShowSaveDropdown] = useState(false)
+  const [showSaveDropdownStatement, setShowSaveDropdownStatement] = useState(false)
+  const saveDropdownRef = useRef<HTMLDivElement>(null)
+  const saveDropdownStatementRef = useRef<HTMLDivElement>(null)
+
+  // Close save dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (saveDropdownRef.current && !saveDropdownRef.current.contains(e.target as Node)) {
+        setShowSaveDropdown(false)
+      }
+      if (saveDropdownStatementRef.current && !saveDropdownStatementRef.current.contains(e.target as Node)) {
+        setShowSaveDropdownStatement(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (viewMode !== 'split' || activeTab !== 'invoices') return
@@ -639,6 +659,442 @@ export default function SupplierDetailsModal({ isOpen, onClose, supplier }: Supp
     }
   }
 
+  // Print receipt function for supplier invoice
+  const printReceipt = async (invoice: any, items: any[]) => {
+    if (!invoice || items.length === 0) {
+      alert('لا توجد بيانات للطباعة')
+      return
+    }
+
+    // Get branch info
+    const { data: branchData } = await supabase
+      .from('branches')
+      .select('name, phone')
+      .limit(1)
+      .single()
+
+    const logoUrl = window.location.origin + '/assets/logo/El Farouk Group2.png'
+
+    const receiptContent = `
+      <html dir="rtl" lang="ar">
+        <head>
+          <meta charset="UTF-8">
+          <title>فاتورة شراء رقم ${invoice.invoice_number}</title>
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: 'Arial', sans-serif; font-size: 13px; line-height: 1.3; color: #000; background: white; width: 100%; }
+            .receipt-header { text-align: center; margin-bottom: 5px; padding: 0 2px; }
+            .company-logo { width: 60px; height: auto; margin: 0 auto 4px auto; display: block; }
+            .company-name { font-size: 18px; font-weight: 700; margin-bottom: 2px; }
+            .receipt-date { font-size: 11px; margin-bottom: 1px; }
+            .receipt-phone { font-size: 10px; }
+            .supplier-info { margin: 10px 20px; padding: 8px; border: 1px dashed #333; background-color: #f9f9f9; }
+            .supplier-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 11px; }
+            .supplier-label { font-weight: 600; color: #333; }
+            .items-table { width: calc(100% - 40px); border-collapse: collapse; margin: 3px 20px; border: 1px solid #000; }
+            .items-table th, .items-table td { border: 1px solid #000; padding: 7px; text-align: center; font-size: 14px; }
+            .items-table th { background-color: #f5f5f5; font-weight: 600; }
+            .item-name { text-align: right !important; padding-right: 12px !important; font-weight: bold; }
+            .total-row { border-top: 2px solid #000; font-weight: 700; }
+            .total-debt { margin: 10px 20px; padding: 8px; border: 1px solid #000; background-color: #f5f5f5; text-align: center; font-weight: 600; font-size: 14px; }
+            .footer { text-align: center; margin-top: 8px; font-size: 9px; border-top: 1px solid #000; padding: 3px 2px 0 2px; }
+            .no-print { text-align: center; margin-top: 20px; }
+            .no-print button { padding: 10px 20px; font-size: 16px; border: none; border-radius: 5px; cursor: pointer; margin: 0 5px; }
+            @media print { @page { size: 80mm auto; margin: 0; } body { width: 80mm !important; } .no-print { display: none; } }
+          </style>
+        </head>
+        <body>
+          <div class="receipt-header">
+            <img src="${logoUrl}" alt="El Farouk Group" class="company-logo" onerror="this.style.display='none'" />
+            <div class="company-name">El Farouk Group</div>
+            <div class="receipt-date">${new Date(invoice.created_at).toLocaleDateString('ar-EG')} - ${new Date(invoice.created_at).toLocaleDateString('en-US')}</div>
+            <div class="receipt-phone">${branchData?.phone || '01102862856'}</div>
+          </div>
+
+          <div class="supplier-info">
+            <div class="supplier-row"><span class="supplier-label">المورد:</span> <span>${supplier?.name || '-'}</span></div>
+            <div class="supplier-row"><span class="supplier-label">الهاتف:</span> <span>${supplier?.phone || '-'}</span></div>
+            <div class="supplier-row"><span class="supplier-label">رقم الفاتورة:</span> <span>${invoice.invoice_number}</span></div>
+          </div>
+
+          <table class="items-table">
+            <thead>
+              <tr>
+                <th class="item-name">الصنف</th>
+                <th>كمية</th>
+                <th>سعر</th>
+                <th>قيمة</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${items.map(item => `
+                <tr>
+                  <td class="item-name">${item.product?.name || 'منتج'}</td>
+                  <td>${item.quantity}</td>
+                  <td>${(item.unit_purchase_price || 0).toFixed(0)}</td>
+                  <td>${((item.unit_purchase_price || 0) * item.quantity).toFixed(0)}</td>
+                </tr>
+              `).join('')}
+              <tr class="total-row">
+                <td class="item-name">-</td>
+                <td>${items.length}</td>
+                <td>= اجمالي =</td>
+                <td>${Math.abs(invoice.total_amount).toFixed(0)}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="total-debt">
+            رصيد المورد: ${formatPrice(supplierBalance)}
+          </div>
+
+          <div class="footer">
+            ${new Date(invoice.created_at).toLocaleDateString('en-GB')} ${invoice.time || ''}
+          </div>
+
+          <div class="no-print">
+            <button onclick="window.print()" style="background: #007bff; color: white;">طباعة</button>
+            <button onclick="window.close()" style="background: #6c757d; color: white;">إغلاق</button>
+          </div>
+        </body>
+      </html>
+    `
+
+    const printWindow = window.open('', '_blank', 'width=450,height=650,scrollbars=yes,resizable=yes')
+    if (printWindow) {
+      printWindow.document.write(receiptContent)
+      printWindow.document.close()
+      printWindow.focus()
+      setTimeout(() => printWindow.print(), 500)
+    } else {
+      alert('يرجى السماح بالنوافذ المنبثقة لطباعة الفاتورة')
+    }
+  }
+
+  // Print A4 Invoice function - Professional supplier invoice
+  const printA4Invoice = async (invoice: any, items: any[]) => {
+    if (!invoice || items.length === 0) {
+      alert('لا توجد بيانات للطباعة')
+      return
+    }
+
+    // Get branch info
+    const { data: branchData } = await supabase
+      .from('branches')
+      .select('name, phone, address')
+      .limit(1)
+      .single()
+
+    const logoUrl = window.location.origin + '/assets/logo/El Farouk Group2.png'
+    const currentDate = new Date().toLocaleDateString('ar-EG', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    })
+
+    // Calculate totals
+    const subtotal = items.reduce((sum, item) => sum + (item.quantity * item.unit_purchase_price), 0)
+    const totalDiscount = items.reduce((sum, item) => sum + (item.discount_amount || 0), 0)
+    const total = Math.abs(invoice.total_amount)
+
+    const a4InvoiceContent = `
+      <!DOCTYPE html>
+      <html dir="rtl" lang="ar">
+        <head>
+          <meta charset="UTF-8">
+          <title>فاتورة شراء رقم ${invoice.invoice_number}</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap');
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: 'Cairo', 'Arial', sans-serif; font-size: 14px; line-height: 1.6; color: #333; background: white; padding: 20px; }
+            .invoice-container { max-width: 800px; margin: 0 auto; border: 2px solid #059669; border-radius: 10px; overflow: hidden; }
+            .invoice-header { background: linear-gradient(135deg, #059669 0%, #10b981 100%); color: white; padding: 25px; display: flex; justify-content: space-between; align-items: center; }
+            .company-info { text-align: right; }
+            .company-logo { width: 80px; height: auto; filter: brightness(0) invert(1); }
+            .company-name { font-size: 28px; font-weight: 700; margin-bottom: 5px; }
+            .company-details { font-size: 12px; opacity: 0.9; }
+            .invoice-title { text-align: center; padding: 15px; background: #f8fafc; border-bottom: 2px solid #e2e8f0; }
+            .invoice-title h2 { font-size: 22px; color: #059669; margin-bottom: 5px; }
+            .invoice-number { font-size: 16px; color: #64748b; }
+            .invoice-body { padding: 25px; }
+            .info-section { display: flex; justify-content: space-between; margin-bottom: 25px; gap: 20px; }
+            .info-box { flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; }
+            .info-box h4 { color: #059669; font-size: 14px; margin-bottom: 10px; border-bottom: 2px solid #10b981; padding-bottom: 5px; }
+            .info-row { display: flex; justify-content: space-between; padding: 5px 0; font-size: 13px; }
+            .info-label { color: #64748b; }
+            .info-value { font-weight: 600; color: #1e293b; }
+            .items-table { width: 100%; border-collapse: collapse; margin-bottom: 25px; }
+            .items-table th { background: #059669; color: white; padding: 12px 10px; text-align: center; font-size: 13px; font-weight: 600; }
+            .items-table th:first-child { border-radius: 0 8px 0 0; }
+            .items-table th:last-child { border-radius: 8px 0 0 0; }
+            .items-table td { padding: 12px 10px; text-align: center; border-bottom: 1px solid #e2e8f0; font-size: 13px; }
+            .items-table tr:nth-child(even) { background: #f8fafc; }
+            .items-table tr:hover { background: #d1fae5; }
+            .product-name { text-align: right !important; font-weight: 500; }
+            .totals-section { display: flex; justify-content: flex-start; margin-top: 20px; }
+            .totals-box { width: 300px; background: #f8fafc; border: 2px solid #059669; border-radius: 8px; overflow: hidden; }
+            .total-row { display: flex; justify-content: space-between; padding: 10px 15px; border-bottom: 1px solid #e2e8f0; }
+            .total-row:last-child { border-bottom: none; background: #059669; color: white; font-size: 16px; font-weight: 700; }
+            .supplier-balance { margin-top: 20px; padding: 15px; background: ${supplierBalance > 0 ? '#fef2f2' : '#f0fdf4'}; border: 2px solid ${supplierBalance > 0 ? '#ef4444' : '#22c55e'}; border-radius: 8px; text-align: center; }
+            .balance-label { font-size: 14px; color: #64748b; margin-bottom: 5px; }
+            .balance-amount { font-size: 24px; font-weight: 700; color: ${supplierBalance > 0 ? '#dc2626' : '#16a34a'}; }
+            .invoice-footer { background: #f8fafc; padding: 20px; text-align: center; border-top: 2px solid #e2e8f0; }
+            .footer-text { font-size: 12px; color: #64748b; margin-bottom: 5px; }
+            .thank-you { font-size: 16px; font-weight: 600; color: #059669; }
+            .no-print { margin-top: 30px; text-align: center; }
+            .no-print button { padding: 12px 30px; font-size: 16px; border: none; border-radius: 8px; cursor: pointer; margin: 0 5px; font-family: 'Cairo', sans-serif; transition: all 0.3s; }
+            .btn-print { background: #059669; color: white; }
+            .btn-print:hover { background: #047857; }
+            .btn-close { background: #64748b; color: white; }
+            .btn-close:hover { background: #475569; }
+            @media print { @page { size: A4; margin: 10mm; } body { padding: 0; } .no-print { display: none; } .invoice-container { border: none; } }
+          </style>
+        </head>
+        <body>
+          <div class="invoice-container">
+            <div class="invoice-header">
+              <div class="company-info">
+                <div class="company-name">El Farouk Group</div>
+                <div class="company-details">${branchData?.name || 'الفرع الرئيسي'}<br>${branchData?.phone || '01102862856'}</div>
+              </div>
+              <img src="${logoUrl}" alt="Logo" class="company-logo" onerror="this.style.display='none'" />
+            </div>
+
+            <div class="invoice-title">
+              <h2>${invoice.invoice_type === 'Purchase Return' ? 'فاتورة مرتجع شراء' : 'فاتورة شراء'}</h2>
+              <div class="invoice-number">رقم الفاتورة: ${invoice.invoice_number}</div>
+            </div>
+
+            <div class="invoice-body">
+              <div class="info-section">
+                <div class="info-box">
+                  <h4>معلومات المورد</h4>
+                  <div class="info-row"><span class="info-label">اسم المورد:</span><span class="info-value">${supplier?.name || '-'}</span></div>
+                  <div class="info-row"><span class="info-label">رقم الهاتف:</span><span class="info-value">${supplier?.phone || '-'}</span></div>
+                  <div class="info-row"><span class="info-label">العنوان:</span><span class="info-value">${supplier?.address || '-'}</span></div>
+                </div>
+                <div class="info-box">
+                  <h4>معلومات الفاتورة</h4>
+                  <div class="info-row"><span class="info-label">تاريخ الفاتورة:</span><span class="info-value">${new Date(invoice.created_at).toLocaleDateString('ar-EG')}</span></div>
+                  <div class="info-row"><span class="info-label">الوقت:</span><span class="info-value">${invoice.time || new Date(invoice.created_at).toLocaleTimeString('ar-EG')}</span></div>
+                  <div class="info-row"><span class="info-label">نوع الفاتورة:</span><span class="info-value">${invoice.invoice_type === 'Purchase Return' ? 'مرتجع شراء' : 'فاتورة شراء'}</span></div>
+                </div>
+              </div>
+
+              <table class="items-table">
+                <thead>
+                  <tr>
+                    <th style="width: 5%">#</th>
+                    <th style="width: 35%">اسم المنتج</th>
+                    <th style="width: 12%">المجموعة</th>
+                    <th style="width: 10%">الكمية</th>
+                    <th style="width: 13%">السعر</th>
+                    <th style="width: 10%">الخصم</th>
+                    <th style="width: 15%">الإجمالي</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${items.map((item, index) => `
+                    <tr>
+                      <td>${index + 1}</td>
+                      <td class="product-name">${item.product?.name || 'منتج'}</td>
+                      <td>${item.product?.category?.name || '-'}</td>
+                      <td>${item.quantity}</td>
+                      <td>${formatPrice(item.unit_purchase_price)}</td>
+                      <td>${item.discount_amount ? formatPrice(item.discount_amount) : '-'}</td>
+                      <td>${formatPrice((item.quantity * item.unit_purchase_price) - (item.discount_amount || 0))}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+
+              <div class="totals-section">
+                <div class="totals-box">
+                  <div class="total-row"><span>المجموع الفرعي:</span><span>${formatPrice(subtotal)}</span></div>
+                  ${totalDiscount > 0 ? `<div class="total-row"><span>إجمالي الخصم:</span><span style="color: #dc2626;">-${formatPrice(totalDiscount)}</span></div>` : ''}
+                  <div class="total-row"><span>الإجمالي النهائي:</span><span>${formatPrice(total)}</span></div>
+                </div>
+              </div>
+
+              <div class="supplier-balance">
+                <div class="balance-label">رصيد المورد الحالي</div>
+                <div class="balance-amount">${formatPrice(supplierBalance)}</div>
+              </div>
+            </div>
+
+            <div class="invoice-footer">
+              <div class="footer-text">تاريخ الطباعة: ${currentDate}</div>
+              <div class="thank-you">شكراً لتعاملكم معنا</div>
+            </div>
+          </div>
+
+          <div class="no-print">
+            <button class="btn-print" onclick="window.print()">طباعة</button>
+            <button class="btn-close" onclick="window.close()">إغلاق</button>
+          </div>
+        </body>
+      </html>
+    `
+
+    const printWindow = window.open('', '_blank', 'width=900,height=700,scrollbars=yes,resizable=yes')
+    if (printWindow) {
+      printWindow.document.write(a4InvoiceContent)
+      printWindow.document.close()
+      printWindow.focus()
+    } else {
+      alert('يرجى السماح بالنوافذ المنبثقة لطباعة الفاتورة')
+    }
+  }
+
+  // Save document as PDF or PNG
+  const saveDocument = async (invoice: any, items: any[], format: 'pdf' | 'png') => {
+    if (!invoice || items.length === 0) {
+      alert('لا توجد بيانات للحفظ')
+      return
+    }
+
+    if (format === 'pdf') {
+      // Generate the A4 invoice and use browser's print to PDF
+      const { data: branchData } = await supabase
+        .from('branches')
+        .select('name, phone, address')
+        .limit(1)
+        .single()
+
+      const subtotal = items.reduce((sum, item) => sum + (item.quantity * item.unit_purchase_price), 0)
+      const totalDiscount = items.reduce((sum, item) => sum + (item.discount_amount || 0), 0)
+      const total = Math.abs(invoice.total_amount)
+
+      const pdfContent = `
+        <!DOCTYPE html>
+        <html dir="rtl" lang="ar">
+          <head>
+            <meta charset="UTF-8">
+            <title>فاتورة شراء رقم ${invoice.invoice_number} - PDF</title>
+            <style>
+              @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap');
+              * { margin: 0; padding: 0; box-sizing: border-box; }
+              body { font-family: 'Cairo', sans-serif; padding: 20px; background: white; }
+              .invoice-container { max-width: 800px; margin: 0 auto; border: 2px solid #059669; border-radius: 10px; }
+              .invoice-header { background: linear-gradient(135deg, #059669 0%, #10b981 100%); color: white; padding: 25px; display: flex; justify-content: space-between; align-items: center; }
+              .company-name { font-size: 28px; font-weight: 700; }
+              .company-details { font-size: 12px; opacity: 0.9; }
+              .invoice-title { text-align: center; padding: 15px; background: #f8fafc; border-bottom: 2px solid #e2e8f0; }
+              .invoice-title h2 { font-size: 22px; color: #059669; }
+              .invoice-number { font-size: 16px; color: #64748b; }
+              .invoice-body { padding: 25px; }
+              .info-section { display: flex; gap: 20px; margin-bottom: 25px; }
+              .info-box { flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; }
+              .info-box h4 { color: #059669; margin-bottom: 10px; border-bottom: 2px solid #10b981; padding-bottom: 5px; }
+              .info-row { display: flex; justify-content: space-between; padding: 5px 0; }
+              .info-label { color: #64748b; }
+              .info-value { font-weight: 600; }
+              .items-table { width: 100%; border-collapse: collapse; margin-bottom: 25px; }
+              .items-table th { background: #059669; color: white; padding: 12px; text-align: center; }
+              .items-table td { padding: 12px; text-align: center; border-bottom: 1px solid #e2e8f0; }
+              .items-table tr:nth-child(even) { background: #f8fafc; }
+              .product-name { text-align: right !important; }
+              .totals-box { width: 300px; background: #f8fafc; border: 2px solid #059669; border-radius: 8px; }
+              .total-row { display: flex; justify-content: space-between; padding: 10px 15px; border-bottom: 1px solid #e2e8f0; }
+              .total-row:last-child { background: #059669; color: white; font-weight: 700; border-bottom: none; }
+              .supplier-balance { margin-top: 20px; padding: 15px; background: ${supplierBalance > 0 ? '#fef2f2' : '#f0fdf4'}; border: 2px solid ${supplierBalance > 0 ? '#ef4444' : '#22c55e'}; border-radius: 8px; text-align: center; }
+              .balance-amount { font-size: 24px; font-weight: 700; color: ${supplierBalance > 0 ? '#dc2626' : '#16a34a'}; }
+              .invoice-footer { background: #f8fafc; padding: 20px; text-align: center; border-top: 2px solid #e2e8f0; }
+              .thank-you { font-size: 16px; font-weight: 600; color: #059669; }
+              .no-print { margin-top: 30px; text-align: center; }
+              .no-print button { padding: 12px 30px; font-size: 16px; border: none; border-radius: 8px; cursor: pointer; margin: 5px; }
+              .btn-save { background: #059669; color: white; }
+              @media print { @page { size: A4; margin: 10mm; } .no-print { display: none; } }
+            </style>
+          </head>
+          <body>
+            <div class="invoice-container">
+              <div class="invoice-header">
+                <div>
+                  <div class="company-name">El Farouk Group</div>
+                  <div class="company-details">${branchData?.name || 'الفرع الرئيسي'}<br>${branchData?.phone || '01102862856'}</div>
+                </div>
+              </div>
+              <div class="invoice-title">
+                <h2>${invoice.invoice_type === 'Purchase Return' ? 'فاتورة مرتجع شراء' : 'فاتورة شراء'}</h2>
+                <div class="invoice-number">رقم الفاتورة: ${invoice.invoice_number}</div>
+              </div>
+              <div class="invoice-body">
+                <div class="info-section">
+                  <div class="info-box">
+                    <h4>معلومات المورد</h4>
+                    <div class="info-row"><span class="info-label">اسم المورد:</span><span class="info-value">${supplier?.name || '-'}</span></div>
+                    <div class="info-row"><span class="info-label">رقم الهاتف:</span><span class="info-value">${supplier?.phone || '-'}</span></div>
+                    <div class="info-row"><span class="info-label">العنوان:</span><span class="info-value">${supplier?.address || '-'}</span></div>
+                  </div>
+                  <div class="info-box">
+                    <h4>معلومات الفاتورة</h4>
+                    <div class="info-row"><span class="info-label">تاريخ الفاتورة:</span><span class="info-value">${new Date(invoice.created_at).toLocaleDateString('ar-EG')}</span></div>
+                    <div class="info-row"><span class="info-label">الوقت:</span><span class="info-value">${invoice.time || '-'}</span></div>
+                  </div>
+                </div>
+                <table class="items-table">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>اسم المنتج</th>
+                      <th>المجموعة</th>
+                      <th>الكمية</th>
+                      <th>السعر</th>
+                      <th>الخصم</th>
+                      <th>الإجمالي</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${items.map((item, index) => `
+                      <tr>
+                        <td>${index + 1}</td>
+                        <td class="product-name">${item.product?.name || 'منتج'}</td>
+                        <td>${item.product?.category?.name || '-'}</td>
+                        <td>${item.quantity}</td>
+                        <td>${formatPrice(item.unit_purchase_price)}</td>
+                        <td>${item.discount_amount ? formatPrice(item.discount_amount) : '-'}</td>
+                        <td>${formatPrice((item.quantity * item.unit_purchase_price) - (item.discount_amount || 0))}</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+                <div class="totals-box">
+                  <div class="total-row"><span>المجموع الفرعي:</span><span>${formatPrice(subtotal)}</span></div>
+                  ${totalDiscount > 0 ? `<div class="total-row"><span>إجمالي الخصم:</span><span>-${formatPrice(totalDiscount)}</span></div>` : ''}
+                  <div class="total-row"><span>الإجمالي النهائي:</span><span>${formatPrice(total)}</span></div>
+                </div>
+                <div class="supplier-balance">
+                  <div style="color: #64748b; margin-bottom: 5px;">رصيد المورد الحالي</div>
+                  <div class="balance-amount">${formatPrice(supplierBalance)}</div>
+                </div>
+              </div>
+              <div class="invoice-footer">
+                <div class="thank-you">شكراً لتعاملكم معنا</div>
+              </div>
+            </div>
+            <div class="no-print">
+              <p style="color: #64748b; margin-bottom: 15px;">اضغط Ctrl+P أو استخدم زر الطباعة واختر "حفظ كـ PDF" من الوجهة</p>
+              <button class="btn-save" onclick="window.print()">حفظ كـ PDF</button>
+              <button style="background: #64748b; color: white;" onclick="window.close()">إغلاق</button>
+            </div>
+          </body>
+        </html>
+      `
+
+      const pdfWindow = window.open('', '_blank', 'width=900,height=700')
+      if (pdfWindow) {
+        pdfWindow.document.write(pdfContent)
+        pdfWindow.document.close()
+      }
+    } else if (format === 'png') {
+      alert('لحفظ كصورة PNG: استخدم "طباعة A4" ثم اضغط Ctrl+Shift+S في المتصفح لحفظ الصفحة كصورة')
+    }
+
+    setShowSaveDropdown(false)
+    setShowSaveDropdownStatement(false)
+  }
+
   // Calculate total invoices amount (for all invoices, not filtered by date)
   const [totalInvoicesAmount, setTotalInvoicesAmount] = useState(0)
 
@@ -849,11 +1305,11 @@ export default function SupplierDetailsModal({ isOpen, onClose, supplier }: Supp
       width: 150,
       render: (value: number) => <span className="text-green-400 font-medium">{formatPrice(value)}</span>
     },
-    { 
-      id: 'notes', 
-      header: 'ملاحظات', 
-      accessor: 'notes', 
-      width: 150,
+    {
+      id: 'notes',
+      header: 'البيان',
+      accessor: 'notes',
+      width: 200,
       render: (value: string) => <span className="text-gray-400">{value || '-'}</span>
     }
   ]
@@ -913,7 +1369,7 @@ export default function SupplierDetailsModal({ isOpen, onClose, supplier }: Supp
     },
     {
       id: 'notes',
-      header: 'الملاحظات',
+      header: 'البيان',
       accessor: 'notes',
       width: 200,
       render: (value: string) => <span className="text-gray-400">{value || '-'}</span>
@@ -1288,6 +1744,59 @@ export default function SupplierDetailsModal({ isOpen, onClose, supplier }: Supp
                           <h3 className="text-white font-medium text-lg">
                             تفاصيل الفاتورة {selectedStatementInvoice?.invoice_number || ''}
                           </h3>
+                          <div className="flex items-center gap-2">
+                            {/* Print Receipt Button */}
+                            <button
+                              onClick={() => printReceipt(selectedStatementInvoice, statementInvoiceItems)}
+                              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-sm font-medium flex items-center gap-2 transition-colors"
+                              disabled={isLoadingStatementInvoiceItems || statementInvoiceItems.length === 0}
+                            >
+                              <PrinterIcon className="h-4 w-4" />
+                              طباعة الريسيت
+                            </button>
+
+                            {/* Print A4 Invoice Button */}
+                            <button
+                              onClick={() => printA4Invoice(selectedStatementInvoice, statementInvoiceItems)}
+                              className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded text-sm font-medium flex items-center gap-2 transition-colors"
+                              disabled={isLoadingStatementInvoiceItems || statementInvoiceItems.length === 0}
+                            >
+                              <DocumentIcon className="h-4 w-4" />
+                              طباعة A4
+                            </button>
+
+                            {/* Save Dropdown Button */}
+                            <div className="relative" ref={saveDropdownStatementRef}>
+                              <button
+                                onClick={() => setShowSaveDropdownStatement(!showSaveDropdownStatement)}
+                                className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded text-sm font-medium flex items-center gap-2 transition-colors"
+                                disabled={isLoadingStatementInvoiceItems || statementInvoiceItems.length === 0}
+                              >
+                                <ArrowDownTrayIcon className="h-4 w-4" />
+                                حفظ
+                              </button>
+
+                              {/* Dropdown Menu */}
+                              {showSaveDropdownStatement && (
+                                <div className="absolute top-full left-0 mt-1 bg-[#374151] border border-gray-600 rounded-lg shadow-xl z-50 min-w-[140px]">
+                                  <button
+                                    onClick={() => saveDocument(selectedStatementInvoice, statementInvoiceItems, 'pdf')}
+                                    className="w-full px-4 py-2 text-right text-white hover:bg-gray-600 flex items-center gap-2 rounded-t-lg transition-colors"
+                                  >
+                                    <DocumentArrowDownIcon className="h-4 w-4 text-red-400" />
+                                    <span>PDF</span>
+                                  </button>
+                                  <button
+                                    onClick={() => saveDocument(selectedStatementInvoice, statementInvoiceItems, 'png')}
+                                    className="w-full px-4 py-2 text-right text-white hover:bg-gray-600 flex items-center gap-2 rounded-b-lg transition-colors"
+                                  >
+                                    <DocumentArrowDownIcon className="h-4 w-4 text-blue-400" />
+                                    <span>PNG</span>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         </div>
 
                         {/* Invoice Details Table */}
@@ -1382,10 +1891,65 @@ export default function SupplierDetailsModal({ isOpen, onClose, supplier }: Supp
                         zIndex: viewMode === 'details-only' ? 20 : viewMode === 'split' ? 10 : 5
                       }}
                     >
-                      <h3 className="text-blue-400 font-medium text-right p-4 pb-2 flex-shrink-0 border-b border-gray-600">
-                        تفاصيل الفاتورة {purchaseInvoices[selectedTransaction]?.invoice_number || ''}
-                      </h3>
-                      
+                      <div className="flex items-center justify-between p-4 pb-2 flex-shrink-0 border-b border-gray-600">
+                        <div className="flex items-center gap-2">
+                          {/* Print Receipt Button */}
+                          <button
+                            onClick={() => printReceipt(purchaseInvoices[selectedTransaction], purchaseInvoiceItems)}
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-sm font-medium flex items-center gap-2 transition-colors"
+                            disabled={isLoadingItems || purchaseInvoiceItems.length === 0}
+                          >
+                            <PrinterIcon className="h-4 w-4" />
+                            طباعة الريسيت
+                          </button>
+
+                          {/* Print A4 Invoice Button */}
+                          <button
+                            onClick={() => printA4Invoice(purchaseInvoices[selectedTransaction], purchaseInvoiceItems)}
+                            className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded text-sm font-medium flex items-center gap-2 transition-colors"
+                            disabled={isLoadingItems || purchaseInvoiceItems.length === 0}
+                          >
+                            <DocumentIcon className="h-4 w-4" />
+                            طباعة A4
+                          </button>
+
+                          {/* Save Dropdown Button */}
+                          <div className="relative" ref={saveDropdownRef}>
+                            <button
+                              onClick={() => setShowSaveDropdown(!showSaveDropdown)}
+                              className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded text-sm font-medium flex items-center gap-2 transition-colors"
+                              disabled={isLoadingItems || purchaseInvoiceItems.length === 0}
+                            >
+                              <ArrowDownTrayIcon className="h-4 w-4" />
+                              حفظ
+                            </button>
+
+                            {/* Dropdown Menu */}
+                            {showSaveDropdown && (
+                              <div className="absolute top-full left-0 mt-1 bg-[#374151] border border-gray-600 rounded-lg shadow-xl z-50 min-w-[140px]">
+                                <button
+                                  onClick={() => saveDocument(purchaseInvoices[selectedTransaction], purchaseInvoiceItems, 'pdf')}
+                                  className="w-full px-4 py-2 text-right text-white hover:bg-gray-600 flex items-center gap-2 rounded-t-lg transition-colors"
+                                >
+                                  <DocumentArrowDownIcon className="h-4 w-4 text-red-400" />
+                                  <span>PDF</span>
+                                </button>
+                                <button
+                                  onClick={() => saveDocument(purchaseInvoices[selectedTransaction], purchaseInvoiceItems, 'png')}
+                                  className="w-full px-4 py-2 text-right text-white hover:bg-gray-600 flex items-center gap-2 rounded-b-lg transition-colors"
+                                >
+                                  <DocumentArrowDownIcon className="h-4 w-4 text-blue-400" />
+                                  <span>PNG</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <h3 className="text-blue-400 font-medium text-lg">
+                          تفاصيل الفاتورة {purchaseInvoices[selectedTransaction]?.invoice_number || ''}
+                        </h3>
+                      </div>
+
                       <div className="flex-1 min-h-0 px-4 pb-4">
                         {isLoadingItems ? (
                           <div className="flex items-center justify-center h-full">

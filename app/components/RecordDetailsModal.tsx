@@ -1462,15 +1462,15 @@ export default function RecordDetailsModal({ isOpen, onClose, record }: RecordDe
         )
       }
     },
-    { 
-      id: 'notes', 
-      header: 'ملاحظات', 
-      accessor: 'notes', 
-      width: 150,
+    {
+      id: 'notes',
+      header: 'البيان',
+      accessor: 'notes',
+      width: 200,
       render: (value: string) => {
         // Clean up transfer notes by removing [TRANSFER] prefix
-        const cleanNotes = value && value.startsWith('[TRANSFER]') 
-          ? value.replace('[TRANSFER] ', '') 
+        const cleanNotes = value && value.startsWith('[TRANSFER]')
+          ? value.replace('[TRANSFER] ', '')
           : value
         return <span className="text-gray-400">{cleanNotes || '-'}</span>
       }
@@ -1508,10 +1508,10 @@ export default function RecordDetailsModal({ isOpen, onClose, record }: RecordDe
       width: 140,
       render: (value: string) => <span className="text-green-400 font-medium">{value}</span>
     },
-    { 
-      id: 'notes', 
-      header: 'الملاحظات', 
-      accessor: 'notes', 
+    {
+      id: 'notes',
+      header: 'البيان',
+      accessor: 'notes',
       width: 200,
       render: (value: string) => <span className="text-gray-400">{value}</span>
     }

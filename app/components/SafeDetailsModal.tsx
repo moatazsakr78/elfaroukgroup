@@ -2020,15 +2020,15 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
         )
       }
     },
-    { 
-      id: 'notes', 
-      header: 'ملاحظات', 
-      accessor: 'notes', 
-      width: 150,
+    {
+      id: 'notes',
+      header: 'البيان',
+      accessor: 'notes',
+      width: 200,
       render: (value: string) => {
         // Clean up transfer notes by removing [TRANSFER] prefix
-        const cleanNotes = value && value.startsWith('[TRANSFER]') 
-          ? value.replace('[TRANSFER] ', '') 
+        const cleanNotes = value && value.startsWith('[TRANSFER]')
+          ? value.replace('[TRANSFER] ', '')
           : value
         return <span className="text-gray-400">{cleanNotes || '-'}</span>
       }
@@ -2095,7 +2095,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
     },
     {
       id: 'notes',
-      header: 'الملاحظات',
+      header: 'البيان',
       accessor: 'notes',
       width: 250,
       render: (value: string) => <span className="text-gray-400">{value}</span>

@@ -13,6 +13,7 @@ interface AddPaymentModalProps {
   entityName: string
   currentBalance: number
   onPaymentAdded?: () => void
+  initialPaymentType?: 'payment' | 'loan'
 }
 
 export default function AddPaymentModal({
@@ -22,7 +23,8 @@ export default function AddPaymentModal({
   entityType,
   entityName,
   currentBalance,
-  onPaymentAdded
+  onPaymentAdded,
+  initialPaymentType = 'payment'
 }: AddPaymentModalProps) {
   const formatPrice = useFormatPrice()
   const [amount, setAmount] = useState('')
@@ -32,6 +34,7 @@ export default function AddPaymentModal({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [records, setRecords] = useState<any[]>([])
   const [isLoadingRecords, setIsLoadingRecords] = useState(false)
+  const [paymentType, setPaymentType] = useState<'payment' | 'loan'>(initialPaymentType)
 
   // Fetch records
   useEffect(() => {
@@ -71,8 +74,9 @@ export default function AddPaymentModal({
       setAmount('')
       setNotes('')
       setPaymentMethod('cash')
+      setPaymentType(initialPaymentType)
     }
-  }, [isOpen])
+  }, [isOpen, initialPaymentType])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -82,12 +86,20 @@ export default function AddPaymentModal({
       return
     }
 
+    if (!notes || notes.trim() === '') {
+      alert('يرجى إدخال البيان')
+      return
+    }
+
     // الخزنة اختيارية - يمكن أن تكون "لا يوجد"
 
     const paymentAmount = parseFloat(amount)
 
-    // Check if payment exceeds balance
-    if (paymentAmount > currentBalance) {
+    // للسلفة: المبلغ يُسجّل كسالب لأنها تزيد من الرصيد المستحق على العميل
+    const actualAmount = paymentType === 'loan' ? -paymentAmount : paymentAmount
+
+    // Check if payment exceeds balance (فقط للدفعة العادية)
+    if (paymentType === 'payment' && paymentAmount > currentBalance) {
       const confirmExceed = confirm(
         `المبلغ المدخل (${formatPrice(paymentAmount)}) أكبر من الرصيد الحالي (${formatPrice(currentBalance)}). هل تريد المتابعة؟`
       )
@@ -98,14 +110,19 @@ export default function AddPaymentModal({
 
     try {
       if (entityType === 'customer') {
+        // إعداد الملاحظات مع توضيح نوع العملية
+        const paymentNotes = paymentType === 'loan'
+          ? `سلفة${notes ? ` - ${notes}` : ''}`
+          : notes || null
+
         const { data, error } = await supabase
           .from('customer_payments')
           .insert([
             {
               customer_id: entityId,
-              amount: paymentAmount,
+              amount: actualAmount,
               payment_method: paymentMethod,
-              notes: notes || null,
+              notes: paymentNotes,
               payment_date: new Date().toISOString().split('T')[0],
             }
           ])
@@ -113,11 +130,12 @@ export default function AddPaymentModal({
 
         if (error) {
           console.error('Error adding payment:', error)
-          alert('حدث خطأ أثناء إضافة الدفعة')
+          alert(paymentType === 'loan' ? 'حدث خطأ أثناء إضافة السلفة' : 'حدث خطأ أثناء إضافة الدفعة')
           return
         }
 
         // Record payment in the selected safe (if a safe was selected)
+        // للدفعة: إيداع في الخزنة / للسلفة: سحب من الخزنة
         if (recordId && paymentMethod === 'cash') {
           try {
             // Get or create drawer for this record
@@ -141,8 +159,9 @@ export default function AddPaymentModal({
             }
 
             if (drawer) {
-              // Calculate new balance (customer payment adds to drawer)
-              const newBalance = (drawer.current_balance || 0) + paymentAmount
+              // للدفعة: إضافة للخزنة / للسلفة: خصم من الخزنة
+              const drawerChange = paymentType === 'loan' ? -paymentAmount : paymentAmount
+              const newBalance = (drawer.current_balance || 0) + drawerChange
 
               // Update drawer balance
               await supabase
@@ -159,14 +178,16 @@ export default function AddPaymentModal({
                 .insert({
                   drawer_id: drawer.id,
                   record_id: recordId,
-                  transaction_type: 'deposit',
-                  amount: paymentAmount,
+                  transaction_type: paymentType === 'loan' ? 'withdrawal' : 'deposit',
+                  amount: drawerChange,
                   balance_after: newBalance,
-                  notes: `دفعة من عميل: ${entityName}${notes ? ` - ${notes}` : ''}`,
+                  notes: paymentType === 'loan'
+                    ? `سلفة لعميل: ${entityName}${notes ? ` - ${notes}` : ''}`
+                    : `دفعة من عميل: ${entityName}${notes ? ` - ${notes}` : ''}`,
                   performed_by: 'system'
                 })
 
-              console.log(`✅ Cash drawer updated with customer payment: +${paymentAmount}, new balance: ${newBalance}`)
+              console.log(`✅ Cash drawer updated with customer ${paymentType}: ${drawerChange}, new balance: ${newBalance}`)
             }
           } catch (drawerError) {
             console.warn('Failed to update cash drawer with customer payment:', drawerError)
@@ -285,7 +306,7 @@ export default function AddPaymentModal({
           {/* Header */}
           <div className="flex items-center justify-between p-6 border-b border-gray-600">
             <h2 className="text-xl font-bold text-white">
-              إضافة دفعة - {entityName}
+              {paymentType === 'loan' ? 'إضافة سلفة' : 'إضافة دفعة'} - {entityName}
             </h2>
             <button
               onClick={onClose}
@@ -298,16 +319,53 @@ export default function AddPaymentModal({
           {/* Body */}
           <form onSubmit={handleSubmit} className="p-6 space-y-4">
 
+            {/* Payment Type Toggle - 3/4 للدفعة و 1/4 للسلفة */}
+            <div className="flex gap-2 p-1 bg-[#1F2937] rounded-lg border border-gray-600">
+              <button
+                type="button"
+                onClick={() => setPaymentType('payment')}
+                className={`flex-[3] py-2 px-3 rounded-md text-sm font-medium transition-all duration-200 ${
+                  paymentType === 'payment'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                }`}
+              >
+                دفعة
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaymentType('loan')}
+                className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all duration-200 ${
+                  paymentType === 'loan'
+                    ? 'bg-orange-600 text-white shadow-sm'
+                    : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                }`}
+              >
+                سلفة
+              </button>
+            </div>
+
             {/* Current Balance Display */}
-            <div className="bg-blue-600/20 border border-blue-600 rounded p-4 text-center">
-              <div className="text-sm text-blue-300 mb-1">الرصيد الحالي</div>
+            <div className={`rounded p-4 text-center ${
+              paymentType === 'loan'
+                ? 'bg-orange-600/20 border border-orange-600'
+                : 'bg-blue-600/20 border border-blue-600'
+            }`}>
+              <div className={`text-sm mb-1 ${paymentType === 'loan' ? 'text-orange-300' : 'text-blue-300'}`}>
+                الرصيد الحالي
+              </div>
               <div className="text-2xl font-bold text-white">{formatPrice(currentBalance)}</div>
+              {paymentType === 'loan' && (
+                <div className="text-xs text-orange-300 mt-1">
+                  السلفة ستزيد الرصيد المستحق على العميل
+                </div>
+              )}
             </div>
 
             {/* Amount Input */}
             <div>
               <label className="block text-gray-300 text-sm font-medium mb-2 text-right">
-                مبلغ الدفعة <span className="text-red-400">*</span>
+                {paymentType === 'loan' ? 'مبلغ السلفة' : 'مبلغ الدفعة'} <span className="text-red-400">*</span>
               </label>
               <input
                 type="number"
@@ -315,14 +373,16 @@ export default function AddPaymentModal({
                 min="0"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                className="w-full px-4 py-2 bg-[#1F2937] border border-gray-600 rounded text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="أدخل مبلغ الدفعة"
+                className={`w-full px-4 py-2 bg-[#1F2937] border border-gray-600 rounded text-white text-right focus:outline-none focus:ring-2 ${
+                  paymentType === 'loan' ? 'focus:ring-orange-500' : 'focus:ring-blue-500'
+                }`}
+                placeholder={paymentType === 'loan' ? 'أدخل مبلغ السلفة' : 'أدخل مبلغ الدفعة'}
                 required
               />
             </div>
 
             {/* Remaining Balance Display */}
-            {amount && parseFloat(amount) > 0 && (
+            {amount && parseFloat(amount) > 0 && paymentType === 'payment' && (
               <div className={`rounded p-3 text-center ${
                 remainingBalance < 0
                   ? 'bg-red-600/20 border border-red-600'
@@ -334,6 +394,18 @@ export default function AddPaymentModal({
                 <div className="text-xl font-bold text-white">
                   {formatPrice(Math.abs(remainingBalance))}
                   {remainingBalance < 0 && ' (دفع زائد)'}
+                </div>
+              </div>
+            )}
+
+            {/* New Balance Display for Loan */}
+            {amount && parseFloat(amount) > 0 && paymentType === 'loan' && (
+              <div className="rounded p-3 text-center bg-orange-600/20 border border-orange-600">
+                <div className="text-sm mb-1 text-orange-300">
+                  الرصيد الجديد بعد السلفة
+                </div>
+                <div className="text-xl font-bold text-white">
+                  {formatPrice(currentBalance + parseFloat(amount))}
                 </div>
               </div>
             )}
@@ -378,17 +450,18 @@ export default function AddPaymentModal({
               </select>
             </div>
 
-            {/* Notes */}
+            {/* البيان */}
             <div>
               <label className="block text-gray-300 text-sm font-medium mb-2 text-right">
-                ملاحظات
+                البيان <span className="text-red-400">*</span>
               </label>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={3}
                 className="w-full px-4 py-2 bg-[#1F2937] border border-gray-600 rounded text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                placeholder="أضف ملاحظات (اختياري)"
+                placeholder="أدخل البيان"
+                required
               />
             </div>
 
@@ -404,10 +477,19 @@ export default function AddPaymentModal({
               </button>
               <button
                 type="submit"
-                disabled={isSubmitting || !amount || parseFloat(amount) <= 0}
-                className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed"
+                disabled={isSubmitting || !amount || parseFloat(amount) <= 0 || !notes || notes.trim() === ''}
+                className={`flex-1 px-4 py-2 text-white rounded font-medium transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed ${
+                  paymentType === 'loan'
+                    ? 'bg-orange-600 hover:bg-orange-700'
+                    : 'bg-blue-600 hover:bg-blue-700'
+                }`}
               >
-                {isSubmitting ? 'جاري الإضافة...' : 'إضافة الدفعة'}
+                {isSubmitting
+                  ? 'جاري الإضافة...'
+                  : paymentType === 'loan'
+                    ? 'إضافة السلفة'
+                    : 'إضافة الدفعة'
+                }
               </button>
             </div>
           </form>

@@ -24,6 +24,7 @@ interface ResizableTableProps {
   className?: string
   onRowClick?: (item: any, index: number) => void
   onRowDoubleClick?: (item: any, index: number) => void
+  onRowContextMenu?: (e: React.MouseEvent, item: any, index: number) => void
   selectedRowId?: string | null
   reportType?: 'MAIN_REPORT' | 'PRODUCTS_REPORT' | 'CATEGORIES_REPORT' | 'CUSTOMERS_REPORT' | 'CUSTOMER_INVOICES_REPORT' | 'DAILY_SALES_REPORT' | 'HOURLY_SALES_REPORT' | 'PROFIT_MARGIN_REPORT' // for localStorage key
   onColumnsChange?: (columns: Column[]) => void // callback for parent component
@@ -157,6 +158,7 @@ export default function ResizableTable({
   className = '',
   onRowClick,
   onRowDoubleClick,
+  onRowContextMenu,
   selectedRowId,
   reportType,
   onColumnsChange,
@@ -691,12 +693,13 @@ export default function ResizableTable({
               <tr
                 key={item.id || rowIndex}
                 className={`border-b border-gray-700 cursor-pointer transition-colors ${
-                  selectedRowId === item.id 
-                    ? 'bg-blue-600 hover:bg-blue-700' 
+                  selectedRowId === item.id
+                    ? 'bg-blue-600 hover:bg-blue-700'
                     : 'hover:bg-[#374151]'
                 }`}
                 onClick={() => onRowClick?.(item, rowIndex)}
                 onDoubleClick={() => onRowDoubleClick?.(item, rowIndex)}
+                onContextMenu={(e) => onRowContextMenu?.(e, item, rowIndex)}
               >
                 {columns.map((column) => (
                   <td
