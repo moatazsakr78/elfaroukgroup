@@ -1033,11 +1033,8 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
     // Calculate totals
     const total = Math.abs(sale.total_amount)
 
-    // Logo as base64 SVG for reliability
-    const logoSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="60" height="60">
-      <circle cx="50" cy="50" r="45" fill="white" stroke="#3B82F6" stroke-width="3"/>
-      <text x="50" y="58" text-anchor="middle" font-family="Arial, sans-serif" font-size="24" font-weight="bold" fill="#3B82F6">EF</text>
-    </svg>`
+    // Logo URL for the company logo
+    const logoUrl = window.location.origin + '/assets/logo/El Farouk Group2.png'
 
     const a4InvoiceContent = `
       <!DOCTYPE html>
@@ -1062,13 +1059,13 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
             .invoice-container {
               max-width: 800px;
               margin: 0 auto;
-              border: 2px solid #3B82F6;
+              border: 2px solid #5d1f1f;
               border-radius: 10px;
               overflow: hidden;
             }
 
             .invoice-header {
-              background: linear-gradient(135deg, #2B3544 0%, #3B82F6 100%);
+              background: #5d1f1f;
               color: white;
               padding: 15px 25px;
               display: flex;
@@ -1083,16 +1080,10 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
             }
 
             .company-logo {
-              width: 50px;
-              height: 50px;
-              background: white;
+              width: 70px;
+              height: 70px;
               border-radius: 50%;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              font-size: 20px;
-              font-weight: bold;
-              color: #3B82F6;
+              object-fit: contain;
             }
 
             .company-name {
@@ -1109,7 +1100,7 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
 
             .invoice-title h2 {
               font-size: 20px;
-              color: #3B82F6;
+              color: #5d1f1f;
               margin-bottom: 3px;
             }
 
@@ -1136,10 +1127,10 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
             }
 
             .info-box h4 {
-              color: #3B82F6;
+              color: #5d1f1f;
               font-size: 13px;
               margin-bottom: 8px;
-              border-bottom: 2px solid #3B82F6;
+              border-bottom: 2px solid #5d1f1f;
               padding-bottom: 4px;
             }
 
@@ -1160,7 +1151,7 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
             }
 
             .items-table th {
-              background: #3B82F6;
+              background: #5d1f1f;
               color: white;
               padding: 10px 8px;
               text-align: center;
@@ -1185,7 +1176,7 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
               display: flex;
               justify-content: space-between;
               align-items: center;
-              background: linear-gradient(135deg, #2B3544 0%, #3B82F6 100%);
+              background: #5d1f1f;
               color: white;
               padding: 12px 20px;
               border-radius: 8px;
@@ -1224,7 +1215,7 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
             .thank-you {
               font-size: 14px;
               font-weight: 600;
-              color: #3B82F6;
+              color: #5d1f1f;
             }
 
             .no-print {
@@ -1242,8 +1233,8 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
               font-family: 'Cairo', sans-serif;
             }
 
-            .btn-print { background: #3B82F6; color: white; }
-            .btn-print:hover { background: #2563eb; }
+            .btn-print { background: #5d1f1f; color: white; }
+            .btn-print:hover { background: #4a1818; }
             .btn-close { background: #64748b; color: white; }
             .btn-close:hover { background: #475569; }
 
@@ -1259,7 +1250,7 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
           <div class="invoice-container">
             <div class="invoice-header">
               <div class="header-right">
-                <div class="company-logo">EF</div>
+                <img src="${logoUrl}" alt="El Farouk Group" class="company-logo" onerror="this.style.display='none'" />
                 <div class="company-name">El Farouk Group</div>
               </div>
             </div>
