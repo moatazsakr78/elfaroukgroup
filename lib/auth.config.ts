@@ -156,16 +156,83 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                 .insert({
                   id: newUser.id,
                   full_name: user.name || user.email!.split('@')[0],
-                  role: 'عميل' // Default role for new users
+                  role: 'عميل', // Default role for new users
+                  avatar_url: user.image || null // Save Google profile image
                 })
 
               if (profileError) {
                 console.error('❌ Error creating user profile:', profileError)
                 // Don't fail the whole sign-in if profile creation fails
               }
+
+              // Also create a customer record with the Google profile image
+              const { error: customerError } = await supabase
+                .from('customers')
+                .insert({
+                  name: user.name || user.email!.split('@')[0],
+                  email: user.email!,
+                  user_id: newUser.id,
+                  profile_image_url: user.image || null,
+                  is_active: true
+                })
+
+              if (customerError) {
+                console.error('❌ Error creating customer record:', customerError)
+                // Don't fail if customer creation fails
+              } else {
+                console.log('✅ Created customer record with Google profile image')
+              }
             }
 
             console.log('✅ Created new user via Google OAuth:', user.email)
+          } else {
+            // User exists - update their profile image and customer record if needed
+            const existingUserId = existingUsers[0].id
+
+            // Update auth_users image if it changed
+            await supabase
+              .from('auth_users')
+              .update({ image: user.image })
+              .eq('id', existingUserId)
+
+            // Update user_profiles avatar_url
+            await supabase
+              .from('user_profiles')
+              .update({ avatar_url: user.image })
+              .eq('id', existingUserId)
+
+            // Check if customer exists by email and update profile_image_url
+            const { data: existingCustomer } = await supabase
+              .from('customers')
+              .select('id, user_id')
+              .eq('email', user.email!)
+              .limit(1)
+
+            if (existingCustomer && existingCustomer.length > 0) {
+              // Update existing customer with Google profile image and link user_id
+              await supabase
+                .from('customers')
+                .update({
+                  profile_image_url: user.image,
+                  user_id: existingUserId
+                })
+                .eq('id', existingCustomer[0].id)
+
+              console.log('✅ Updated customer profile image from Google:', user.email)
+            } else {
+              // Create new customer record
+              await supabase
+                .from('customers')
+                .insert({
+                  name: user.name || user.email!.split('@')[0],
+                  email: user.email!,
+                  user_id: existingUserId,
+                  profile_image_url: user.image || null,
+                  is_active: true
+                })
+
+              console.log('✅ Created new customer from Google OAuth:', user.email)
+            }
           }
 
           return true
