@@ -140,6 +140,9 @@ import {
   PrinterIcon,
   CurrencyDollarIcon,
   ReceiptPercentIcon,
+  FolderIcon,
+  MinusIcon,
+  ChevronRightIcon,
 } from "@heroicons/react/24/outline";
 
 function POSPageContent() {
@@ -330,6 +333,107 @@ function POSPageContent() {
   // Categories state
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoadingCategories, setIsLoadingCategories] = useState(true);
+
+  // Selected Category for filtering products
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+
+  // Category tree expanded nodes state
+  const [expandedCategoryNodes, setExpandedCategoryNodes] = useState<Set<string>>(new Set());
+
+  // Build category tree structure for hierarchical display
+  interface CategoryTreeNode {
+    id: string;
+    name: string;
+    parent_id: string | null;
+    children: CategoryTreeNode[];
+    isExpanded: boolean;
+  }
+
+  // Build tree from flat categories
+  const buildCategoryTree = useCallback((cats: Category[]): CategoryTreeNode | null => {
+    // Find the root "منتجات" category
+    const productsCategory = cats.find(cat => cat.name === 'منتجات' && !cat.parent_id);
+
+    const buildNode = (cat: Category): CategoryTreeNode => {
+      const children = cats
+        .filter(c => c.parent_id === cat.id && c.is_active)
+        .map(c => buildNode(c));
+
+      return {
+        id: cat.id,
+        name: cat.name,
+        parent_id: cat.parent_id,
+        children,
+        isExpanded: expandedCategoryNodes.has(cat.id) || cat.name === 'منتجات'
+      };
+    };
+
+    if (productsCategory) {
+      return buildNode(productsCategory);
+    }
+
+    // If no "منتجات" category exists, create virtual root
+    const rootCategories = cats
+      .filter(c => !c.parent_id && c.is_active)
+      .map(c => buildNode(c));
+
+    return {
+      id: 'products-root',
+      name: 'منتجات',
+      parent_id: null,
+      children: rootCategories,
+      isExpanded: true
+    };
+  }, [expandedCategoryNodes]);
+
+  // Get the category tree
+  const categoryTree = useMemo(() => {
+    return buildCategoryTree(categories);
+  }, [categories, buildCategoryTree]);
+
+  // Toggle category node expansion
+  const toggleCategoryNode = useCallback((nodeId: string) => {
+    setExpandedCategoryNodes(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(nodeId)) {
+        newSet.delete(nodeId);
+      } else {
+        newSet.add(nodeId);
+      }
+      return newSet;
+    });
+  }, []);
+
+  // Get all descendant category IDs for filtering (so selecting parent shows all children's products)
+  const getAllDescendantCategoryIds = useCallback((categoryId: string | null): Set<string> => {
+    if (!categoryId) return new Set();
+
+    const descendants = new Set<string>([categoryId]);
+
+    const addChildren = (parentId: string) => {
+      categories
+        .filter(c => c.parent_id === parentId && c.is_active)
+        .forEach(child => {
+          descendants.add(child.id);
+          addChildren(child.id);
+        });
+    };
+
+    addChildren(categoryId);
+    return descendants;
+  }, [categories]);
+
+  // Category IDs to filter products (includes selected + all descendants)
+  const categoryFilterIds = useMemo(() => {
+    return getAllDescendantCategoryIds(selectedCategoryId);
+  }, [selectedCategoryId, getAllDescendantCategoryIds]);
+
+  // Get selected category name for display
+  const selectedCategoryName = useMemo(() => {
+    if (!selectedCategoryId) return null;
+    const category = categories.find(c => c.id === selectedCategoryId);
+    return category?.name || null;
+  }, [selectedCategoryId, categories]);
 
   // ✨ OPTIMIZED: Use super-optimized admin hook for better performance
   const { products, branches, isLoading, error, fetchProducts } = useProductsAdmin();
@@ -1188,21 +1292,35 @@ function POSPageContent() {
 
   // OPTIMIZED: Memoized product filtering to prevent unnecessary re-renders
   // Returns Set of matching product IDs for O(1) lookup
+  // Now includes both search query AND category filter
   const filteredProductIds = useMemo(() => {
-    if (!searchQuery) return null; // null means show all
+    const hasSearchFilter = !!searchQuery;
+    const hasCategoryFilter = selectedCategoryId !== null && categoryFilterIds.size > 0;
+
+    // No filters - show all
+    if (!hasSearchFilter && !hasCategoryFilter) return null;
 
     const query = searchQuery.toLowerCase();
     const matchingIds = new Set<string>();
+
     products.forEach((product) => {
-      if (
+      // Check search filter
+      const matchesSearch = !hasSearchFilter || (
         product.name.toLowerCase().includes(query) ||
         (product.barcode && product.barcode.toLowerCase().includes(query))
-      ) {
+      );
+
+      // Check category filter
+      const matchesCategory = !hasCategoryFilter || (
+        product.category_id && categoryFilterIds.has(product.category_id)
+      );
+
+      if (matchesSearch && matchesCategory) {
         matchingIds.add(product.id);
       }
     });
     return matchingIds;
-  }, [products, searchQuery]);
+  }, [products, searchQuery, selectedCategoryId, categoryFilterIds]);
 
   // Helper function to check if product matches search
   const isProductVisible = useCallback((productId: string) => {
@@ -1211,9 +1329,12 @@ function POSPageContent() {
 
   // For backward compatibility - filtered products array (used for count display etc.)
   const filteredProducts = useMemo(() => {
-    if (!searchQuery) return products;
+    const hasSearchFilter = !!searchQuery;
+    const hasCategoryFilter = selectedCategoryId !== null && categoryFilterIds.size > 0;
+
+    if (!hasSearchFilter && !hasCategoryFilter) return products;
     return products.filter((p) => filteredProductIds?.has(p.id));
-  }, [products, searchQuery, filteredProductIds]);
+  }, [products, searchQuery, selectedCategoryId, categoryFilterIds, filteredProductIds]);
 
   // OPTIMIZED: Memoized refresh handler
   const handleRefresh = useCallback(() => {
@@ -3868,10 +3989,19 @@ function POSPageContent() {
 
                 <button
                   onClick={toggleCategoriesModal}
-                  className="flex flex-col items-center p-2 text-gray-300 hover:text-white cursor-pointer min-w-[80px]"
+                  className={`flex flex-col items-center p-2 cursor-pointer min-w-[80px] transition-all relative ${
+                    selectedCategoryId
+                      ? "text-blue-400 hover:text-blue-300"
+                      : "text-gray-300 hover:text-white"
+                  }`}
                 >
-                  <Squares2X2Icon className="h-5 w-5 mb-1" />
-                  <span className="text-sm">الفئات</span>
+                  <div className="relative">
+                    <Squares2X2Icon className="h-5 w-5 mb-1" />
+                    {selectedCategoryId && (
+                      <span className="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full"></span>
+                    )}
+                  </div>
+                  <span className="text-sm">{selectedCategoryName || 'الفئات'}</span>
                 </button>
 
                 {/* Discount Button */}
@@ -4135,10 +4265,14 @@ function POSPageContent() {
 
               <button
                 onClick={toggleCategoriesModal}
-                className="flex items-center gap-2 px-3 py-2 bg-[#2B3544] border border-gray-600 rounded text-gray-300 hover:text-white hover:bg-[#374151] cursor-pointer whitespace-nowrap flex-shrink-0 transition-colors"
+                className={`flex items-center gap-2 px-3 py-2 border border-gray-600 rounded cursor-pointer whitespace-nowrap flex-shrink-0 transition-colors ${
+                  selectedCategoryId
+                    ? "bg-blue-600 text-white hover:bg-blue-700 border-blue-600"
+                    : "bg-[#2B3544] text-gray-300 hover:text-white hover:bg-[#374151]"
+                }`}
               >
                 <Squares2X2Icon className="h-4 w-4" />
-                <span className="text-xs">الفئات</span>
+                <span className="text-xs">{selectedCategoryName || 'الفئات'}</span>
               </button>
 
               {/* Discount Button - Mobile */}
@@ -5835,51 +5969,116 @@ function POSPageContent() {
         </>
       )}
 
-      {/* Categories Display Modal */}
+      {/* Categories Display Modal - Tree View */}
       {isCategoriesModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-[#2B3544] rounded-lg p-6 w-96 max-h-[80vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
+          <div className="bg-[#2B3544] rounded-lg w-96 max-h-[80vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="flex justify-between items-center p-4 border-b border-gray-600">
               <h3 className="text-xl font-bold text-white">المجموعات</h3>
               <button
                 onClick={toggleCategoriesModal}
-                className="text-gray-400 hover:text-white"
+                className="text-gray-400 hover:text-white transition-colors"
               >
-                ✕
+                <XMarkIcon className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="space-y-2">
+            {/* Tree View Content */}
+            <div className="flex-1 overflow-y-auto scrollbar-hide py-2">
               {isLoadingCategories ? (
                 <div className="text-center py-4 text-gray-400">
                   جارٍ التحميل...
                 </div>
-              ) : categories.length === 0 ? (
+              ) : !categoryTree ? (
                 <div className="text-center py-4 text-gray-400">
                   لا توجد مجموعات
                 </div>
               ) : (
-                categories.map((category) => (
-                  <div
-                    key={category.id}
-                    className="p-3 bg-[#374151] rounded-lg text-white hover:bg-[#4B5563] transition-colors cursor-pointer"
-                    onClick={() => {
-                      console.log("Selected category:", category);
-                      setIsCategoriesModalOpen(false);
-                    }}
-                  >
-                    <div className="font-medium">{category.name}</div>
-                    {category.name_en && (
-                      <div className="text-sm text-gray-400">
-                        {category.name_en}
+                // Recursive Tree Node Component
+                (() => {
+                  const renderTreeNode = (node: typeof categoryTree, level: number = 0): React.ReactNode => {
+                    if (!node) return null;
+                    const hasChildren = node.children && node.children.length > 0;
+                    const isSelected = selectedCategoryId === node.id;
+                    const isExpanded = expandedCategoryNodes.has(node.id) || node.name === 'منتجات';
+
+                    return (
+                      <div key={node.id}>
+                        <div
+                          className={`flex items-center cursor-pointer transition-colors ${
+                            isSelected
+                              ? 'bg-blue-600 text-white'
+                              : 'hover:bg-[#374151] text-gray-300 hover:text-white'
+                          }`}
+                          style={{ paddingRight: `${16 + level * 24}px`, paddingLeft: '12px', paddingTop: '10px', paddingBottom: '10px' }}
+                          onClick={() => {
+                            // Toggle selection - if already selected, deselect (show all products)
+                            if (isSelected) {
+                              setSelectedCategoryId(null);
+                            } else {
+                              setSelectedCategoryId(node.id);
+                            }
+                          }}
+                        >
+                          <div className="flex items-center gap-2 w-full">
+                            {/* Expand/Collapse Button */}
+                            <div className="w-6 h-6 flex items-center justify-center flex-shrink-0">
+                              {hasChildren ? (
+                                <button
+                                  className="text-gray-400 hover:text-white w-5 h-5 flex items-center justify-center rounded hover:bg-gray-600/30"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleCategoryNode(node.id);
+                                  }}
+                                >
+                                  {isExpanded ? (
+                                    <MinusIcon className="h-4 w-4" />
+                                  ) : (
+                                    <ChevronRightIcon className="h-4 w-4" />
+                                  )}
+                                </button>
+                              ) : null}
+                            </div>
+
+                            {/* Folder Icon */}
+                            <FolderIcon className={`h-5 w-5 flex-shrink-0 ${isSelected ? 'text-white' : 'text-gray-400'}`} />
+
+                            {/* Category Name */}
+                            <span className="text-base truncate">
+                              {node.name}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Children */}
+                        {hasChildren && isExpanded && (
+                          <div>
+                            {node.children.map((child) => renderTreeNode(child, level + 1))}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                ))
+                    );
+                  };
+
+                  return renderTreeNode(categoryTree);
+                })()
               )}
             </div>
 
-            <div className="mt-4 pt-4 border-t border-gray-600">
+            {/* Footer Actions */}
+            <div className="p-4 border-t border-gray-600 space-y-2">
+              {/* Clear Selection Button */}
+              {selectedCategoryId && (
+                <button
+                  onClick={() => setSelectedCategoryId(null)}
+                  className="w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                >
+                  <XMarkIcon className="h-4 w-4" />
+                  إظهار جميع المنتجات
+                </button>
+              )}
+              {/* Close Button */}
               <button
                 onClick={toggleCategoriesModal}
                 className="w-full py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
