@@ -132,12 +132,12 @@ const getProductSubImages = async (
       return productImages.map(img => img.image_url);
     }
 
-    // Fourth priority: Use fallback system (generates placeholder images)
-    console.log(`⚠️ Modal: No images found, using fallback for product ${productName}`);
-    return getProductSubImagesFallback(productId, productName);
+    // No sub-images found - return empty array instead of placeholders
+    console.log(`ℹ️ Modal: No sub-images found for product ${productName}`);
+    return [];
   } catch (err) {
     console.error('Error fetching product images:', err);
-    return getProductSubImagesFallback(productId, productName);
+    return [];
   }
 };
 
