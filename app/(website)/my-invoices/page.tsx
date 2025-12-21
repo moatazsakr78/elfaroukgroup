@@ -347,7 +347,7 @@ export default function MyInvoicesPage() {
           .balance {
             font-size: 20px;
             font-weight: bold;
-            color: ${customer?.account_balance && customer.account_balance > 0 ? '#dc2626' : '#16a34a'};
+            color: ${getActualBalance() > 0 ? '#dc2626' : '#16a34a'};
           }
           table {
             width: 100%;
@@ -384,7 +384,7 @@ export default function MyInvoicesPage() {
           <h3>بيانات العميل</h3>
           <p><strong>الاسم:</strong> ${customer?.name || '-'}</p>
           <p><strong>الهاتف:</strong> ${customer?.phone || '-'}</p>
-          <p class="balance"><strong>الرصيد الحالي:</strong> ${formatPrice(customer?.account_balance || 0)}</p>
+          <p class="balance"><strong>الرصيد الحالي:</strong> ${formatPrice(getActualBalance())}</p>
         </div>
         ${printContent.innerHTML}
         <p class="print-date">تاريخ الطباعة: ${new Date().toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
@@ -398,6 +398,26 @@ export default function MyInvoicesPage() {
       printWindow.print();
       printWindow.close();
     }, 250);
+  };
+
+  // Translate invoice type to Arabic
+  const translateInvoiceType = (type: string | null) => {
+    if (!type) return 'فاتورة بيع';
+    const translations: Record<string, string> = {
+      'Sale Invoice': 'فاتورة بيع',
+      'sale_invoice': 'فاتورة بيع',
+      'Return Invoice': 'فاتورة مرتجع',
+      'return_invoice': 'فاتورة مرتجع',
+      'فاتورة بيع': 'فاتورة بيع',
+      'فاتورة مرتجع': 'فاتورة مرتجع',
+    };
+    return translations[type] || type;
+  };
+
+  // Calculate actual balance from statistics (invoices - payments)
+  const getActualBalance = () => {
+    if (!statistics) return customer?.account_balance || 0;
+    return statistics.totalInvoicesAmount - statistics.totalPayments;
   };
 
   // Format date
@@ -534,8 +554,8 @@ export default function MyInvoicesPage() {
               </div>
               <div>
                 <h3 className="font-bold text-gray-800">{customer.name}</h3>
-                <p className={`text-sm font-semibold ${(customer.account_balance || 0) > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                  {formatPrice(customer.account_balance || 0)}
+                <p className={`text-sm font-semibold ${getActualBalance() > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                  {formatPrice(getActualBalance())}
                 </p>
               </div>
             </div>
@@ -657,7 +677,7 @@ export default function MyInvoicesPage() {
                           className="px-2 py-0.5 text-xs rounded-full text-white"
                           style={{ backgroundColor: 'var(--primary-color)' }}
                         >
-                          {invoice.invoice_type || 'فاتورة بيع'}
+                          {translateInvoiceType(invoice.invoice_type)}
                         </span>
                       </div>
                       <div className="flex items-center justify-between">
@@ -806,12 +826,12 @@ export default function MyInvoicesPage() {
               className="rounded-xl p-5 text-center shadow-inner"
               style={{ backgroundColor: 'var(--primary-color)' }}
             >
-              <p className={`text-3xl font-bold ${(customer.account_balance || 0) > 0 ? 'text-red-200' : 'text-green-200'}`}>
-                {formatPrice(customer.account_balance || 0)}
+              <p className={`text-3xl font-bold ${getActualBalance() > 0 ? 'text-red-200' : 'text-green-200'}`}>
+                {formatPrice(getActualBalance())}
               </p>
               <p className="text-white/80 text-sm mt-1">رصيد الحساب</p>
               <p className="text-white/60 text-xs mt-1">
-                {(customer.account_balance || 0) > 0 ? 'عليك' : (customer.account_balance || 0) < 0 ? 'لك' : 'الحساب متوازن'}
+                {getActualBalance() > 0 ? 'عليك' : getActualBalance() < 0 ? 'لك' : 'الحساب متوازن'}
               </p>
             </div>
           </div>
@@ -970,7 +990,7 @@ export default function MyInvoicesPage() {
                                   className="px-2 py-1 text-xs rounded-full text-white"
                                   style={{ backgroundColor: 'var(--primary-color)' }}
                                 >
-                                  {invoice.invoice_type || 'فاتورة بيع'}
+                                  {translateInvoiceType(invoice.invoice_type)}
                                 </span>
                               </td>
                               <td className="px-4 py-3 text-sm text-gray-600">{invoice.payment_method}</td>
