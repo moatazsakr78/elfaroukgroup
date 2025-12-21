@@ -574,7 +574,11 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
         .single()
 
       if (!error && saleData) {
-        setSelectedStatementInvoice(saleData)
+        // Include paidAmount from statement data
+        setSelectedStatementInvoice({
+          ...saleData,
+          paidAmount: statement.paidAmount || 0
+        })
         setShowStatementInvoiceDetails(true)
         await fetchStatementInvoiceItems(saleId)
       }
@@ -602,7 +606,11 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
           .single()
 
         if (!error && saleData) {
-          setSelectedStatementInvoice(saleData)
+          // Include paidAmount from statement data
+          setSelectedStatementInvoice({
+            ...saleData,
+            paidAmount: nextStatement.paidAmount || 0
+          })
           await fetchStatementInvoiceItems(saleId)
         }
       }
@@ -630,7 +638,11 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
           .single()
 
         if (!error && saleData) {
-          setSelectedStatementInvoice(saleData)
+          // Include paidAmount from statement data
+          setSelectedStatementInvoice({
+            ...saleData,
+            paidAmount: prevStatement.paidAmount || 0
+          })
           await fetchStatementInvoiceItems(saleId)
         }
       }
@@ -919,7 +931,7 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
       .limit(1)
       .single()
 
-    // Number to Arabic words function
+    // Number to Arabic words function - supports up to millions
     const numberToArabicWords = (num: number): string => {
       const ones = ['', 'واحد', 'اثنان', 'ثلاثة', 'أربعة', 'خمسة', 'ستة', 'سبعة', 'ثمانية', 'تسعة', 'عشرة',
         'أحد عشر', 'اثنا عشر', 'ثلاثة عشر', 'أربعة عشر', 'خمسة عشر', 'ستة عشر', 'سبعة عشر', 'ثمانية عشر', 'تسعة عشر']
@@ -931,31 +943,73 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
 
       const intNum = Math.floor(num)
       let result = ''
+      const parts: string[] = []
 
-      const hundredsDigit = Math.floor(intNum / 100)
-      const tensDigit = Math.floor((intNum % 100) / 10)
-      const onesDigit = intNum % 10
-
-      if (hundredsDigit > 0) {
-        result += hundreds[hundredsDigit]
-        if (tensDigit > 0 || onesDigit > 0) result += ' و'
-      }
-
-      if (intNum % 100 < 20) {
-        result += ones[intNum % 100]
-      } else {
-        if (tensDigit > 0) {
-          result += tens[tensDigit]
-          if (onesDigit > 0) result += ' و'
+      // Handle millions
+      const millions = Math.floor(intNum / 1000000)
+      if (millions > 0) {
+        if (millions === 1) {
+          parts.push('مليون')
+        } else if (millions === 2) {
+          parts.push('مليونان')
+        } else if (millions >= 3 && millions <= 10) {
+          parts.push(numberToArabicWords(millions) + ' ملايين')
+        } else {
+          parts.push(numberToArabicWords(millions) + ' مليون')
         }
-        if (onesDigit > 0) result += ones[onesDigit]
       }
 
-      return result.trim().replace(/\s*و$/, '')
+      // Handle thousands
+      const thousands = Math.floor((intNum % 1000000) / 1000)
+      if (thousands > 0) {
+        if (thousands === 1) {
+          parts.push('ألف')
+        } else if (thousands === 2) {
+          parts.push('ألفان')
+        } else if (thousands >= 3 && thousands <= 10) {
+          parts.push(numberToArabicWords(thousands) + ' آلاف')
+        } else {
+          parts.push(numberToArabicWords(thousands) + ' ألف')
+        }
+      }
+
+      // Handle hundreds, tens, and ones
+      const remainder = intNum % 1000
+      if (remainder > 0) {
+        const hundredsDigit = Math.floor(remainder / 100)
+        const tensDigit = Math.floor((remainder % 100) / 10)
+        const onesDigit = remainder % 10
+        let remainderPart = ''
+
+        if (hundredsDigit > 0) {
+          remainderPart += hundreds[hundredsDigit]
+          if (tensDigit > 0 || onesDigit > 0) remainderPart += ' و'
+        }
+
+        if (remainder % 100 < 20 && remainder % 100 > 0) {
+          remainderPart += ones[remainder % 100]
+        } else {
+          if (onesDigit > 0) {
+            remainderPart += ones[onesDigit]
+            if (tensDigit > 0) remainderPart += ' و'
+          }
+          if (tensDigit > 0) {
+            remainderPart += tens[tensDigit]
+          }
+        }
+
+        if (remainderPart.trim()) {
+          parts.push(remainderPart.trim())
+        }
+      }
+
+      result = parts.join(' و')
+      return result.trim().replace(/\s*و$/, '') || 'صفر'
     }
 
-    // Check if customer has any balance (for showing total debt)
-    const showTotalDebt = customer && customer.id !== '00000000-0000-0000-0000-000000000001' && calculatedBalance !== 0
+    // Check if customer is valid (not walk-in) for showing payment details
+    const showPaymentDetails = customer && customer.id !== '00000000-0000-0000-0000-000000000001'
+    // Note: customerBalance is from the component state (calculated in fetchCustomerBalance)
     const logoUrl = window.location.origin + '/assets/logo/El Farouk Group2.png'
 
     const receiptContent = `
@@ -1115,14 +1169,44 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
               padding: 0 2px;
             }
 
-            .total-debt {
-              margin: 10px 20px;
+            .invoice-summary {
+              margin: 10px 10px;
               padding: 8px;
               border: 1px solid #000;
-              background-color: #f5f5f5;
-              text-align: center;
+              background-color: #f9f9f9;
+            }
+
+            .summary-row {
+              display: flex;
+              justify-content: space-between;
+              padding: 4px 8px;
+              font-size: 12px;
+              border-bottom: 1px dashed #ccc;
+            }
+
+            .summary-row:last-child {
+              border-bottom: none;
+            }
+
+            .summary-label {
               font-weight: 600;
-              font-size: 14px;
+              color: #333;
+            }
+
+            .summary-value {
+              font-weight: 700;
+              color: #000;
+            }
+
+            .balance-row {
+              background-color: #e8f4e8;
+              border-radius: 4px;
+              margin-top: 4px;
+              border-bottom: none;
+            }
+
+            .balance-row .summary-value {
+              color: #2e7d32;
             }
 
             .footer {
@@ -1213,12 +1297,27 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
             </tbody>
           </table>
 
-          ${showTotalDebt ? `
+          ${showPaymentDetails ? `
           <div class="payment-section">
             ${numberToArabicWords(Math.abs(sale.total_amount))} جنيهاً
           </div>
-          <div class="total-debt">
-            إجمالي الدين: ${calculatedBalance.toFixed(0)} جنيه
+          <div class="invoice-summary">
+            <div class="summary-row">
+              <span class="summary-label">الفاتورة:</span>
+              <span class="summary-value">${Math.abs(sale.total_amount).toFixed(2)} جنيه</span>
+            </div>
+            <div class="summary-row">
+              <span class="summary-label">المدفوع:</span>
+              <span class="summary-value">${(sale.paidAmount || 0).toFixed(2)} جنيه</span>
+            </div>
+            <div class="summary-row">
+              <span class="summary-label">آجل:</span>
+              <span class="summary-value">${(Math.abs(sale.total_amount) - (sale.paidAmount || 0)).toFixed(2)} جنيه</span>
+            </div>
+            <div class="summary-row balance-row">
+              <span class="summary-label">الرصيد:</span>
+              <span class="summary-value">${customerBalance.toFixed(2)} جنيه</span>
+            </div>
           </div>
           ` : ''}
 
@@ -3174,13 +3273,13 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
                             <div className="flex flex-col items-center bg-[#374151] rounded-lg p-3 border border-gray-600">
                               <span className="text-gray-400 mb-1">المدفوع</span>
                               <span className="text-green-400 font-bold">
-                                {formatPrice(Math.abs(selectedStatementInvoice?.total_amount || 0))}
+                                {formatPrice(selectedStatementInvoice?.paidAmount || 0)}
                               </span>
                             </div>
                             <div className="flex flex-col items-center bg-[#374151] rounded-lg p-3 border border-gray-600">
                               <span className="text-gray-400 mb-1">آجل</span>
                               <span className="text-orange-400 font-bold">
-                                {formatPrice(0)}
+                                {formatPrice(Math.abs(selectedStatementInvoice?.total_amount || 0) - (selectedStatementInvoice?.paidAmount || 0))}
                               </span>
                             </div>
                             <div className="flex flex-col items-center bg-[#374151] rounded-lg p-3 border border-gray-600">
