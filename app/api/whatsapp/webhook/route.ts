@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { parseIncomingMessage, markMessageAsRead, IncomingMessage } from '@/app/lib/whatsapp';
+import { parseIncomingMessage, markMessageAsRead } from '@/app/lib/whatsapp';
 import { createClient } from '@supabase/supabase-js';
-
-// In-memory store for messages (will be replaced with database later)
-// This is exported so the chat page can access it
-export const messageStore: Map<string, IncomingMessage[]> = new Map();
 
 // Supabase client for storing messages
 const supabase = createClient(
@@ -51,24 +47,18 @@ export async function POST(request: NextRequest) {
       if (message) {
         console.log('📱 New message from:', message.customerName, '-', message.text);
 
-        // Store message in memory (grouped by phone number)
-        const existingMessages = messageStore.get(message.from) || [];
-        existingMessages.push(message);
-        messageStore.set(message.from, existingMessages);
+        // Store message in database
+        const { error: dbError } = await supabase.from('whatsapp_messages').insert({
+          message_id: message.messageId,
+          from_number: message.from,
+          customer_name: message.customerName,
+          message_text: message.text,
+          message_type: 'incoming',
+          created_at: message.timestamp.toISOString(),
+        });
 
-        // Also try to store in database (whatsapp_messages table)
-        try {
-          await supabase.from('whatsapp_messages').insert({
-            message_id: message.messageId,
-            from_number: message.from,
-            customer_name: message.customerName,
-            message_text: message.text,
-            message_type: 'incoming',
-            created_at: message.timestamp.toISOString(),
-          });
-        } catch (dbError) {
-          // Table might not exist yet - that's okay
-          console.log('Note: Could not save to database (table may not exist)');
+        if (dbError) {
+          console.error('Database error:', dbError.message);
         }
 
         // Mark message as read
