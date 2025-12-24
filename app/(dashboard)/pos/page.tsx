@@ -4608,11 +4608,11 @@ function POSPageContent() {
                         setTabContextMenu(null);
                       }}
                       className={`w-full px-4 py-2 text-right text-sm flex items-center gap-2 transition-colors ${
-                        posTabs.find(t => t.id === tabContextMenu.tabId)?.cartItems?.length > 0
+                        (posTabs.find(t => t.id === tabContextMenu.tabId)?.cartItems?.length || 0) > 0
                           ? 'text-gray-300 hover:bg-orange-500/20 hover:text-orange-400'
                           : 'text-gray-500 cursor-not-allowed'
                       }`}
-                      disabled={!posTabs.find(t => t.id === tabContextMenu.tabId)?.cartItems?.length}
+                      disabled={(posTabs.find(t => t.id === tabContextMenu.tabId)?.cartItems?.length || 0) === 0}
                     >
                       <ClockIcon className="h-4 w-4" />
                       تأجيل الفاتورة
