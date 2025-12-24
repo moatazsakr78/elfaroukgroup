@@ -275,8 +275,9 @@ export function usePOSTabs(): UsePOSTabsReturn {
       let newActiveId = activeTabId;
 
       if (activeTabId === tabId) {
-        const lastTab = newTabs[newTabs.length - 1];
-        newActiveId = lastTab?.id || 'main';
+        // Always switch to main tab after closing current tab
+        // This prevents auto-opening postponed tabs after completing a sale
+        newActiveId = 'main';
         setActiveTabId(newActiveId);
       }
 

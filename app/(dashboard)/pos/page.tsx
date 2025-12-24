@@ -300,6 +300,7 @@ function POSPageContent() {
     resetToDefaultCustomer,
     hasRequiredForCart: globalHasRequiredForCart,
     hasRequiredForSale: globalHasRequiredForSale,
+    defaultCustomer, // Default customer for new tabs
   } = usePersistentSelections();
 
   // Get selections from active tab (tab-specific selections)
@@ -3679,9 +3680,9 @@ function POSPageContent() {
                 className="w-full px-4 py-2 bg-[#374151] border border-gray-600 rounded text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
                 onKeyPress={(e) => {
                   if (e.key === 'Enter' && newTabName.trim()) {
-                    // Inherit selections from main tab
+                    // Inherit selections from main tab, but ALWAYS use default customer
                     addTab(newTabName.trim(), {
-                      customer: globalSelections.customer,
+                      customer: defaultCustomer || globalSelections.customer,
                       branch: globalSelections.branch,
                       record: globalSelections.record,
                       priceType: selectedPriceType,
@@ -3705,9 +3706,9 @@ function POSPageContent() {
                 <button
                   onClick={() => {
                     if (newTabName.trim()) {
-                      // Inherit selections from main tab
+                      // Inherit selections from main tab, but ALWAYS use default customer
                       addTab(newTabName.trim(), {
-                        customer: globalSelections.customer,
+                        customer: defaultCustomer || globalSelections.customer,
                         branch: globalSelections.branch,
                         record: globalSelections.record,
                         priceType: selectedPriceType,
@@ -4491,11 +4492,10 @@ function POSPageContent() {
                       : 'text-gray-300 hover:text-white hover:bg-[#4B5563]'
                   }`}
                   onContextMenu={(e) => {
-                    // Only show context menu for non-main tabs
-                    if (tab.id !== 'main') {
-                      e.preventDefault();
-                      setTabContextMenu({ x: e.clientX, y: e.clientY, tabId: tab.id });
-                    }
+                    // Show context menu for all tabs
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setTabContextMenu({ x: e.clientX, y: e.clientY, tabId: tab.id });
                   }}
                 >
                   <button
@@ -4536,31 +4536,99 @@ function POSPageContent() {
               <div
                 className="fixed z-50 bg-[#2B3544] border border-gray-600 rounded-lg shadow-xl py-1 min-w-[160px]"
                 style={{ top: tabContextMenu.y, left: tabContextMenu.x }}
-                onClick={() => setTabContextMenu(null)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setTabContextMenu(null);
+                }}
               >
-                <button
-                  onClick={() => {
-                    const tab = posTabs.find(t => t.id === tabContextMenu.tabId);
-                    if (tab && tab.cartItems && tab.cartItems.length > 0) {
-                      postponeTab(tabContextMenu.tabId);
-                    }
-                    setTabContextMenu(null);
-                  }}
-                  className="w-full px-4 py-2 text-right text-sm text-gray-300 hover:bg-orange-500/20 hover:text-orange-400 flex items-center gap-2 transition-colors"
-                >
-                  <ClockIcon className="h-4 w-4" />
-                  تأجيل الفاتورة
-                </button>
-                <button
-                  onClick={() => {
-                    closeTab(tabContextMenu.tabId);
-                    setTabContextMenu(null);
-                  }}
-                  className="w-full px-4 py-2 text-right text-sm text-gray-300 hover:bg-red-500/20 hover:text-red-400 flex items-center gap-2 transition-colors"
-                >
-                  <XMarkIcon className="h-4 w-4" />
-                  إغلاق الفاتورة
-                </button>
+                {tabContextMenu.tabId === 'main' ? (
+                  // Main tab context menu - can only postpone if there are items
+                  <>
+                    {cartItems.length > 0 ? (
+                      <button
+                        onClick={() => {
+                          // Save current cart items before any changes
+                          const itemsToPostpone = [...cartItems];
+                          const tabName = selections.customer?.name || 'فاتورة مؤجلة';
+                          const customerToSave = selections.customer;
+                          const branchToSave = selections.branch;
+                          const recordToSave = selections.record;
+                          const priceTypeToSave = selectedPriceType;
+
+                          // Create new tab with the saved items
+                          const newTabId = addTabWithCustomerAndCart(
+                            customerToSave,
+                            itemsToPostpone,
+                            tabName,
+                            {
+                              branch: branchToSave,
+                              record: recordToSave,
+                              priceType: priceTypeToSave,
+                            }
+                          );
+
+                          // Postpone the newly created tab
+                          setTimeout(() => {
+                            // Postpone the new tab (this switches to main tab)
+                            postponeTab(newTabId);
+
+                            // Make sure main tab is selected
+                            switchTab('main');
+
+                            // Clear cart after a delay to ensure useEffect has run
+                            setTimeout(() => {
+                              setCartItems([]);
+                              updateActiveTabCart([]);
+                              resetToDefaultCustomer();
+                            }, 150);
+                          }, 100);
+                          setTabContextMenu(null);
+                        }}
+                        className="w-full px-4 py-2 text-right text-sm text-gray-300 hover:bg-orange-500/20 hover:text-orange-400 flex items-center gap-2 transition-colors"
+                      >
+                        <ClockIcon className="h-4 w-4" />
+                        تأجيل الفاتورة
+                      </button>
+                    ) : (
+                      <div className="px-4 py-2 text-right text-sm text-gray-500 flex items-center gap-2">
+                        <ClockIcon className="h-4 w-4" />
+                        أضف منتجات للتأجيل
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  // Non-main tab context menu
+                  <>
+                    <button
+                      onClick={() => {
+                        const tab = posTabs.find(t => t.id === tabContextMenu.tabId);
+                        if (tab && tab.cartItems && tab.cartItems.length > 0) {
+                          postponeTab(tabContextMenu.tabId);
+                        }
+                        setTabContextMenu(null);
+                      }}
+                      className={`w-full px-4 py-2 text-right text-sm flex items-center gap-2 transition-colors ${
+                        posTabs.find(t => t.id === tabContextMenu.tabId)?.cartItems?.length > 0
+                          ? 'text-gray-300 hover:bg-orange-500/20 hover:text-orange-400'
+                          : 'text-gray-500 cursor-not-allowed'
+                      }`}
+                      disabled={!posTabs.find(t => t.id === tabContextMenu.tabId)?.cartItems?.length}
+                    >
+                      <ClockIcon className="h-4 w-4" />
+                      تأجيل الفاتورة
+                    </button>
+                    <button
+                      onClick={() => {
+                        closeTab(tabContextMenu.tabId);
+                        setTabContextMenu(null);
+                      }}
+                      className="w-full px-4 py-2 text-right text-sm text-gray-300 hover:bg-red-500/20 hover:text-red-400 flex items-center gap-2 transition-colors"
+                    >
+                      <XMarkIcon className="h-4 w-4" />
+                      إغلاق الفاتورة
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -4796,13 +4864,60 @@ function POSPageContent() {
                               </span>
                             </div>
                             {cartItems.length > 0 && (
-                              <button
-                                onClick={() => clearCart()}
-                                className="text-red-400 hover:text-red-300 text-sm"
-                                title="مسح السلة"
-                              >
-                                مسح الكل
-                              </button>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => {
+                                    // Save current cart items before any changes
+                                    const itemsToPostpone = [...cartItems];
+                                    const tabName = selections.customer?.name || 'فاتورة مؤجلة';
+                                    const customerToSave = selections.customer;
+                                    const branchToSave = selections.branch;
+                                    const recordToSave = selections.record;
+                                    const priceTypeToSave = selectedPriceType;
+
+                                    // Create new tab with the saved items
+                                    const newTabId = addTabWithCustomerAndCart(
+                                      customerToSave,
+                                      itemsToPostpone,
+                                      tabName,
+                                      {
+                                        branch: branchToSave,
+                                        record: recordToSave,
+                                        priceType: priceTypeToSave,
+                                      }
+                                    );
+
+                                    // Postpone the newly created tab
+                                    setTimeout(() => {
+                                      // Postpone the new tab (this switches to main tab)
+                                      postponeTab(newTabId);
+
+                                      // Make sure main tab is selected
+                                      switchTab('main');
+
+                                      // Clear cart after a delay to ensure useEffect has run
+                                      setTimeout(() => {
+                                        setCartItems([]);
+                                        updateActiveTabCart([]);
+                                        resetToDefaultCustomer();
+                                      }, 150);
+                                    }, 100);
+                                  }}
+                                  className="text-orange-400 hover:text-orange-300 text-sm flex items-center gap-1"
+                                  title="تأجيل الفاتورة"
+                                >
+                                  <ClockIcon className="h-4 w-4" />
+                                  تأجيل
+                                </button>
+                                <span className="text-gray-500">|</span>
+                                <button
+                                  onClick={() => clearCart()}
+                                  className="text-red-400 hover:text-red-300 text-sm"
+                                  title="مسح السلة"
+                                >
+                                  مسح الكل
+                                </button>
+                              </div>
                             )}
                           </div>
                         </div>
@@ -5222,13 +5337,60 @@ function POSPageContent() {
                         </span>
                       </div>
                       {cartItems.length > 0 && (
-                        <button
-                          onClick={clearCart}
-                          className="text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded px-2 py-1 transition-colors text-xs"
-                          title="مسح السلة"
-                        >
-                          مسح الكل
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              // Save current cart items before any changes
+                              const itemsToPostpone = [...cartItems];
+                              const tabName = selections.customer?.name || 'فاتورة مؤجلة';
+                              const customerToSave = selections.customer;
+                              const branchToSave = selections.branch;
+                              const recordToSave = selections.record;
+                              const priceTypeToSave = selectedPriceType;
+
+                              // Create new tab with the saved items
+                              const newTabId = addTabWithCustomerAndCart(
+                                customerToSave,
+                                itemsToPostpone,
+                                tabName,
+                                {
+                                  branch: branchToSave,
+                                  record: recordToSave,
+                                  priceType: priceTypeToSave,
+                                }
+                              );
+
+                              // Postpone the newly created tab
+                              setTimeout(() => {
+                                // Postpone the new tab (this switches to main tab)
+                                postponeTab(newTabId);
+
+                                // Make sure main tab is selected
+                                switchTab('main');
+
+                                // Clear cart after a delay to ensure useEffect has run
+                                setTimeout(() => {
+                                  setCartItems([]);
+                                  updateActiveTabCart([]);
+                                  resetToDefaultCustomer();
+                                }, 150);
+                              }, 100);
+                            }}
+                            className="text-orange-400 hover:text-orange-300 hover:bg-orange-400/10 rounded px-2 py-1 transition-colors text-xs flex items-center gap-1"
+                            title="تأجيل الفاتورة"
+                          >
+                            <ClockIcon className="h-3 w-3" />
+                            تأجيل
+                          </button>
+                          <span className="text-gray-500">|</span>
+                          <button
+                            onClick={clearCart}
+                            className="text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded px-2 py-1 transition-colors text-xs"
+                            title="مسح السلة"
+                          >
+                            مسح الكل
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -6380,7 +6542,13 @@ function POSPageContent() {
               className="w-full px-4 py-2 bg-[#374151] border border-gray-600 rounded text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
               onKeyPress={(e) => {
                 if (e.key === 'Enter' && newTabName.trim()) {
-                  addTab(newTabName.trim());
+                  // Inherit selections from main tab, but ALWAYS use default customer
+                  addTab(newTabName.trim(), {
+                    customer: defaultCustomer || globalSelections.customer,
+                    branch: globalSelections.branch,
+                    record: globalSelections.record,
+                    priceType: selectedPriceType,
+                  });
                   setNewTabName("");
                   setShowAddTabModal(false);
                 }
@@ -6400,7 +6568,13 @@ function POSPageContent() {
               <button
                 onClick={() => {
                   if (newTabName.trim()) {
-                    addTab(newTabName.trim());
+                    // Inherit selections from main tab, but ALWAYS use default customer
+                    addTab(newTabName.trim(), {
+                      customer: defaultCustomer || globalSelections.customer,
+                      branch: globalSelections.branch,
+                      record: globalSelections.record,
+                      priceType: selectedPriceType,
+                    });
                     setNewTabName("");
                     setShowAddTabModal(false);
                   }

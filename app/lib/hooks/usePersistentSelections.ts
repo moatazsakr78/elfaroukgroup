@@ -19,6 +19,7 @@ export function usePersistentSelections() {
   })
 
   const [isLoaded, setIsLoaded] = useState(false)
+  const [defaultCustomer, setDefaultCustomer] = useState<any>(null)
 
   // Load default customer from database
   // البحث عن العميل الافتراضي بناءً على الاسم "عميل"
@@ -86,10 +87,11 @@ export function usePersistentSelections() {
         }
 
         // Always ensure default customer is set if no customer is selected
-        if (!loadedSelections.customer) {
-          const defaultCustomer = await loadDefaultCustomer()
-          if (defaultCustomer) {
-            loadedSelections.customer = defaultCustomer
+        const defaultCust = await loadDefaultCustomer()
+        if (defaultCust) {
+          setDefaultCustomer(defaultCust) // Store default customer for later use
+          if (!loadedSelections.customer) {
+            loadedSelections.customer = defaultCust
           }
         }
 
@@ -180,6 +182,7 @@ export function usePersistentSelections() {
     resetToDefaultCustomer,
     isComplete,
     hasRequiredForCart,
-    hasRequiredForSale
+    hasRequiredForSale,
+    defaultCustomer // Export default customer for use in new tabs
   }
 }
