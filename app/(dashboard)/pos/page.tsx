@@ -2048,10 +2048,10 @@ function POSPageContent() {
         let customerForReceipt = selections.customer;
         let calculatedBalance = 0;
         if (selections.customer && selections.customer.id !== '00000000-0000-0000-0000-000000000001') {
-          // Fetch customer basic info
+          // Fetch customer basic info including opening_balance
           const { data: customerData } = await supabase
             .from('customers')
-            .select('id, name, phone, address, city')
+            .select('id, name, phone, address, city, opening_balance')
             .eq('id', selections.customer.id)
             .single();
 
@@ -2063,13 +2063,27 @@ function POSPageContent() {
               .eq('customer_id', selections.customer.id),
             supabase
               .from('customer_payments')
-              .select('amount')
+              .select('amount, notes')
               .eq('customer_id', selections.customer.id)
           ]);
 
           const salesTotal = (salesRes.data || []).reduce((sum, s) => sum + (s.total_amount || 0), 0);
-          const paymentsTotal = (paymentsRes.data || []).reduce((sum, p) => sum + (p.amount || 0), 0);
-          calculatedBalance = salesTotal - paymentsTotal;
+
+          // Separate loans (سلفة) from regular payments (دفعة)
+          let totalRegularPayments = 0;
+          let totalLoans = 0;
+          (paymentsRes.data || []).forEach((payment: any) => {
+            const isLoan = payment.notes?.startsWith('سلفة');
+            if (isLoan) {
+              totalLoans += (payment.amount || 0);
+            } else {
+              totalRegularPayments += (payment.amount || 0);
+            }
+          });
+
+          const openingBalance = customerData?.opening_balance || 0;
+          // Correct formula: opening_balance + sales + loans - payments
+          calculatedBalance = openingBalance + salesTotal + totalLoans - totalRegularPayments;
 
           if (customerData) {
             customerForReceipt = { ...selections.customer, ...customerData, calculatedBalance };

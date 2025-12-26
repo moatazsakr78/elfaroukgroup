@@ -79,20 +79,22 @@ export default function EditInvoiceModal({
     try {
       const sale = await getSaleDetails(saleId)
       if (sale) {
-        setCurrentSale(sale)
         // استخدام initialRecordId من الـ transaction إذا كان موجوداً (أكثر دقة)
         // لأن جدول cash_drawer_transactions هو مصدر الحقيقة للخزنة المعروضة في السجلات
         const effectiveRecordId = initialRecordId !== undefined ? initialRecordId : sale.record_id
-        setSelectedRecordId(effectiveRecordId)
-        setSelectedCustomerId(sale.customer_id)
-        setSelectedBranchId(sale.branch_id)
 
-        // تحديث currentSale بالـ record_id الفعلي للمقارنة الصحيحة عند الحفظ
+        // تحديث record_id قبل setCurrentSale للمقارنة الصحيحة عند الحفظ
         if (initialRecordId !== undefined && initialRecordId !== sale.record_id) {
           console.log('⚠️ تم اكتشاف عدم تطابق: sales.record_id =', sale.record_id, ', transaction.record_id =', initialRecordId)
           // استخدام الـ record_id من الـ transaction كأساس للمقارنة
           sale.record_id = initialRecordId
         }
+
+        // الآن نحفظ currentSale بالقيم المصححة
+        setCurrentSale(sale)
+        setSelectedRecordId(effectiveRecordId)
+        setSelectedCustomerId(sale.customer_id)
+        setSelectedBranchId(sale.branch_id)
       } else {
         setError('لم يتم العثور على الفاتورة')
       }

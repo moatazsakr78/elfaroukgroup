@@ -701,7 +701,7 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
                             {/* Right - Price */}
                             {labelSettings.showPrice && (
                               <div className="flex flex-col items-end justify-center flex-1 pl-1">
-                                <div className="text-[6px] font-bold text-gray-900">{Math.round(getPrice(product))}</div>
+                                <div className="text-[6px] font-bold text-gray-900">{getPrice(product).toFixed(2)}</div>
                                 <div className="text-[4px] font-bold text-gray-900">LE</div>
                               </div>
                             )}
@@ -918,7 +918,7 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
                                 {/* Price - Below Barcode (no barcode number) */}
                                 {labelSettings.showPrice && (
                                   <div className="text-gray-900 text-center w-full" style={{ fontSize: '11px', fontWeight: '800' }}>
-                                    {Math.round(getPrice(product))} LE
+                                    {getPrice(product).toFixed(2)} LE
                                   </div>
                                 )}
                               </div>
@@ -1038,7 +1038,7 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
                         width: '100%',
                         fontFamily: 'Arial, sans-serif'
                       }}>
-                        {Math.round(getPrice(product))} LE
+                        {getPrice(product).toFixed(2)} LE
                       </div>
                     )}
                   </div>

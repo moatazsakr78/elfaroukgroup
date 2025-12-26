@@ -194,6 +194,19 @@ export default function SupplierDetailsModal({ isOpen, onClose, supplier }: Supp
     if (!supplier?.id) return
 
     try {
+      // Get supplier's opening balance
+      const { data: supplierData, error: supplierError } = await supabase
+        .from('suppliers')
+        .select('opening_balance')
+        .eq('id', supplier.id)
+        .single()
+
+      if (supplierError) {
+        console.error('Error fetching supplier opening balance:', supplierError)
+      }
+
+      const openingBalance = supplierData?.opening_balance || 0
+
       // Get all purchase invoices for this supplier (without date filter)
       const { data: allInvoices, error: invoicesError } = await supabase
         .from('purchase_invoices')
@@ -205,10 +218,10 @@ export default function SupplierDetailsModal({ isOpen, onClose, supplier }: Supp
         return
       }
 
-      // Get all payments for this supplier (without date filter)
+      // Get all payments for this supplier with notes (without date filter)
       const { data: allPayments, error: paymentsError } = await supabase
         .from('supplier_payments')
-        .select('amount')
+        .select('amount, notes')
         .eq('supplier_id', supplier.id)
 
       if (paymentsError) {
@@ -226,13 +239,22 @@ export default function SupplierDetailsModal({ isOpen, onClose, supplier }: Supp
         return total
       }, 0)
 
-      // Calculate total payments
-      const totalPayments = (allPayments || []).reduce((total, payment) => {
-        return total + (payment.amount || 0)
-      }, 0)
+      // Separate loans (سلفة) from regular payments (دفعة)
+      let totalRegularPayments = 0
+      let totalLoans = 0
+      ;(allPayments || []).forEach((payment: any) => {
+        const isLoan = payment.notes?.startsWith('سلفة')
+        if (isLoan) {
+          // السلفة من المورد: تزيد الرصيد المستحق له
+          totalLoans += (payment.amount || 0)
+        } else {
+          // الدفعة للمورد: تنقص الرصيد المستحق له
+          totalRegularPayments += (payment.amount || 0)
+        }
+      })
 
-      // Final balance = Invoices Balance - Total Payments
-      const finalBalance = invoicesBalance - totalPayments
+      // Final balance = Opening Balance + Invoices Balance + Loans - Regular Payments
+      const finalBalance = openingBalance + invoicesBalance + totalLoans - totalRegularPayments
 
       setSupplierBalance(finalBalance)
     } catch (error) {
@@ -487,6 +509,16 @@ export default function SupplierDetailsModal({ isOpen, onClose, supplier }: Supp
     try {
       setIsLoadingStatements(true)
 
+      // Get supplier's opening balance
+      const { data: supplierData, error: supplierError } = await supabase
+        .from('suppliers')
+        .select('opening_balance, created_at')
+        .eq('id', supplier.id)
+        .single()
+
+      const openingBalance = supplierData?.opening_balance || 0
+      const supplierCreatedAt = supplierData?.created_at
+
       // Get all purchase invoices for this supplier
       const { data: invoices, error: invoicesError } = await supabase
         .from('purchase_invoices')
@@ -597,7 +629,20 @@ export default function SupplierDetailsModal({ isOpen, onClose, supplier }: Supp
       // Sort by date
       statements.sort((a, b) => a.date.getTime() - b.date.getTime())
 
-      // Calculate running balance
+      // Add opening balance entry if it's not zero
+      if (openingBalance !== 0) {
+        statements.unshift({
+          id: 0,
+          date: supplierCreatedAt ? new Date(supplierCreatedAt) : new Date(statements[0]?.date || Date.now()),
+          description: 'رصيد افتتاحي',
+          type: 'رصيد أولي',
+          amount: openingBalance,
+          safe_name: null,
+          employee_name: null
+        })
+      }
+
+      // Calculate running balance starting from opening balance
       let runningBalance = 0
       const statementsWithBalance = statements.map((statement, index) => {
         runningBalance += statement.amount
@@ -874,15 +919,15 @@ export default function SupplierDetailsModal({ isOpen, onClose, supplier }: Supp
                 <tr>
                   <td class="item-name">${item.product?.name || 'منتج'}</td>
                   <td>${item.quantity}</td>
-                  <td>${(item.unit_purchase_price || 0).toFixed(0)}</td>
-                  <td>${((item.unit_purchase_price || 0) * item.quantity).toFixed(0)}</td>
+                  <td>${(item.unit_purchase_price || 0).toFixed(2)}</td>
+                  <td>${((item.unit_purchase_price || 0) * item.quantity).toFixed(2)}</td>
                 </tr>
               `).join('')}
               <tr class="total-row">
                 <td class="item-name">-</td>
                 <td>${items.length}</td>
                 <td>= اجمالي =</td>
-                <td>${Math.abs(invoice.total_amount).toFixed(0)}</td>
+                <td>${Math.abs(invoice.total_amount).toFixed(2)}</td>
               </tr>
             </tbody>
           </table>

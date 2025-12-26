@@ -509,15 +509,19 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
 
             description = `${typeName} - ${sale.invoice_number}`
           } else {
-            // Non-sale transaction (withdrawal, deposit, adjustment)
+            // Non-sale transaction (withdrawal, deposit, adjustment, transfer)
             if (tx.transaction_type === 'withdrawal') {
               typeName = 'سحب'
             } else if (tx.transaction_type === 'adjustment') {
               typeName = 'تسوية'
             } else if (tx.transaction_type === 'deposit') {
-              typeName = 'دفعة'
+              typeName = 'إيداع'
             } else if (tx.transaction_type === 'return') {
               typeName = 'مرتجع بيع'
+            } else if (tx.transaction_type === 'transfer_out') {
+              typeName = 'تحويل'
+            } else if (tx.transaction_type === 'transfer_in') {
+              typeName = 'تحويل'
             }
             description = tx.notes || typeName
           }
@@ -928,20 +932,34 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
     if (transaction.transactionType === 'sale' && transaction.customer_id) {
       const { data } = await supabase
         .from('customers')
-        .select('id, name, phone, address, city')
+        .select('id, name, phone, address, city, opening_balance')
         .eq('id', transaction.customer_id)
         .single()
       customerData = data
 
-      // Calculate customer balance
+      // Calculate customer balance with correct formula
       if (customerData && customerData.id !== '00000000-0000-0000-0000-000000000001') {
         const [salesRes, paymentsRes] = await Promise.all([
           supabase.from('sales').select('total_amount').eq('customer_id', customerData.id),
-          supabase.from('customer_payments').select('amount').eq('customer_id', customerData.id)
+          supabase.from('customer_payments').select('amount, notes').eq('customer_id', customerData.id)
         ])
         const salesTotal = (salesRes.data || []).reduce((sum, s) => sum + (s.total_amount || 0), 0)
-        const paymentsTotal = (paymentsRes.data || []).reduce((sum, p) => sum + (p.amount || 0), 0)
-        calculatedBalance = salesTotal - paymentsTotal
+
+        // Separate loans (سلفة) from regular payments (دفعة)
+        let totalRegularPayments = 0
+        let totalLoans = 0
+        ;(paymentsRes.data || []).forEach((payment: any) => {
+          const isLoan = payment.notes?.startsWith('سلفة')
+          if (isLoan) {
+            totalLoans += (payment.amount || 0)
+          } else {
+            totalRegularPayments += (payment.amount || 0)
+          }
+        })
+
+        const openingBalance = (customerData as any)?.opening_balance || 0
+        // Correct formula: opening_balance + sales + loans - payments
+        calculatedBalance = openingBalance + salesTotal + totalLoans - totalRegularPayments
       }
     }
 
@@ -1804,7 +1822,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
         .eq('id', sourceDrawer.id)
 
       // 3. إنشاء سجل المعاملة
-      await supabase
+      const { error: txError } = await supabase
         .from('cash_drawer_transactions')
         .insert({
           drawer_id: sourceDrawer.id,
@@ -1815,6 +1833,11 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
           notes: transactionNotes,
           performed_by: user?.name || 'system'
         })
+
+      if (txError) {
+        console.error('Error creating transaction:', txError)
+        throw new Error(`فشل في تسجيل المعاملة: ${txError.message}`)
+      }
 
       // 4. في حالة التحويل، إضافة للخزنة المستهدفة
       if (withdrawType === 'transfer' && targetSafeId) {
@@ -1850,7 +1873,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
             .eq('id', targetDrawer.id)
 
           // Create deposit transaction for target
-          await supabase
+          const { error: targetTxError } = await supabase
             .from('cash_drawer_transactions')
             .insert({
               drawer_id: targetDrawer.id,
@@ -1861,6 +1884,11 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
               notes: `تحويل من خزنة ${safe.name}${withdrawNotes ? ` - ${withdrawNotes}` : ''}`,
               performed_by: user?.name || 'system'
             })
+
+          if (targetTxError) {
+            console.error('Error creating target transaction:', targetTxError)
+            throw new Error(`فشل في تسجيل التحويل للخزنة المستهدفة: ${targetTxError.message}`)
+          }
         }
       }
 

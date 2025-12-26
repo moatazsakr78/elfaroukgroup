@@ -69,6 +69,7 @@ interface Customer {
   city: string | null
   governorate: string | null
   account_balance: number | null
+  opening_balance: number | null
   loyalty_points: number | null
   rank: string | null
   created_at: string | null
@@ -104,7 +105,7 @@ export async function GET(request: Request) {
     // Method 1: Try to find by user_id (session ID)
     const { data: customerByUserId } = await supabaseAdmin
       .from('customers')
-      .select('id, name, phone, email, address, city, governorate, account_balance, loyalty_points, rank, created_at')
+      .select('id, name, phone, email, address, city, governorate, account_balance, opening_balance, loyalty_points, rank, created_at')
       .eq('user_id', userId)
       .single()
 
@@ -116,7 +117,7 @@ export async function GET(request: Request) {
     if (!customer && userEmail) {
       const { data: customerByEmail } = await supabaseAdmin
         .from('customers')
-        .select('id, name, phone, email, address, city, governorate, account_balance, loyalty_points, rank, created_at')
+        .select('id, name, phone, email, address, city, governorate, account_balance, opening_balance, loyalty_points, rank, created_at')
         .eq('email', userEmail)
         .single()
 
@@ -136,7 +137,7 @@ export async function GET(request: Request) {
       if (userProfile?.email) {
         const { data: customerByProfileEmail } = await supabaseAdmin
           .from('customers')
-          .select('id, name, phone, email, address, city, governorate, account_balance, loyalty_points, rank, created_at')
+          .select('id, name, phone, email, address, city, governorate, account_balance, opening_balance, loyalty_points, rank, created_at')
           .eq('email', userProfile.email)
           .single()
 
@@ -182,6 +183,9 @@ export async function GET(request: Request) {
         totalInvoices: number
         totalInvoicesAmount: number
         totalPayments: number
+        totalLoans: number
+        openingBalance: number
+        calculatedBalance: number
         averageOrderValue: number
         lastInvoiceDate: string | null
       }
@@ -460,17 +464,40 @@ export async function GET(request: Request) {
 
       const totalInvoicesAmount = allSalesForStats?.reduce((sum, s) => sum + (Number(s.total_amount) || 0), 0) || 0
 
+      // Get all payments with notes to distinguish loans from regular payments
       const { data: allPaymentsForStats } = await supabaseAdmin
         .from('customer_payments')
-        .select('amount')
+        .select('amount, notes')
         .eq('customer_id', customer.id)
 
-      const totalPaymentsAmount = allPaymentsForStats?.reduce((sum, p) => sum + (Number(p.amount) || 0), 0) || 0
+      // Separate loans (سلفة) from regular payments (دفعة)
+      let totalRegularPayments = 0
+      let totalLoans = 0
+
+      allPaymentsForStats?.forEach(payment => {
+        const isLoan = payment.notes?.startsWith('سلفة')
+        if (isLoan) {
+          // السلفة: تضاف للرصيد (العميل مدين أكثر)
+          totalLoans += (Number(payment.amount) || 0)
+        } else {
+          // الدفعة: تخصم من الرصيد (العميل دفع جزء من دينه)
+          totalRegularPayments += (Number(payment.amount) || 0)
+        }
+      })
+
+      // Get opening balance
+      const openingBalance = Number((customer as any).opening_balance) || 0
+
+      // Calculate correct balance: opening_balance + invoices + loans - payments
+      const calculatedBalance = openingBalance + totalInvoicesAmount + totalLoans - totalRegularPayments
 
       responseData.statistics = {
         totalInvoices: totalInvoices || 0,
         totalInvoicesAmount,
-        totalPayments: totalPaymentsAmount,
+        totalPayments: totalRegularPayments,
+        totalLoans,
+        openingBalance,
+        calculatedBalance,
         averageOrderValue: (totalInvoices && totalInvoices > 0) ? totalInvoicesAmount / totalInvoices : 0,
         lastInvoiceDate: statsData?.[0]?.created_at?.split('T')[0] || null
       }

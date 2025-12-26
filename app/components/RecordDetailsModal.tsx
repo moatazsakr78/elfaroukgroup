@@ -415,20 +415,34 @@ export default function RecordDetailsModal({ isOpen, onClose, record }: RecordDe
     if (transaction.transactionType === 'sale' && transaction.customer_id) {
       const { data } = await supabase
         .from('customers')
-        .select('id, name, phone, address, city')
+        .select('id, name, phone, address, city, opening_balance')
         .eq('id', transaction.customer_id)
         .single()
       customerData = data
 
-      // Calculate customer balance
+      // Calculate customer balance with correct formula
       if (customerData && customerData.id !== '00000000-0000-0000-0000-000000000001') {
         const [salesRes, paymentsRes] = await Promise.all([
           supabase.from('sales').select('total_amount').eq('customer_id', customerData.id),
-          supabase.from('customer_payments').select('amount').eq('customer_id', customerData.id)
+          supabase.from('customer_payments').select('amount, notes').eq('customer_id', customerData.id)
         ])
         const salesTotal = (salesRes.data || []).reduce((sum, s) => sum + (s.total_amount || 0), 0)
-        const paymentsTotal = (paymentsRes.data || []).reduce((sum, p) => sum + (p.amount || 0), 0)
-        calculatedBalance = salesTotal - paymentsTotal
+
+        // Separate loans (سلفة) from regular payments (دفعة)
+        let totalRegularPayments = 0
+        let totalLoans = 0
+        ;(paymentsRes.data || []).forEach((payment: any) => {
+          const isLoan = payment.notes?.startsWith('سلفة')
+          if (isLoan) {
+            totalLoans += (payment.amount || 0)
+          } else {
+            totalRegularPayments += (payment.amount || 0)
+          }
+        })
+
+        const openingBalance = (customerData as any)?.opening_balance || 0
+        // Correct formula: opening_balance + sales + loans - payments
+        calculatedBalance = openingBalance + salesTotal + totalLoans - totalRegularPayments
       }
     }
 

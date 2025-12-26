@@ -62,9 +62,13 @@ export async function updateSalesInvoice({
     const changes: UpdateSalesInvoiceResult['changes'] = {}
     const updateHistory: any[] = Array.isArray(sale.update_history) ? sale.update_history : []
 
+    // استخدام record_id من الـ transaction كمصدر الحقيقة (لأنه قد يختلف عن sales.record_id)
+    // هذا يحل مشكلة عدم تطابق البيانات بين الجدولين
+    const actualCurrentRecordId = transaction?.record_id ?? sale.record_id
+
     // 3. تعديل الخزنة (إذا تم تغييرها)
-    if (newRecordId !== undefined && newRecordId !== sale.record_id) {
-      const oldRecordId = sale.record_id
+    if (newRecordId !== undefined && newRecordId !== actualCurrentRecordId) {
+      const oldRecordId = actualCurrentRecordId
 
       // إذا كانت الخزنة القديمة موجودة (ليست null) - خصم المبلغ
       if (oldRecordId) {

@@ -59,7 +59,7 @@ interface PaymentMethod {
 }
 
 type TabType = 'safes' | 'records' | 'payment_methods'
-type TransactionType = 'all' | 'sale' | 'return' | 'withdrawal' | 'deposit' | 'adjustment' | 'transfer_in'
+type TransactionType = 'all' | 'sale' | 'return' | 'withdrawal' | 'deposit' | 'adjustment' | 'transfer'
 
 export default function SafesPage() {
   const formatPrice = useFormatPrice()
@@ -302,7 +302,12 @@ export default function SafesPage() {
 
       // Apply transaction type filter
       if (currentFilters.transactionType !== 'all') {
-        query = query.eq('transaction_type', currentFilters.transactionType)
+        if (currentFilters.transactionType === 'transfer') {
+          // Filter both transfer_in and transfer_out
+          query = query.in('transaction_type', ['transfer_in', 'transfer_out'])
+        } else {
+          query = query.eq('transaction_type', currentFilters.transactionType)
+        }
       }
 
       // Apply date filter
@@ -349,7 +354,8 @@ export default function SafesPage() {
       'withdrawal': { bg: 'bg-red-900', text: 'text-red-300', label: 'سحب' },
       'deposit': { bg: 'bg-blue-900', text: 'text-blue-300', label: 'إيداع' },
       'adjustment': { bg: 'bg-purple-900', text: 'text-purple-300', label: 'تسوية' },
-      'transfer_in': { bg: 'bg-cyan-900', text: 'text-cyan-300', label: 'تحويل وارد' }
+      'transfer_in': { bg: 'bg-cyan-900', text: 'text-cyan-300', label: 'تحويل' },
+      'transfer_out': { bg: 'bg-cyan-900', text: 'text-cyan-300', label: 'تحويل' }
     }
 
     const style = styles[type || ''] || { bg: 'bg-gray-700', text: 'text-gray-300', label: type || '-' }
@@ -649,7 +655,7 @@ export default function SafesPage() {
                   <option value="withdrawal">سحب</option>
                   <option value="deposit">إيداع</option>
                   <option value="adjustment">تسوية</option>
-                  <option value="transfer_in">تحويل وارد</option>
+                  <option value="transfer">تحويل</option>
                 </select>
                 <button
                   onClick={() => setShowDateFilterModal(true)}

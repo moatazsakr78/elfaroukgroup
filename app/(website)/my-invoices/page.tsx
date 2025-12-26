@@ -69,6 +69,7 @@ interface Customer {
   city: string | null;
   governorate: string | null;
   account_balance: number | null;
+  opening_balance: number | null;
   loyalty_points: number | null;
   rank: string | null;
   created_at: string | null;
@@ -78,6 +79,9 @@ interface Statistics {
   totalInvoices: number;
   totalInvoicesAmount: number;
   totalPayments: number;
+  totalLoans: number;
+  openingBalance: number;
+  calculatedBalance: number;
   averageOrderValue: number;
   lastInvoiceDate: string | null;
 }
@@ -414,10 +418,11 @@ export default function MyInvoicesPage() {
     return translations[type] || type;
   };
 
-  // Calculate actual balance from statistics (invoices - payments)
+  // Calculate actual balance from statistics
+  // Formula: opening_balance + invoices + loans - payments
   const getActualBalance = () => {
-    if (!statistics) return customer?.account_balance || 0;
-    return statistics.totalInvoicesAmount - statistics.totalPayments;
+    if (!statistics) return customer?.opening_balance || customer?.account_balance || 0;
+    return statistics.calculatedBalance;
   };
 
   // Format date
