@@ -55,7 +55,9 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
 
   // Real-time state for sales and sale items
   const [sales, setSales] = useState<any[]>([])
+  const [allSales, setAllSales] = useState<any[]>([]) // Store all loaded sales for client-side filtering
   const [saleItems, setSaleItems] = useState<any[]>([])
+  const [saleItemsCache, setSaleItemsCache] = useState<{[saleId: string]: any[]}>({}) // Cache for sale items
   const [isLoadingSales, setIsLoadingSales] = useState(false)
   const [isLoadingItems, setIsLoadingItems] = useState(false)
 
@@ -98,6 +100,11 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
 
   // Get list of invoice statements for navigation (only invoices, not payments)
   const invoiceStatements = accountStatements.filter(s => s.type === 'فاتورة بيع' || s.type === 'مرتجع بيع')
+
+  // Product search state
+  const [searchQuery, setSearchQuery] = useState('')
+  const [highlightedProductId, setHighlightedProductId] = useState<string | null>(null)
+  const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null)
 
   // Save dropdown state
   const [showSaveDropdown, setShowSaveDropdown] = useState(false)
@@ -387,10 +394,10 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
   // Fetch sales from Supabase for the specific customer
   const fetchSales = async () => {
     if (!customer?.id) return
-    
+
     try {
       setIsLoadingSales(true)
-      
+
       let query = supabase
         .from('sales')
         .select(`
@@ -417,27 +424,49 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
           )
         `)
         .eq('customer_id', customer.id)
-      
+
       // Apply date filter
       query = applyDateFilter(query)
-      
+
       const { data, error } = await query
         .order('created_at', { ascending: false })
         .limit(20)
-      
+
       if (error) {
         console.error('Error fetching sales:', error)
         return
       }
-      
-      setSales(data || [])
-      
-      // Auto-select first sale if available
-      if (data && data.length > 0) {
-        setSelectedTransaction(0)
-        fetchSaleItems(data[0].id)
+
+      const salesData = data || []
+      setSales(salesData)
+      setAllSales(salesData) // Store for client-side filtering
+
+      // Batch load all sale items for client-side search
+      if (salesData.length > 0) {
+        const saleIds = salesData.map(s => s.id)
+        const { data: itemsData } = await supabase
+          .from('sale_items')
+          .select(`
+            id, sale_id, quantity, unit_price, discount, notes,
+            product:products(id, name, barcode, category:categories(name))
+          `)
+          .in('sale_id', saleIds)
+
+        // Build items cache by sale_id
+        const cache: {[saleId: string]: any[]} = {}
+        itemsData?.forEach(item => {
+          if (!cache[item.sale_id]) cache[item.sale_id] = []
+          cache[item.sale_id].push(item)
+        })
+        setSaleItemsCache(cache)
       }
-      
+
+      // Auto-select first sale if available
+      if (salesData.length > 0) {
+        setSelectedTransaction(0)
+        fetchSaleItems(salesData[0].id)
+      }
+
     } catch (error) {
       console.error('Error fetching sales:', error)
     } finally {
@@ -904,6 +933,65 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
       setIsLoadingItems(false)
     }
   }
+
+  // Client-side search for product in loaded invoices
+  const searchProductInInvoices = (query: string) => {
+    if (!query.trim()) {
+      setSearchQuery('')
+      setHighlightedProductId(null)
+      setSales(allSales) // Restore all loaded sales
+      if (allSales.length > 0) {
+        setSelectedTransaction(0)
+        fetchSaleItems(allSales[0].id)
+      }
+      return
+    }
+
+    setSearchQuery(query)
+    const lowerQuery = query.toLowerCase()
+
+    // Filter invoices that contain the searched product (client-side)
+    const matchingSales = allSales.filter(sale => {
+      const items = saleItemsCache[sale.id] || []
+      return items.some(item =>
+        item.product?.name?.toLowerCase().includes(lowerQuery) ||
+        item.product?.barcode?.toLowerCase().includes(lowerQuery)
+      )
+    })
+
+    // Find first matching product for highlighting
+    let firstMatchingProductId: string | null = null
+    for (const sale of matchingSales) {
+      const items = saleItemsCache[sale.id] || []
+      const matchingItem = items.find(item =>
+        item.product?.name?.toLowerCase().includes(lowerQuery) ||
+        item.product?.barcode?.toLowerCase().includes(lowerQuery)
+      )
+      if (matchingItem) {
+        firstMatchingProductId = matchingItem.product?.id
+        break
+      }
+    }
+
+    setSales(matchingSales)
+    setHighlightedProductId(firstMatchingProductId)
+
+    // Select first invoice automatically
+    if (matchingSales.length > 0) {
+      setSelectedTransaction(0)
+      fetchSaleItems(matchingSales[0].id)
+    } else {
+      setSaleItems([])
+    }
+  }
+
+  // Clear search when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setSearchQuery('')
+      setHighlightedProductId(null)
+    }
+  }, [isOpen])
 
   // Print receipt function
   const printReceipt = async (sale: any, items: any[]) => {
@@ -2478,14 +2566,22 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
         <span className="text-blue-400">{item.product?.category?.name || 'غير محدد'}</span>
       )
     },
-    { 
-      id: 'productName', 
-      header: 'اسم المنتج', 
-      accessor: 'product.name', 
+    {
+      id: 'productName',
+      header: 'اسم المنتج',
+      accessor: 'product.name',
       width: 200,
-      render: (value: string, item: any) => (
-        <span className="text-white font-medium">{item.product?.name || 'منتج محذوف'}</span>
-      )
+      render: (value: string, item: any) => {
+        const isHighlighted = highlightedProductId === item.product?.id
+        return (
+          <div className="flex items-center gap-2">
+            {isHighlighted && <span className="text-yellow-300 text-lg">★</span>}
+            <span className={`font-medium ${isHighlighted ? 'text-yellow-100 font-bold' : 'text-white'}`}>
+              {item.product?.name || 'منتج محذوف'}
+            </span>
+          </div>
+        )
+      }
     },
     { 
       id: 'quantity', 
@@ -3213,11 +3309,18 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {statementInvoiceItems.map((item, index) => (
-                                    <tr key={item.id} className="border-b border-gray-700 hover:bg-[#374151]/50">
+                                  {statementInvoiceItems.map((item, index) => {
+                                    const isHighlighted = highlightedProductId === item.product?.id
+                                    return (
+                                    <tr key={item.id} className={`border-b border-gray-700 ${isHighlighted ? 'bg-yellow-500/30 hover:bg-yellow-500/40' : 'hover:bg-[#374151]/50'}`}>
                                       <td className="px-4 py-3 text-blue-400 font-medium text-sm">{index + 1}</td>
-                                      <td className="px-4 py-3 text-blue-400 font-medium text-sm">
-                                        {item.product?.name || 'منتج غير معروف'}
+                                      <td className="px-4 py-3 font-medium text-sm">
+                                        <div className="flex items-center gap-2">
+                                          {isHighlighted && <span className="text-yellow-300 text-lg">★</span>}
+                                          <span className={isHighlighted ? 'text-yellow-100 font-bold' : 'text-blue-400'}>
+                                            {item.product?.name || 'منتج غير معروف'}
+                                          </span>
+                                        </div>
                                       </td>
                                       <td className="px-4 py-3 text-center text-white text-sm">
                                         {Math.abs(item.quantity)}
@@ -3229,7 +3332,7 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
                                         {formatPrice(Math.abs(item.quantity) * item.unit_price)}
                                       </td>
                                     </tr>
-                                  ))}
+                                  )})}
                                   {/* Totals Row */}
                                   <tr className="bg-[#374151] border-t-2 border-blue-500">
                                     <td colSpan={2} className="px-4 py-3 text-left text-blue-400 font-bold text-sm">
@@ -3336,8 +3439,8 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
                 {activeTab === 'invoices' && (
                   <div className="h-full relative">
                     {/* Invoices Table - Always rendered but z-indexed based on view mode */}
-                    <div 
-                      className={`absolute inset-0 bg-[#2B3544] transition-all duration-300 ${
+                    <div
+                      className={`absolute inset-0 bg-[#2B3544] transition-all duration-300 flex flex-col ${
                         viewMode === 'details-only' ? 'z-0 opacity-20' : 'z-10'
                       } ${
                         viewMode === 'split' ? '' : 'opacity-100'
@@ -3347,20 +3450,78 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
                         zIndex: viewMode === 'invoices-only' ? 20 : viewMode === 'split' ? 10 : 5
                       }}
                     >
-                      {isLoadingSales ? (
-                        <div className="flex items-center justify-center h-full">
-                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mr-3"></div>
-                          <span className="text-gray-400">جاري تحميل الفواتير...</span>
+                      {/* Product Search Bar */}
+                      <div className={`bg-[#374151] border-b p-3 flex-shrink-0 transition-colors ${searchQuery ? 'border-blue-500' : 'border-gray-600'}`}>
+                        {searchQuery && (
+                          <div className="mb-2 text-xs flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-blue-400">
+                              <span>🔍</span>
+                              <span>البحث نشط - عرض الفواتير التي تحتوي على المنتج المحدد فقط</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-gray-400">النتائج:</span>
+                              <span className="bg-blue-600 text-white px-2 py-0.5 rounded font-medium">
+                                {sales.length}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                        <div className="relative">
+                          <MagnifyingGlassIcon className={`absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 transition-colors ${searchQuery ? 'text-blue-400' : 'text-gray-400'}`} />
+                          <input
+                            type="text"
+                            placeholder="ابحث عن منتج (اسم المنتج أو الباركود)..."
+                            value={searchQuery}
+                            onChange={(e) => {
+                              const value = e.target.value
+                              setSearchQuery(value)
+                              if (searchTimeout) clearTimeout(searchTimeout)
+                              // Client-side search with short debounce (100ms)
+                              const timeout = setTimeout(() => searchProductInInvoices(value), 100)
+                              setSearchTimeout(timeout)
+                            }}
+                            onKeyPress={(e) => {
+                              if (e.key === 'Enter') {
+                                if (searchTimeout) clearTimeout(searchTimeout)
+                                searchProductInInvoices(searchQuery)
+                              }
+                            }}
+                            className="w-full pl-24 pr-10 py-2 bg-[#2B3544] border border-gray-600 rounded text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                          />
+                          <div className="absolute left-2 top-1/2 transform -translate-y-1/2 flex gap-1">
+                            <button
+                              onClick={() => searchProductInInvoices(searchQuery)}
+                              className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded transition-colors"
+                            >
+                              بحث
+                            </button>
+                            <button
+                              onClick={() => searchProductInInvoices('')}
+                              className="px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white text-xs rounded transition-colors"
+                            >
+                              مسح
+                            </button>
+                          </div>
                         </div>
-                      ) : (
-                        <ResizableTable
-                          className="h-full w-full"
-                          columns={invoiceColumns}
-                          data={sales}
-                          selectedRowId={sales[selectedTransaction]?.id?.toString() || null}
-                          onRowClick={(sale: any, index: number) => setSelectedTransaction(index)}
-                        />
-                      )}
+                      </div>
+
+                      {/* Invoices List */}
+                      <div className="flex-1 min-h-0">
+                        {isLoadingSales ? (
+                          <div className="flex items-center justify-center h-full">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mr-3"></div>
+                            <span className="text-gray-400">جاري تحميل الفواتير...</span>
+                          </div>
+                        ) : (
+                          <ResizableTable
+                            className="h-full w-full"
+                            columns={invoiceColumns}
+                            data={sales}
+                            selectedRowId={sales[selectedTransaction]?.id?.toString() || null}
+                            onRowClick={(sale: any, index: number) => setSelectedTransaction(index)}
+                          />
+                        )}
+                      </div>
                     </div>
 
                     {/* Resizable Divider - Only show in split mode */}
@@ -3455,13 +3616,18 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
                             className="h-full w-full"
                             columns={invoiceDetailsColumns}
                             data={saleItems}
+                            getRowClassName={(item) =>
+                              highlightedProductId === item.product?.id
+                                ? 'bg-yellow-500/30 hover:bg-yellow-500/40'
+                                : ''
+                            }
                           />
                         )}
                       </div>
                     </div>
                   </div>
                 )}
-                
+
                 {activeTab === 'payments' && (
                   <div className="h-full flex flex-col">
                     {/* Payments Header */}

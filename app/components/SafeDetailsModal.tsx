@@ -32,13 +32,17 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
 
   // Real-time state for sales and sale items
   const [sales, setSales] = useState<any[]>([])
+  const [allSalesData, setAllSalesData] = useState<any[]>([]) // Store all loaded sales for client-side filtering
   const [saleItems, setSaleItems] = useState<any[]>([])
+  const [saleItemsCache, setSaleItemsCache] = useState<{[saleId: string]: any[]}>({}) // Cache for sale items
   const [isLoadingSales, setIsLoadingSales] = useState(false)
   const [isLoadingItems, setIsLoadingItems] = useState(false)
 
   // Real-time state for purchase invoices and purchase invoice items
   const [purchaseInvoices, setPurchaseInvoices] = useState<any[]>([])
+  const [allPurchasesData, setAllPurchasesData] = useState<any[]>([]) // Store all loaded purchases for client-side filtering
   const [purchaseInvoiceItems, setPurchaseInvoiceItems] = useState<any[]>([])
+  const [purchaseItemsCache, setPurchaseItemsCache] = useState<{[invoiceId: string]: any[]}>({}) // Cache for purchase items
   const [isLoadingPurchases, setIsLoadingPurchases] = useState(false)
   const [isLoadingPurchaseItems, setIsLoadingPurchaseItems] = useState(false)
 
@@ -273,10 +277,10 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
   // Fetch sales from Supabase for the specific record
   const fetchSales = async () => {
     if (!safe?.id) return
-    
+
     try {
       setIsLoadingSales(true)
-      
+
       let query = supabase
         .from('sales')
         .select(`
@@ -298,24 +302,28 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
           )
         `)
         .eq('record_id', safe.id)
-      
+
       // Apply date filter
       query = applyDateFilter(query)
-      
+
       const { data, error } = await query
         .order('created_at', { ascending: false })
         .limit(50)
-      
+
       if (error) {
         console.error('Error fetching sales:', error)
         return
       }
-      
-      setSales(data || [])
 
-      // Fetch paid amounts for all sales
-      if (data && data.length > 0) {
-        const saleIds = data.map((s: any) => s.id)
+      const salesData = data || []
+      setSales(salesData)
+      setAllSalesData(salesData) // Store for client-side filtering
+
+      // Fetch paid amounts and batch load sale items for client-side search
+      if (salesData.length > 0) {
+        const saleIds = salesData.map((s: any) => s.id)
+
+        // Fetch paid amounts
         const { data: transactions } = await supabase
           .from('cash_drawer_transactions')
           .select('sale_id, amount')
@@ -332,8 +340,25 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
           setPaidAmounts(prev => ({ ...prev, ...amounts }))
         }
 
+        // Batch load all sale items for client-side search
+        const { data: itemsData } = await supabase
+          .from('sale_items')
+          .select(`
+            id, sale_id, quantity, unit_price, discount, notes,
+            product:products(id, name, barcode, category:categories(name))
+          `)
+          .in('sale_id', saleIds)
+
+        // Build items cache by sale_id
+        const cache: {[saleId: string]: any[]} = {}
+        itemsData?.forEach(item => {
+          if (!cache[item.sale_id]) cache[item.sale_id] = []
+          cache[item.sale_id].push(item)
+        })
+        setSaleItemsCache(cache)
+
         setSelectedTransaction(0)
-        fetchSaleItems(data[0].id)
+        fetchSaleItems(salesData[0].id)
       }
 
     } catch (error) {
@@ -813,10 +838,10 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
   // Fetch purchase invoices from Supabase for the specific record
   const fetchPurchaseInvoices = async () => {
     if (!safe?.id) return
-    
+
     try {
       setIsLoadingPurchases(true)
-      
+
       let query = supabase
         .from('purchase_invoices')
         .select(`
@@ -838,24 +863,28 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
           )
         `)
         .eq('record_id', safe.id)
-      
+
       // Apply date filter
       query = applyDateFilter(query)
-      
+
       const { data, error } = await query
         .order('created_at', { ascending: false })
         .limit(50)
-      
+
       if (error) {
         console.error('Error fetching purchase invoices:', error)
         return
       }
-      
-      setPurchaseInvoices(data || [])
 
-      // Fetch paid amounts for all purchase invoices
-      if (data && data.length > 0) {
-        const purchaseIds = data.map((p: any) => p.id)
+      const purchasesData = data || []
+      setPurchaseInvoices(purchasesData)
+      setAllPurchasesData(purchasesData) // Store for client-side filtering
+
+      // Fetch paid amounts and batch load purchase items for client-side search
+      if (purchasesData.length > 0) {
+        const purchaseIds = purchasesData.map((p: any) => p.id)
+
+        // Fetch paid amounts
         const { data: transactions } = await supabase
           .from('cash_drawer_transactions')
           .select('purchase_invoice_id, amount')
@@ -871,6 +900,26 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
           })
           setPaidAmounts(prev => ({ ...prev, ...amounts }))
         }
+
+        // Batch load all purchase invoice items for client-side search
+        const { data: itemsData } = await supabase
+          .from('purchase_invoice_items')
+          .select(`
+            id, purchase_invoice_id, quantity, unit_purchase_price, notes,
+            product:products(id, name, barcode, category:categories(name))
+          `)
+          .in('purchase_invoice_id', purchaseIds)
+
+        // Build items cache by invoice_id
+        const cache: {[invoiceId: string]: any[]} = {}
+        itemsData?.forEach(item => {
+          const invoiceId = item.purchase_invoice_id
+          if (invoiceId) {
+            if (!cache[invoiceId]) cache[invoiceId] = []
+            cache[invoiceId].push(item)
+          }
+        })
+        setPurchaseItemsCache(cache)
       }
 
     } catch (error) {
@@ -1402,142 +1451,88 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
     }
   }, [isOpen, safe?.id, dateFilter, isLoadingPreferences])
 
-  // Search for product in invoices
-  const searchProductInInvoices = async (query: string) => {
-    if (!query.trim() || !safe?.id) {
+  // Client-side search for product in loaded invoices
+  const searchProductInInvoices = (query: string) => {
+    if (!query.trim()) {
       setSearchQuery('')
       setHighlightedProductId(null)
-      // Reset to normal view with date filter
-      fetchSales()
-      fetchPurchaseInvoices()
+      // Restore all loaded transactions
+      setSales(allSalesData)
+      setPurchaseInvoices(allPurchasesData)
+      if (allSalesData.length > 0 || allPurchasesData.length > 0) {
+        setSelectedTransaction(0)
+        if (allSalesData.length > 0) {
+          fetchSaleItems(allSalesData[0].id)
+        } else if (allPurchasesData.length > 0) {
+          fetchPurchaseInvoiceItems(allPurchasesData[0].id)
+        }
+      }
       return
     }
 
     setSearchQuery(query)
-    setIsLoadingSales(true)
-    setIsLoadingPurchases(true)
+    const lowerQuery = query.toLowerCase()
 
-    try {
-      // First, search for products matching the query
-      const { data: productsData, error: productsError } = await supabase
-        .from('products')
-        .select('id, name, barcode')
-        .or(`name.ilike.%${query}%,barcode.ilike.%${query}%`)
-        .limit(50)
+    // Filter sales that contain the searched product (client-side)
+    const matchingSales = allSalesData.filter(sale => {
+      const items = saleItemsCache[sale.id] || []
+      return items.some(item =>
+        item.product?.name?.toLowerCase().includes(lowerQuery) ||
+        item.product?.barcode?.toLowerCase().includes(lowerQuery)
+      )
+    })
 
-      if (productsError || !productsData || productsData.length === 0) {
-        console.log('No products found matching:', query)
-        setSales([])
-        setPurchaseInvoices([])
-        setHighlightedProductId(null)
-        setIsLoadingSales(false)
-        setIsLoadingPurchases(false)
-        return
+    // Filter purchases that contain the searched product (client-side)
+    const matchingPurchases = allPurchasesData.filter(purchase => {
+      const items = purchaseItemsCache[purchase.id] || []
+      return items.some(item =>
+        item.product?.name?.toLowerCase().includes(lowerQuery) ||
+        item.product?.barcode?.toLowerCase().includes(lowerQuery)
+      )
+    })
+
+    // Find first matching product for highlighting
+    let firstMatchingProductId: string | null = null
+    for (const sale of matchingSales) {
+      const items = saleItemsCache[sale.id] || []
+      const matchingItem = items.find(item =>
+        item.product?.name?.toLowerCase().includes(lowerQuery) ||
+        item.product?.barcode?.toLowerCase().includes(lowerQuery)
+      )
+      if (matchingItem) {
+        firstMatchingProductId = matchingItem.product?.id
+        break
       }
-
-      const productIds = productsData.map(p => p.id)
-      const firstProductId = productsData[0].id
-
-      // Search in sale_items for these products
-      const { data: saleItemsData } = await supabase
-        .from('sale_items')
-        .select('sale_id, product_id')
-        .in('product_id', productIds)
-
-      // Search in purchase_invoice_items for these products
-      const { data: purchaseItemsData } = await supabase
-        .from('purchase_invoice_items')
-        .select('purchase_invoice_id, product_id')
-        .in('product_id', productIds)
-
-      // Get unique sale and purchase IDs
-      const saleIds = Array.from(new Set(saleItemsData?.map((item: any) => item.sale_id) || []))
-      const purchaseIds = Array.from(new Set(purchaseItemsData?.map((item: any) => item.purchase_invoice_id) || []))
-
-      // Fetch matching sales with date filter
-      let matchingSales: any[] = []
-      if (saleIds.length > 0) {
-        let salesQuery = supabase
-          .from('sales')
-          .select(`
-            id,
-            invoice_number,
-            customer_id,
-            total_amount,
-            payment_method,
-            notes,
-            created_at,
-            time,
-            invoice_type,
-            customer:customers(
-              name,
-              phone
-            )
-          `)
-          .eq('record_id', safe.id)
-          .in('id', saleIds)
-
-        // Apply date filter
-        salesQuery = applyDateFilter(salesQuery)
-
-        const { data: salesData } = await salesQuery.order('created_at', { ascending: false })
-        matchingSales = salesData || []
-      }
-
-      // Fetch matching purchases with date filter
-      let matchingPurchases: any[] = []
-      if (purchaseIds.length > 0) {
-        let purchasesQuery = supabase
-          .from('purchase_invoices')
-          .select(`
-            id,
-            invoice_number,
-            supplier_id,
-            total_amount,
-            payment_status,
-            notes,
-            created_at,
-            time,
-            invoice_type,
-            supplier:suppliers(
-              name,
-              phone
-            )
-          `)
-          .eq('record_id', safe.id)
-          .in('id', purchaseIds)
-
-        // Apply date filter
-        purchasesQuery = applyDateFilter(purchasesQuery)
-
-        const { data: purchasesData } = await purchasesQuery.order('created_at', { ascending: false })
-        matchingPurchases = purchasesData || []
-      }
-
-      // Update sales and purchases with search results
-      setSales(matchingSales)
-      setPurchaseInvoices(matchingPurchases)
-
-      // Highlight the first found product
-      setHighlightedProductId(firstProductId)
-
-      // Auto-select first transaction if available
-      if (matchingSales.length > 0 || matchingPurchases.length > 0) {
-        setSelectedTransaction(0)
-
-        // Load items for first transaction
-        if (matchingSales.length > 0) {
-          fetchSaleItems(matchingSales[0].id)
-        } else if (matchingPurchases.length > 0) {
-          fetchPurchaseInvoiceItems(matchingPurchases[0].id)
+    }
+    if (!firstMatchingProductId) {
+      for (const purchase of matchingPurchases) {
+        const items = purchaseItemsCache[purchase.id] || []
+        const matchingItem = items.find(item =>
+          item.product?.name?.toLowerCase().includes(lowerQuery) ||
+          item.product?.barcode?.toLowerCase().includes(lowerQuery)
+        )
+        if (matchingItem) {
+          firstMatchingProductId = matchingItem.product?.id
+          break
         }
       }
+    }
 
-    } catch (error) {
-      console.error('Search error:', error)
-    } finally {
-      setIsLoadingSales(false)
-      setIsLoadingPurchases(false)
+    // Update sales and purchases with search results
+    setSales(matchingSales)
+    setPurchaseInvoices(matchingPurchases)
+    setHighlightedProductId(firstMatchingProductId)
+
+    // Auto-select first transaction if available
+    if (matchingSales.length > 0 || matchingPurchases.length > 0) {
+      setSelectedTransaction(0)
+
+      // Load items for first transaction
+      if (matchingSales.length > 0) {
+        fetchSaleItems(matchingSales[0].id)
+      } else if (matchingPurchases.length > 0) {
+        fetchPurchaseInvoiceItems(matchingPurchases[0].id)
+      }
     }
   }
 
@@ -2423,7 +2418,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
       render: (value: string, item: any) => {
         const isHighlighted = highlightedProductId === item.product?.id
         return (
-          <span className={`${isHighlighted ? 'bg-yellow-500/40 px-2 py-1 rounded text-yellow-100 font-semibold' : 'text-purple-400'}`}>
+          <span className={isHighlighted ? 'text-yellow-100 font-semibold' : 'text-purple-400'}>
             {item.product?.category?.name || 'غير محدد'}
           </span>
         )
@@ -2437,7 +2432,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
       render: (value: string, item: any) => {
         const isHighlighted = highlightedProductId === item.product?.id
         return (
-          <div className={`flex items-center gap-2 ${isHighlighted ? 'bg-yellow-500/40 px-2 py-1 rounded' : ''}`}>
+          <div className="flex items-center gap-2">
             {isHighlighted && <span className="text-yellow-300 text-lg">★</span>}
             <span className={`font-medium ${isHighlighted ? 'text-yellow-100 font-bold' : 'text-white'}`}>
               {item.product?.name || 'منتج محذوف'}
@@ -2811,18 +2806,11 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
                         clearTimeout(searchTimeout)
                       }
 
-                      // Set new timeout for auto-search after 500ms
-                      if (value.trim()) {
-                        const timeout = setTimeout(() => {
-                          searchProductInInvoices(value)
-                        }, 500)
-                        setSearchTimeout(timeout)
-                      } else {
-                        // If search is cleared, reload normal data
-                        setHighlightedProductId(null)
-                        fetchSales()
-                        fetchPurchaseInvoices()
-                      }
+                      // Client-side search with short debounce (100ms)
+                      const timeout = setTimeout(() => {
+                        searchProductInInvoices(value)
+                      }, 100)
+                      setSearchTimeout(timeout)
                     }}
                     onKeyPress={(e) => {
                       if (e.key === 'Enter') {
@@ -2843,12 +2831,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
                       بحث
                     </button>
                     <button
-                      onClick={() => {
-                        setSearchQuery('')
-                        setHighlightedProductId(null)
-                        fetchSales()
-                        fetchPurchaseInvoices()
-                      }}
+                      onClick={() => searchProductInInvoices('')}
                       className="px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white text-xs rounded transition-colors"
                     >
                       مسح
@@ -3184,13 +3167,18 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
                             className="h-full w-full"
                             columns={transactionDetailsColumns}
                             data={allTransactionItems}
+                            getRowClassName={(item) =>
+                              highlightedProductId === item.product?.id
+                                ? 'bg-yellow-500/30 hover:bg-yellow-500/40'
+                                : ''
+                            }
                           />
                         )}
                       </div>
                     </div>
                   </div>
                 )}
-                
+
                 {activeTab === 'payments' && (
                   <div className="h-full flex flex-col">
                     {/* Payments Header */}

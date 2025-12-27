@@ -29,6 +29,7 @@ interface ResizableTableProps {
   reportType?: 'MAIN_REPORT' | 'PRODUCTS_REPORT' | 'CATEGORIES_REPORT' | 'CUSTOMERS_REPORT' | 'CUSTOMER_INVOICES_REPORT' | 'DAILY_SALES_REPORT' | 'HOURLY_SALES_REPORT' | 'PROFIT_MARGIN_REPORT' // for localStorage key
   onColumnsChange?: (columns: Column[]) => void // callback for parent component
   showToast?: (message: string, type?: 'success' | 'error' | 'info', duration?: number) => void
+  getRowClassName?: (item: any, rowIndex: number) => string // custom row class based on item
 }
 
 interface SortableHeaderProps {
@@ -162,7 +163,8 @@ export default function ResizableTable({
   selectedRowId,
   reportType,
   onColumnsChange,
-  showToast
+  showToast,
+  getRowClassName
 }: ResizableTableProps) {
   const [columns, setColumns] = useState<Column[]>([])
   const [isAnyColumnResizing, setIsAnyColumnResizing] = useState(false)
@@ -689,13 +691,15 @@ export default function ResizableTable({
             </SortableContext>
           </thead>
           <tbody className="bg-[#2B3544]">
-            {data.map((item, rowIndex) => (
+            {data.map((item, rowIndex) => {
+              const customRowClass = getRowClassName ? getRowClassName(item, rowIndex) : ''
+              return (
               <tr
                 key={item.id || rowIndex}
                 className={`border-b border-gray-700 cursor-pointer transition-colors ${
                   selectedRowId === item.id
                     ? 'bg-blue-600 hover:bg-blue-700'
-                    : 'hover:bg-[#374151]'
+                    : customRowClass || 'hover:bg-[#374151]'
                 }`}
                 onClick={() => onRowClick?.(item, rowIndex)}
                 onDoubleClick={() => onRowDoubleClick?.(item, rowIndex)}
@@ -722,7 +726,8 @@ export default function ResizableTable({
                   </td>
                 ))}
               </tr>
-            ))}
+            )})}
+
           </tbody>
           </table>
         </DndContext>
