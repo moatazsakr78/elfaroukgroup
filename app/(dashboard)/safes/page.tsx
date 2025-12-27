@@ -47,6 +47,7 @@ interface CashDrawerTransaction {
   performed_by: string | null
   created_at: string | null
   safe_name?: string
+  customer_name?: string
 }
 
 interface PaymentMethod {
@@ -323,19 +324,44 @@ export default function SafesPage() {
 
       if (error) throw error
 
-      // Map safe names to transactions
-      const transactionsWithNames = data?.map(tx => {
+      // Get unique sale_ids to fetch customer names
+      const saleIds = (data?.filter(tx => tx.sale_id).map(tx => tx.sale_id) || []).filter((id): id is string => id !== null)
+
+      // Fetch customer names for these sales
+      let customerMap: Record<string, string> = {}
+      if (saleIds.length > 0) {
+        const { data: salesData } = await supabase
+          .from('sales')
+          .select('id, customers:customer_id(name)')
+          .in('id', saleIds)
+
+        if (salesData) {
+          salesData.forEach((sale: any) => {
+            if (sale.customers?.name) {
+              customerMap[sale.id] = sale.customers.name
+            }
+          })
+        }
+      }
+
+      // Map safe names and customer names to transactions
+      const transactionsWithNames = data?.map((tx: any) => {
+        // Get customer name from customerMap
+        const customerName = tx.sale_id ? (customerMap[tx.sale_id] || null) : null
+
         // Check if this is a "لا يوجد" record (null or old NO_SAFE_RECORD_ID)
         if (tx.record_id === null || tx.record_id === NO_SAFE_RECORD_ID) {
           return {
             ...tx,
-            safe_name: 'لا يوجد'
+            safe_name: 'لا يوجد',
+            customer_name: customerName
           }
         }
         const safe = currentSafes.find(s => s.id === tx.record_id)
         return {
           ...tx,
-          safe_name: safe?.name || 'غير معروف'
+          safe_name: safe?.name || 'غير معروف',
+          customer_name: customerName
         }
       }) || []
 
@@ -509,7 +535,8 @@ export default function SafesPage() {
   const filteredTransactions = transactions.filter(tx =>
     (tx.notes?.toLowerCase().includes(transactionSearchTerm.toLowerCase()) || false) ||
     (tx.performed_by?.toLowerCase().includes(transactionSearchTerm.toLowerCase()) || false) ||
-    (tx.safe_name?.toLowerCase().includes(transactionSearchTerm.toLowerCase()) || false)
+    (tx.safe_name?.toLowerCase().includes(transactionSearchTerm.toLowerCase()) || false) ||
+    (tx.customer_name?.toLowerCase().includes(transactionSearchTerm.toLowerCase()) || false)
   )
 
   const filteredPaymentMethods = paymentMethods.filter(method =>
@@ -863,6 +890,7 @@ export default function SafesPage() {
                       <th className="p-3 text-right font-medium">المبلغ</th>
                       <th className="p-3 text-right font-medium">الرصيد بعد</th>
                       <th className="p-3 text-right font-medium">ملاحظات</th>
+                      <th className="p-3 text-right font-medium">اسم العميل</th>
                       <th className="p-3 text-right font-medium">بواسطة</th>
                       <th className="p-3 text-right font-medium">التاريخ</th>
                     </tr>
@@ -883,13 +911,14 @@ export default function SafesPage() {
                           <td className="p-3 text-gray-400 max-w-[200px] truncate" title={tx.notes || ''}>
                             {tx.notes || '-'}
                           </td>
+                          <td className="p-3 text-gray-400">{tx.customer_name || '-'}</td>
                           <td className="p-3 text-gray-400">{tx.performed_by || '-'}</td>
                           <td className="p-3 text-gray-400">{formatDateTime(tx.created_at)}</td>
                         </tr>
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={8} className="p-8 text-center text-gray-400">
+                        <td colSpan={9} className="p-8 text-center text-gray-400">
                           لا توجد سجلات متاحة
                         </td>
                       </tr>
