@@ -186,6 +186,3 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to delete API key' }, { status: 500 });
   }
 }
-
-// Export decrypt function for use in other parts of the app
-export { decrypt };
