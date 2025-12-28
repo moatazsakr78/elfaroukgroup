@@ -2,6 +2,13 @@
 // Documentation: https://wasenderapi.com/api-docs
 
 import { getApiKey } from './api-keys';
+import { createClient } from '@supabase/supabase-js';
+
+// Supabase client for media storage
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 const WASENDER_API_URL = 'https://www.wasenderapi.com/api';
 
@@ -474,6 +481,129 @@ export async function markMessageAsRead(messageId: string): Promise<boolean> {
     console.error('Error marking message as read:', error);
     return false;
   }
+}
+
+// ============ Media Decryption & Storage ============
+
+// Get file extension based on media type
+function getFileExtension(mediaType: string, mimeType?: string): string {
+  if (mimeType) {
+    const ext = mimeType.split('/')[1];
+    if (ext) return ext.replace('jpeg', 'jpg').replace('mpeg', 'mp3');
+  }
+
+  switch (mediaType) {
+    case 'image': return 'jpg';
+    case 'video': return 'mp4';
+    case 'audio': return 'mp3';
+    case 'document': return 'pdf';
+    default: return 'bin';
+  }
+}
+
+// Decrypt media from WasenderAPI and store in Supabase Storage
+export async function decryptAndStoreMedia(
+  messageData: any,
+  messageId: string,
+  mediaType: 'image' | 'video' | 'audio' | 'document'
+): Promise<string | null> {
+  try {
+    const token = await getApiToken();
+    if (!token) {
+      console.error('❌ No API token available for media decryption');
+      return null;
+    }
+
+    console.log('🔓 Decrypting media for message:', messageId);
+
+    // 1. Call WasenderAPI decrypt endpoint
+    const response = await fetch(`${WASENDER_API_URL}/decrypt-media`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        data: {
+          messages: messageData
+        }
+      }),
+    });
+
+    const decryptResult = await response.json();
+    console.log('🔓 Decrypt result:', JSON.stringify(decryptResult, null, 2));
+
+    const publicUrl = decryptResult.publicUrl || decryptResult.url;
+    if (!publicUrl) {
+      console.error('❌ No public URL returned from decrypt API');
+      return null;
+    }
+
+    console.log('📥 Downloading media from:', publicUrl);
+
+    // 2. Download the decrypted media
+    const mediaResponse = await fetch(publicUrl);
+    if (!mediaResponse.ok) {
+      console.error('❌ Failed to download media:', mediaResponse.status);
+      return null;
+    }
+
+    const mediaBuffer = await mediaResponse.arrayBuffer();
+    const contentType = mediaResponse.headers.get('content-type') || '';
+
+    // 3. Determine file extension
+    const extension = getFileExtension(mediaType, contentType);
+    const filePath = `${mediaType}s/${messageId}.${extension}`;
+
+    console.log('📤 Uploading to Supabase Storage:', filePath);
+
+    // 4. Upload to Supabase Storage
+    const { error: uploadError } = await supabase.storage
+      .from('whatsapp')
+      .upload(filePath, mediaBuffer, {
+        contentType: contentType || 'application/octet-stream',
+        upsert: true
+      });
+
+    if (uploadError) {
+      console.error('❌ Failed to upload to storage:', uploadError.message);
+      return null;
+    }
+
+    // 5. Get public URL
+    const { data: urlData } = supabase.storage
+      .from('whatsapp')
+      .getPublicUrl(filePath);
+
+    console.log('✅ Media stored successfully:', urlData.publicUrl);
+    return urlData.publicUrl;
+
+  } catch (error) {
+    console.error('❌ Error in decryptAndStoreMedia:', error);
+    return null;
+  }
+}
+
+// Check if message contains media that needs decryption
+export function hasMediaContent(messageData: any): boolean {
+  const message = messageData.message || {};
+  return !!(
+    message.imageMessage ||
+    message.videoMessage ||
+    message.audioMessage ||
+    message.documentMessage ||
+    message.stickerMessage
+  );
+}
+
+// Get media type from message data
+export function getMediaType(messageData: any): 'image' | 'video' | 'audio' | 'document' | 'text' {
+  const message = messageData.message || {};
+  if (message.imageMessage || message.stickerMessage) return 'image';
+  if (message.videoMessage) return 'video';
+  if (message.audioMessage) return 'audio';
+  if (message.documentMessage) return 'document';
+  return 'text';
 }
 
 // ============ Parse Incoming Webhook ============

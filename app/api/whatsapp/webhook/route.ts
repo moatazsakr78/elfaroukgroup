@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { decryptAndStoreMedia, hasMediaContent, getMediaType } from '@/app/lib/whatsapp';
 
 // Supabase client for storing messages
 const supabase = createClient(
@@ -70,6 +71,22 @@ export async function POST(request: NextRequest) {
         if (message) {
           console.log('📱 New message from:', message.customerName, '-', message.text);
 
+          // Check if message contains media that needs decryption
+          let mediaUrl = message.mediaUrl;
+          if (hasMediaContent(msgData)) {
+            const mediaType = getMediaType(msgData);
+            if (mediaType !== 'text') {
+              console.log('🖼️ Processing media message:', mediaType);
+              const storedUrl = await decryptAndStoreMedia(msgData, message.messageId, mediaType as 'image' | 'video' | 'audio' | 'document');
+              if (storedUrl) {
+                mediaUrl = storedUrl;
+                console.log('✅ Media URL obtained:', storedUrl);
+              } else {
+                console.log('⚠️ Could not decrypt/store media, using placeholder');
+              }
+            }
+          }
+
           // Use upsert to prevent duplicates (atomic operation)
           const { error: dbError } = await supabase
             .schema('elfaroukgroup')
@@ -81,7 +98,7 @@ export async function POST(request: NextRequest) {
               message_text: message.text,
               message_type: 'incoming',
               media_type: message.mediaType || 'text',
-              media_url: message.mediaUrl || null,
+              media_url: mediaUrl || null,
               is_read: false,
               created_at: message.timestamp.toISOString(),
             }, {
