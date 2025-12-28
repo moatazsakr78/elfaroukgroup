@@ -66,6 +66,7 @@ export default function WhatsAppPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking')
+  const [isSyncing, setIsSyncing] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   // Attachment state
@@ -127,6 +128,27 @@ export default function WhatsAppPage() {
       setIsLoading(false)
     }
   }, [])
+
+  // Sync contacts and fetch profile pictures
+  const syncContacts = useCallback(async () => {
+    try {
+      setIsSyncing(true)
+      const response = await fetch('/api/whatsapp/sync-contacts', { method: 'POST' })
+      const data = await response.json()
+
+      if (data.success) {
+        console.log('✅ Contacts synced:', data.results)
+        // Refresh messages to get updated profile pictures
+        await fetchMessages()
+      } else {
+        console.error('❌ Sync failed:', data.error)
+      }
+    } catch (err) {
+      console.error('❌ Error syncing contacts:', err)
+    } finally {
+      setIsSyncing(false)
+    }
+  }, [fetchMessages])
 
   // Initial fetch and polling
   useEffect(() => {
@@ -387,13 +409,24 @@ export default function WhatsAppPage() {
                 )}
               </div>
             </div>
-            <button
-              onClick={fetchMessages}
-              className="flex items-center gap-2 px-3 py-2 text-gray-300 hover:text-white hover:bg-gray-600/30 rounded-md transition-colors"
-            >
-              <ArrowPathIcon className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-              <span className="text-sm">تحديث</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={syncContacts}
+                disabled={isSyncing}
+                className="flex items-center gap-2 px-3 py-2 text-gray-300 hover:text-white hover:bg-green-600/30 rounded-md transition-colors disabled:opacity-50"
+                title="مزامنة صور العملاء"
+              >
+                <PhotoIcon className={`h-4 w-4 ${isSyncing ? 'animate-pulse' : ''}`} />
+                <span className="text-sm">{isSyncing ? 'جاري المزامنة...' : 'مزامنة الصور'}</span>
+              </button>
+              <button
+                onClick={fetchMessages}
+                className="flex items-center gap-2 px-3 py-2 text-gray-300 hover:text-white hover:bg-gray-600/30 rounded-md transition-colors"
+              >
+                <ArrowPathIcon className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                <span className="text-sm">تحديث</span>
+              </button>
+            </div>
           </div>
         </div>
 
