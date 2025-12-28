@@ -3,7 +3,7 @@
 
 import { getApiKey } from './api-keys';
 
-const WASENDER_API_URL = 'https://wasenderapi.com/api';
+const WASENDER_API_URL = 'https://www.wasenderapi.com/api';
 
 // Cache the token to avoid repeated database calls
 let cachedToken: string | null = null;
