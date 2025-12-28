@@ -127,11 +127,10 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Generate filename
+    // Generate filename - use simple name for storage (no Arabic characters)
     const timestamp = Date.now();
     const extension = getFileExtension(file.type, file.name);
-    const sanitizedOriginalName = file.name.replace(/[^a-zA-Z0-9\u0600-\u06FF._-]/g, '_');
-    const filePath = `${folder}/outgoing_${timestamp}_${sanitizedOriginalName}`;
+    const filePath = `${folder}/outgoing_${timestamp}.${extension}`;
 
     // Upload to Supabase Storage
     const { error: uploadError } = await supabase.storage
