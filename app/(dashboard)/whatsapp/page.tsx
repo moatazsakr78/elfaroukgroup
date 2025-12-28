@@ -82,6 +82,16 @@ export default function WhatsAppPage() {
   const [longitude, setLongitude] = useState('')
   const [locationName, setLocationName] = useState('')
 
+  // File picker state
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [filePreview, setFilePreview] = useState<string | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
+
+  // File input refs
+  const imageInputRef = useRef<HTMLInputElement>(null)
+  const videoInputRef = useRef<HTMLInputElement>(null)
+  const documentInputRef = useRef<HTMLInputElement>(null)
+
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen)
   }
@@ -195,6 +205,92 @@ export default function WhatsAppPage() {
     setLongitude('')
     setLocationName('')
     setShowAttachmentMenu(false)
+    setSelectedFile(null)
+    if (filePreview) {
+      URL.revokeObjectURL(filePreview)
+    }
+    setFilePreview(null)
+    setIsUploading(false)
+    // Reset file inputs
+    if (imageInputRef.current) imageInputRef.current.value = ''
+    if (videoInputRef.current) videoInputRef.current.value = ''
+    if (documentInputRef.current) documentInputRef.current.value = ''
+  }
+
+  // Handle file selection from file picker
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video' | 'document') => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setSelectedFile(file)
+    setAttachmentType(type)
+    setFilename(file.name)
+    setShowAttachmentMenu(false)
+
+    // Create preview for images and videos
+    if (type === 'image' || type === 'video') {
+      const previewUrl = URL.createObjectURL(file)
+      setFilePreview(previewUrl)
+    } else {
+      setFilePreview(null)
+    }
+  }
+
+  // Upload and send media file
+  const handleSendMedia = async () => {
+    if (!selectedConversation || !selectedFile || !attachmentType) return
+    if (attachmentType === 'location') return // Location doesn't use file upload
+
+    setIsUploading(true)
+    setIsSending(true)
+
+    try {
+      // 1. Upload file to Supabase Storage
+      const formData = new FormData()
+      formData.append('file', selectedFile)
+      formData.append('mediaType', attachmentType)
+
+      const uploadResponse = await fetch('/api/whatsapp/upload-media', {
+        method: 'POST',
+        body: formData
+      })
+
+      const uploadResult = await uploadResponse.json()
+
+      if (!uploadResult.success || !uploadResult.url) {
+        throw new Error(uploadResult.error || 'فشل في رفع الملف')
+      }
+
+      // 2. Send message via WhatsApp
+      const sendResponse = await fetch('/api/whatsapp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: selectedConversation,
+          messageType: attachmentType,
+          mediaUrl: uploadResult.url,
+          caption: caption || undefined,
+          filename: attachmentType === 'document' ? uploadResult.filename : undefined
+        })
+      })
+
+      const sendResult = await sendResponse.json()
+
+      if (sendResult.success) {
+        resetAttachment()
+        setNewMessage('')
+        await fetchMessages()
+      } else {
+        setError(sendResult.error || 'فشل في إرسال الملف')
+      }
+
+    } catch (err) {
+      console.error('Error sending media:', err)
+      setError('فشل في إرسال الملف')
+    } finally {
+      setIsUploading(false)
+      setIsSending(false)
+    }
   }
 
   // Send voice note
@@ -676,7 +772,7 @@ export default function WhatsAppPage() {
                 {/* Attachment Preview */}
                 {attachmentType && (
                   <div className="bg-[#374151] px-4 py-3 border-t border-gray-600">
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center justify-between mb-3">
                       <span className="text-white text-sm font-medium">
                         {attachmentType === 'image' && 'إرسال صورة'}
                         {attachmentType === 'video' && 'إرسال فيديو'}
@@ -686,39 +782,92 @@ export default function WhatsAppPage() {
                       <button
                         onClick={resetAttachment}
                         className="text-gray-400 hover:text-white"
+                        disabled={isUploading}
                       >
                         <XMarkIcon className="h-5 w-5" />
                       </button>
                     </div>
 
-                    {(attachmentType === 'image' || attachmentType === 'video' || attachmentType === 'document') && (
-                      <div className="space-y-2">
-                        <input
-                          type="text"
-                          value={mediaUrl}
-                          onChange={(e) => setMediaUrl(e.target.value)}
-                          placeholder="رابط الملف (URL)"
-                          className="w-full px-3 py-2 bg-[#2B3544] border border-gray-600 rounded-md text-white placeholder-gray-500 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                        />
-                        {attachmentType === 'document' && (
-                          <input
-                            type="text"
-                            value={filename}
-                            onChange={(e) => setFilename(e.target.value)}
-                            placeholder="اسم الملف (اختياري)"
-                            className="w-full px-3 py-2 bg-[#2B3544] border border-gray-600 rounded-md text-white placeholder-gray-500 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                          />
+                    {/* File Preview for Image/Video/Document */}
+                    {selectedFile && (attachmentType === 'image' || attachmentType === 'video' || attachmentType === 'document') && (
+                      <div className="space-y-3">
+                        {/* Image Preview */}
+                        {attachmentType === 'image' && filePreview && (
+                          <div className="flex justify-center">
+                            <img
+                              src={filePreview}
+                              alt="معاينة الصورة"
+                              className="max-h-[200px] max-w-full rounded-lg object-contain"
+                            />
+                          </div>
                         )}
+
+                        {/* Video Preview */}
+                        {attachmentType === 'video' && filePreview && (
+                          <div className="flex justify-center">
+                            <video
+                              src={filePreview}
+                              controls
+                              className="max-h-[200px] max-w-full rounded-lg"
+                            />
+                          </div>
+                        )}
+
+                        {/* Document Preview */}
+                        {attachmentType === 'document' && (
+                          <div className="flex items-center gap-3 bg-[#2B3544] rounded-lg p-3">
+                            <DocumentIcon className="h-10 w-10 text-yellow-400 flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-white text-sm font-medium truncate">{filename}</p>
+                              <p className="text-gray-400 text-xs">
+                                {selectedFile.size > 1024 * 1024
+                                  ? `${(selectedFile.size / (1024 * 1024)).toFixed(2)} MB`
+                                  : `${(selectedFile.size / 1024).toFixed(2)} KB`}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Caption Input */}
                         <input
                           type="text"
                           value={caption}
                           onChange={(e) => setCaption(e.target.value)}
                           placeholder="تعليق (اختياري)"
                           className="w-full px-3 py-2 bg-[#2B3544] border border-gray-600 rounded-md text-white placeholder-gray-500 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                          disabled={isUploading}
                         />
+
+                        {/* Send Button */}
+                        <button
+                          type="button"
+                          onClick={handleSendMedia}
+                          disabled={isUploading || isSending}
+                          className={`w-full py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${
+                            isUploading || isSending
+                              ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                              : 'bg-green-600 hover:bg-green-700 text-white'
+                          }`}
+                        >
+                          {isUploading ? (
+                            <>
+                              <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                              </svg>
+                              <span>جاري الرفع...</span>
+                            </>
+                          ) : (
+                            <>
+                              <PaperAirplaneIcon className="h-5 w-5 rotate-180" />
+                              <span>إرسال</span>
+                            </>
+                          )}
+                        </button>
                       </div>
                     )}
 
+                    {/* Location Input (unchanged) */}
                     {attachmentType === 'location' && (
                       <div className="grid grid-cols-2 gap-2">
                         <input
@@ -766,12 +915,35 @@ export default function WhatsAppPage() {
                         <PaperClipIcon className="h-5 w-5" />
                       </button>
 
+                      {/* Hidden File Inputs */}
+                      <input
+                        ref={imageInputRef}
+                        type="file"
+                        accept="image/jpeg,image/jpg,image/png,image/webp,image/gif"
+                        className="hidden"
+                        onChange={(e) => handleFileSelect(e, 'image')}
+                      />
+                      <input
+                        ref={videoInputRef}
+                        type="file"
+                        accept="video/mp4,video/3gpp,video/quicktime,video/webm"
+                        className="hidden"
+                        onChange={(e) => handleFileSelect(e, 'video')}
+                      />
+                      <input
+                        ref={documentInputRef}
+                        type="file"
+                        accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar"
+                        className="hidden"
+                        onChange={(e) => handleFileSelect(e, 'document')}
+                      />
+
                       {/* Attachment Menu */}
                       {showAttachmentMenu && (
                         <div className="absolute bottom-12 right-0 bg-[#2B3544] border border-gray-600 rounded-lg shadow-lg p-2 min-w-[150px]">
                           <button
                             type="button"
-                            onClick={() => { setAttachmentType('image'); setShowAttachmentMenu(false) }}
+                            onClick={() => { imageInputRef.current?.click(); setShowAttachmentMenu(false) }}
                             className="flex items-center gap-2 w-full px-3 py-2 text-gray-300 hover:bg-gray-600/50 rounded-md text-sm"
                           >
                             <PhotoIcon className="h-5 w-5 text-blue-400" />
@@ -779,7 +951,7 @@ export default function WhatsAppPage() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => { setAttachmentType('video'); setShowAttachmentMenu(false) }}
+                            onClick={() => { videoInputRef.current?.click(); setShowAttachmentMenu(false) }}
                             className="flex items-center gap-2 w-full px-3 py-2 text-gray-300 hover:bg-gray-600/50 rounded-md text-sm"
                           >
                             <VideoCameraIcon className="h-5 w-5 text-purple-400" />
@@ -787,7 +959,7 @@ export default function WhatsAppPage() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => { setAttachmentType('document'); setShowAttachmentMenu(false) }}
+                            onClick={() => { documentInputRef.current?.click(); setShowAttachmentMenu(false) }}
                             className="flex items-center gap-2 w-full px-3 py-2 text-gray-300 hover:bg-gray-600/50 rounded-md text-sm"
                           >
                             <DocumentIcon className="h-5 w-5 text-yellow-400" />
