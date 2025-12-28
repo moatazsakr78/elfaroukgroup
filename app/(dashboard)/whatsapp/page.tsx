@@ -248,7 +248,7 @@ export default function WhatsAppPage() {
               <img
                 src={msg.media_url}
                 alt="صورة"
-                className="max-w-full rounded-lg mb-2 cursor-pointer hover:opacity-90"
+                className="max-w-[250px] max-h-[300px] object-cover rounded-lg mb-2 cursor-pointer hover:opacity-90 transition-opacity"
                 onClick={() => window.open(msg.media_url, '_blank')}
               />
             )}
@@ -265,7 +265,7 @@ export default function WhatsAppPage() {
               <video
                 src={msg.media_url}
                 controls
-                className="max-w-full rounded-lg mb-2"
+                className="max-w-[280px] max-h-[350px] rounded-lg mb-2"
               />
             )}
             {msg.message_text && msg.message_text !== '[فيديو]' && (
