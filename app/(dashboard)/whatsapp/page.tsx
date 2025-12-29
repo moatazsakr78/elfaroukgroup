@@ -647,7 +647,7 @@ export default function WhatsAppPage() {
         setNewMessage('')
         resetAttachment()
         setReplyingTo(null) // Clear reply after sending
-        fetchMessages()
+        await fetchMessages() // Await to ensure messages are loaded
       } else {
         setError(data.error || 'فشل في إرسال الرسالة')
       }

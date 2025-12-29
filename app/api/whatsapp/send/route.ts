@@ -180,23 +180,23 @@ export async function POST(request: NextRequest) {
 
     if (result.success) {
       // Store message in database
-      try {
-        await supabase.schema('elfaroukgroup').from('whatsapp_messages').insert({
-          message_id: result.messageId,
-          from_number: cleanNumber,
-          customer_name: 'الفاروق جروب',
-          message_text: messageText,
-          message_type: 'outgoing',
-          media_type: mediaType,
-          media_url: mediaUrl || null,
-          created_at: new Date().toISOString(),
-          // Quoted message fields
-          quoted_message_id: quotedMessageId || null,
-          quoted_message_text: quotedMessageText || null,
-          quoted_message_sender: quotedMessageSender || null,
-        });
-      } catch (dbError) {
-        console.log('Note: Could not save to database:', dbError);
+      const { error: dbError } = await supabase.schema('elfaroukgroup').from('whatsapp_messages').insert({
+        message_id: result.messageId,
+        from_number: cleanNumber,
+        customer_name: 'الفاروق جروب',
+        message_text: messageText,
+        message_type: 'outgoing',
+        media_type: mediaType,
+        media_url: mediaUrl || null,
+        created_at: new Date().toISOString(),
+        // Quoted message fields
+        quoted_message_id: quotedMessageId || null,
+        quoted_message_text: quotedMessageText || null,
+        quoted_message_sender: quotedMessageSender || null,
+      });
+
+      if (dbError) {
+        console.error('Database insert error:', dbError.message);
       }
 
       return NextResponse.json({
