@@ -184,44 +184,46 @@ function parseWasenderMessage(msgData: any): ParsedMessage | null {
       return null;
     }
 
-    // Get message text - WasenderAPI uses messageBody for unified text
-    let text = msgData.messageBody || '';
+    // IMPORTANT: Detect media type FIRST before extracting text
+    // This fixes the bug where images with captions were being treated as text
+    let text = '';
     let mediaType: ParsedMessage['mediaType'] = 'text';
     let mediaUrl: string | undefined;
 
-    // If no messageBody, try to extract from raw message object
-    if (!text) {
-      if (message.conversation) {
-        text = message.conversation;
-      } else if (message.extendedTextMessage?.text) {
-        text = message.extendedTextMessage.text;
-      } else if (message.imageMessage) {
-        text = message.imageMessage.caption || '[صورة]';
-        mediaType = 'image';
-        mediaUrl = message.imageMessage.url;
-      } else if (message.videoMessage) {
-        text = message.videoMessage.caption || '[فيديو]';
-        mediaType = 'video';
-        mediaUrl = message.videoMessage.url;
-      } else if (message.audioMessage) {
-        text = '[رسالة صوتية]';
-        mediaType = 'audio';
-        mediaUrl = message.audioMessage.url;
-      } else if (message.documentMessage) {
-        text = message.documentMessage.fileName || '[مستند]';
-        mediaType = 'document';
-        mediaUrl = message.documentMessage.url;
-      } else if (message.locationMessage) {
-        const loc = message.locationMessage;
-        text = loc.name || loc.address || `[موقع: ${loc.degreesLatitude}, ${loc.degreesLongitude}]`;
-        mediaType = 'location';
-      } else if (message.contactMessage || message.contactsArrayMessage) {
-        text = '[جهة اتصال]';
-        mediaType = 'contact';
-      } else if (message.stickerMessage) {
-        text = '[ملصق]';
-        mediaType = 'image';
-      }
+    // Check for media content in the message object FIRST
+    if (message.imageMessage) {
+      mediaType = 'image';
+      mediaUrl = message.imageMessage.url;
+      text = msgData.messageBody || message.imageMessage.caption || '[صورة]';
+    } else if (message.videoMessage) {
+      mediaType = 'video';
+      mediaUrl = message.videoMessage.url;
+      text = msgData.messageBody || message.videoMessage.caption || '[فيديو]';
+    } else if (message.audioMessage) {
+      mediaType = 'audio';
+      mediaUrl = message.audioMessage.url;
+      text = '[رسالة صوتية]';
+    } else if (message.documentMessage) {
+      mediaType = 'document';
+      mediaUrl = message.documentMessage.url;
+      text = msgData.messageBody || message.documentMessage.fileName || '[مستند]';
+    } else if (message.locationMessage) {
+      mediaType = 'location';
+      const loc = message.locationMessage;
+      text = msgData.messageBody || loc.name || loc.address || `[موقع: ${loc.degreesLatitude}, ${loc.degreesLongitude}]`;
+    } else if (message.contactMessage || message.contactsArrayMessage) {
+      mediaType = 'contact';
+      text = '[جهة اتصال]';
+    } else if (message.stickerMessage) {
+      mediaType = 'image';
+      mediaUrl = message.stickerMessage.url;
+      text = '[ملصق]';
+    } else {
+      // Text messages - check various text sources
+      text = msgData.messageBody ||
+             message.conversation ||
+             message.extendedTextMessage?.text ||
+             '[رسالة فارغة]';
     }
 
     // Get customer name
@@ -240,7 +242,7 @@ function parseWasenderMessage(msgData: any): ParsedMessage | null {
       messageId,
       from,
       customerName,
-      text: text || '[رسالة فارغة]',
+      text,
       timestamp,
       mediaType,
       mediaUrl,

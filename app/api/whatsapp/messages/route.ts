@@ -55,9 +55,14 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Sort conversations by lastMessageTime (newest first)
+    const sortedConversations = Array.from(conversations.values()).sort((a, b) =>
+      new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime()
+    );
+
     return NextResponse.json({
       messages: data || [],
-      conversations: Array.from(conversations.values()),
+      conversations: sortedConversations,
     });
   } catch (error) {
     console.error('Fetch messages error:', error);
