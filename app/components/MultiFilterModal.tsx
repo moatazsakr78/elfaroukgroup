@@ -10,7 +10,6 @@ import {
   TagIcon,
   BuildingStorefrontIcon,
   BanknotesIcon,
-  BuildingOffice2Icon,
   CheckIcon,
   MagnifyingGlassIcon,
   ChevronDownIcon,
@@ -43,8 +42,7 @@ export default function MultiFilterModal({
     products,
     categories,
     safes,
-    branches,
-    warehouses,
+    locations,
     isLoading,
     error
   } = useReportFilters()
@@ -113,13 +111,25 @@ export default function MultiFilterModal({
 
   // فلترة الخيارات بناءً على البحث
   const getFilteredOptions = useCallback((
-    options: { id: string; name: string }[],
+    options: { id: string; name: string; label?: string }[],
     section: string
   ) => {
     const query = searchQueries[section]?.toLowerCase() || ''
     if (!query) return options
-    return options.filter(opt => opt.name.toLowerCase().includes(query))
+    return options.filter(opt => {
+      const searchText = opt.label || opt.name
+      return searchText.toLowerCase().includes(query)
+    })
   }, [searchQueries])
+
+  // تحويل المواقع لتتوافق مع الواجهة
+  const locationOptions = useMemo(() => {
+    return locations.map(l => ({
+      id: l.id,
+      name: l.label, // استخدام label للعرض (مثل "فرع: المحل الرئيسي")
+      type: l.type
+    }))
+  }, [locations])
 
   if (!isOpen) return null
 
@@ -273,40 +283,22 @@ export default function MultiFilterModal({
                 onSearchChange={(q) => setSearchQueries(prev => ({ ...prev, safes: q }))}
               />
 
-              {/* 7. الفروع */}
+              {/* 7. الفروع والمخازن (مدمجة) */}
               <FilterSection
                 icon={<BuildingStorefrontIcon className="h-5 w-5" />}
-                label="الفروع"
-                sectionKey="branches"
-                isExpanded={expandedSections.has('branches')}
-                onToggleExpand={() => toggleSection('branches')}
-                selectedCount={filters.branchIds.length}
-                totalCount={branches.length}
-                options={getFilteredOptions(branches, 'branches')}
-                selectedIds={filters.branchIds}
-                onToggle={(id) => handleToggle('branchIds', id)}
-                onSelectAll={() => handleSelectAll('branchIds', branches.map(b => b.id))}
-                onDeselectAll={() => handleDeselectAll('branchIds')}
-                searchQuery={searchQueries['branches'] || ''}
-                onSearchChange={(q) => setSearchQueries(prev => ({ ...prev, branches: q }))}
-              />
-
-              {/* 8. المخازن */}
-              <FilterSection
-                icon={<BuildingOffice2Icon className="h-5 w-5" />}
-                label="المخازن"
-                sectionKey="warehouses"
-                isExpanded={expandedSections.has('warehouses')}
-                onToggleExpand={() => toggleSection('warehouses')}
-                selectedCount={filters.warehouseIds.length}
-                totalCount={warehouses.length}
-                options={getFilteredOptions(warehouses, 'warehouses')}
-                selectedIds={filters.warehouseIds}
-                onToggle={(id) => handleToggle('warehouseIds', id)}
-                onSelectAll={() => handleSelectAll('warehouseIds', warehouses.map(w => w.id))}
-                onDeselectAll={() => handleDeselectAll('warehouseIds')}
-                searchQuery={searchQueries['warehouses'] || ''}
-                onSearchChange={(q) => setSearchQueries(prev => ({ ...prev, warehouses: q }))}
+                label="الفروع والمخازن"
+                sectionKey="locations"
+                isExpanded={expandedSections.has('locations')}
+                onToggleExpand={() => toggleSection('locations')}
+                selectedCount={filters.locationIds.length}
+                totalCount={locations.length}
+                options={getFilteredOptions(locationOptions, 'locations')}
+                selectedIds={filters.locationIds}
+                onToggle={(id) => handleToggle('locationIds', id)}
+                onSelectAll={() => handleSelectAll('locationIds', locations.map(l => l.id))}
+                onDeselectAll={() => handleDeselectAll('locationIds')}
+                searchQuery={searchQueries['locations'] || ''}
+                onSearchChange={(q) => setSearchQueries(prev => ({ ...prev, locations: q }))}
               />
             </div>
           )}

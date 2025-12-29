@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import {
   XMarkIcon,
   FunnelIcon,
@@ -10,13 +10,15 @@ import {
   TagIcon,
   BuildingStorefrontIcon,
   BanknotesIcon,
-  BuildingOffice2Icon
+  MagnifyingGlassIcon,
+  ChevronDownIcon
 } from '@heroicons/react/24/outline'
 import { useReportFilters } from '../lib/hooks/useReportFilters'
 import {
   SimpleFiltersResult,
   initialSimpleFilters,
-  getSimpleFiltersCount
+  getSimpleFiltersCount,
+  LocationOption
 } from '../types/filters'
 
 interface SimpleFilterModalProps {
@@ -39,8 +41,7 @@ export default function SimpleFilterModal({
     products,
     categories,
     safes,
-    branches,
-    warehouses,
+    locations,
     isLoading,
     error
   } = useReportFilters()
@@ -58,10 +59,20 @@ export default function SimpleFilterModal({
     field: keyof SimpleFiltersResult,
     value: string
   ) => {
-    setFilters(prev => ({
-      ...prev,
-      [field]: value || null
-    }))
+    if (field === 'locationId') {
+      // عند اختيار موقع، نحدد نوعه (فرع أو مخزن)
+      const selectedLocation = locations.find(l => l.id === value)
+      setFilters(prev => ({
+        ...prev,
+        locationId: value || null,
+        locationType: selectedLocation?.type || null
+      }))
+    } else {
+      setFilters(prev => ({
+        ...prev,
+        [field]: value || null
+      }))
+    }
   }
 
   const handleApply = () => {
@@ -120,7 +131,7 @@ export default function SimpleFilterModal({
             <div className="space-y-4">
 
               {/* 1. العملاء */}
-              <FilterDropdown
+              <SearchableSelect
                 icon={<UserGroupIcon className="h-5 w-5" />}
                 label="العملاء"
                 value={filters.customerId || ''}
@@ -130,7 +141,7 @@ export default function SimpleFilterModal({
               />
 
               {/* 2. فئات العملاء */}
-              <FilterDropdown
+              <SearchableSelect
                 icon={<UsersIcon className="h-5 w-5" />}
                 label="فئات العملاء"
                 value={filters.customerGroupId || ''}
@@ -140,7 +151,7 @@ export default function SimpleFilterModal({
               />
 
               {/* 3. المستخدمين */}
-              <FilterDropdown
+              <SearchableSelect
                 icon={<UsersIcon className="h-5 w-5" />}
                 label="المستخدمين"
                 value={filters.userId || ''}
@@ -150,7 +161,7 @@ export default function SimpleFilterModal({
               />
 
               {/* 4. المنتجات */}
-              <FilterDropdown
+              <SearchableSelect
                 icon={<ArchiveBoxIcon className="h-5 w-5" />}
                 label="المنتجات"
                 value={filters.productId || ''}
@@ -160,7 +171,7 @@ export default function SimpleFilterModal({
               />
 
               {/* 5. فئات المنتجات */}
-              <FilterDropdown
+              <SearchableSelect
                 icon={<TagIcon className="h-5 w-5" />}
                 label="فئات المنتجات"
                 value={filters.categoryId || ''}
@@ -170,7 +181,7 @@ export default function SimpleFilterModal({
               />
 
               {/* 6. الخزن */}
-              <FilterDropdown
+              <SearchableSelect
                 icon={<BanknotesIcon className="h-5 w-5" />}
                 label="الخزن"
                 value={filters.safeId || ''}
@@ -179,24 +190,18 @@ export default function SimpleFilterModal({
                 placeholder="جميع الخزن"
               />
 
-              {/* 7. الفروع */}
-              <FilterDropdown
+              {/* 7. الفروع والمخازن (مدمجة) */}
+              <SearchableSelect
                 icon={<BuildingStorefrontIcon className="h-5 w-5" />}
-                label="الفروع"
-                value={filters.branchId || ''}
-                onChange={(v) => handleSelectChange('branchId', v)}
-                options={branches}
-                placeholder="جميع الفروع"
-              />
-
-              {/* 8. المخازن */}
-              <FilterDropdown
-                icon={<BuildingOffice2Icon className="h-5 w-5" />}
-                label="المخازن"
-                value={filters.warehouseId || ''}
-                onChange={(v) => handleSelectChange('warehouseId', v)}
-                options={warehouses}
-                placeholder="جميع المخازن"
+                label="الفروع والمخازن"
+                value={filters.locationId || ''}
+                onChange={(v) => handleSelectChange('locationId', v)}
+                options={locations.map(l => ({
+                  id: l.id,
+                  name: l.label,
+                  secondaryText: l.type === 'branch' ? 'فرع' : 'مخزن'
+                }))}
+                placeholder="جميع الفروع والمخازن"
               />
             </div>
           )}
@@ -237,8 +242,8 @@ export default function SimpleFilterModal({
   )
 }
 
-// مكون Dropdown مشترك
-interface FilterDropdownProps {
+// مكون SearchableSelect - قائمة منسدلة مع بحث
+interface SearchableSelectProps {
   icon: React.ReactNode
   label: string
   value: string
@@ -247,33 +252,155 @@ interface FilterDropdownProps {
   placeholder: string
 }
 
-function FilterDropdown({
+function SearchableSelect({
   icon,
   label,
   value,
   onChange,
   options,
   placeholder
-}: FilterDropdownProps) {
+}: SearchableSelectProps) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const containerRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // البحث في الخيارات
+  const filteredOptions = useMemo(() => {
+    if (!searchQuery.trim()) return options
+    const query = searchQuery.toLowerCase()
+    return options.filter(
+      opt =>
+        opt.name.toLowerCase().includes(query) ||
+        (opt.secondaryText && opt.secondaryText.toLowerCase().includes(query))
+    )
+  }, [options, searchQuery])
+
+  // الحصول على اسم الخيار المحدد
+  const selectedOption = options.find(opt => opt.id === value)
+  const displayValue = selectedOption ? selectedOption.name : placeholder
+
+  // إغلاق القائمة عند النقر خارجها
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false)
+        setSearchQuery('')
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // التركيز على حقل البحث عند فتح القائمة
+  useEffect(() => {
+    if (isOpen && inputRef.current) {
+      inputRef.current.focus()
+    }
+  }, [isOpen])
+
+  const handleSelect = (optionId: string) => {
+    onChange(optionId)
+    setIsOpen(false)
+    setSearchQuery('')
+  }
+
+  const handleClear = () => {
+    onChange('')
+    setIsOpen(false)
+    setSearchQuery('')
+  }
+
   return (
     <div className="flex items-center gap-4">
       <div className="w-36 flex items-center gap-2 text-gray-300 flex-shrink-0">
         {icon}
         <span className="text-sm font-medium">{label}</span>
       </div>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="flex-1 bg-[#374151] border border-gray-600 rounded-md px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent cursor-pointer"
-      >
-        <option value="">{placeholder}</option>
-        {options.map((option) => (
-          <option key={option.id} value={option.id}>
-            {option.name}
-            {option.secondaryText && ` - ${option.secondaryText}`}
-          </option>
-        ))}
-      </select>
+
+      <div className="flex-1 relative" ref={containerRef}>
+        {/* الزر الرئيسي */}
+        <button
+          type="button"
+          onClick={() => setIsOpen(!isOpen)}
+          className={`w-full bg-[#374151] border rounded-md px-4 py-2.5 text-right flex items-center justify-between cursor-pointer transition-colors ${
+            isOpen
+              ? 'border-blue-500 ring-2 ring-blue-500/20'
+              : 'border-gray-600 hover:border-gray-500'
+          }`}
+        >
+          <span className={value ? 'text-white' : 'text-gray-400'}>
+            {displayValue}
+          </span>
+          <ChevronDownIcon
+            className={`h-5 w-5 text-gray-400 transition-transform ${
+              isOpen ? 'rotate-180' : ''
+            }`}
+          />
+        </button>
+
+        {/* القائمة المنسدلة */}
+        {isOpen && (
+          <div className="absolute top-full left-0 right-0 mt-1 bg-[#374151] border border-gray-600 rounded-md shadow-lg z-10 overflow-hidden">
+            {/* حقل البحث */}
+            <div className="p-2 border-b border-gray-600">
+              <div className="relative">
+                <MagnifyingGlassIcon className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="ابحث..."
+                  className="w-full bg-[#2B3544] border border-gray-600 rounded px-9 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            {/* قائمة الخيارات */}
+            <div className="max-h-48 overflow-y-auto">
+              {/* خيار "الكل" */}
+              <div
+                onClick={handleClear}
+                className={`px-4 py-2.5 cursor-pointer transition-colors ${
+                  !value
+                    ? 'bg-blue-600/20 text-blue-400'
+                    : 'text-gray-300 hover:bg-gray-600/30'
+                }`}
+              >
+                {placeholder}
+              </div>
+
+              {/* الخيارات المفلترة */}
+              {filteredOptions.length > 0 ? (
+                filteredOptions.map((option) => (
+                  <div
+                    key={option.id}
+                    onClick={() => handleSelect(option.id)}
+                    className={`px-4 py-2.5 cursor-pointer transition-colors ${
+                      value === option.id
+                        ? 'bg-blue-600/20 text-blue-400'
+                        : 'text-gray-300 hover:bg-gray-600/30'
+                    }`}
+                  >
+                    <span>{option.name}</span>
+                    {option.secondaryText && (
+                      <span className="text-gray-500 text-sm mr-2">
+                        ({option.secondaryText})
+                      </span>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <div className="px-4 py-3 text-gray-500 text-center text-sm">
+                  لا توجد نتائج
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

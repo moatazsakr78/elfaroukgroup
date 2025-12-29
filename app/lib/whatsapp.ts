@@ -200,9 +200,9 @@ export async function sendWhatsAppMessage(
       text: message,
     };
 
-    // Add quotedMessageId if replying to a message
+    // Add replyTo if replying to a message (WasenderAPI uses replyTo)
     if (quotedMessageId) {
-      payload.quotedMessageId = quotedMessageId;
+      payload.replyTo = quotedMessageId;
     }
 
     const data = await makeApiRequest('/send-message', 'POST', payload);

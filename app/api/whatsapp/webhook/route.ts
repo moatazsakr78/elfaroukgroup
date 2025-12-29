@@ -105,6 +105,10 @@ export async function POST(request: NextRequest) {
               media_url: mediaUrl || null,
               is_read: isOutgoing ? true : false,
               created_at: message.timestamp.toISOString(),
+              // Quoted/Reply message fields
+              quoted_message_id: message.quotedMessageId || null,
+              quoted_message_text: message.quotedMessageText || null,
+              quoted_message_sender: message.quotedMessageSender || null,
             }, {
               onConflict: 'message_id',
               ignoreDuplicates: true
@@ -159,6 +163,10 @@ interface ParsedMessage {
   timestamp: Date;
   mediaType: 'text' | 'image' | 'video' | 'audio' | 'document' | 'location' | 'contact';
   mediaUrl?: string;
+  // Quoted/Reply message fields
+  quotedMessageId?: string;
+  quotedMessageText?: string;
+  quotedMessageSender?: string;
 }
 
 function parseWasenderMessage(msgData: any): ParsedMessage | null {
@@ -227,6 +235,46 @@ function parseWasenderMessage(msgData: any): ParsedMessage | null {
     // Get customer name
     const customerName = msgData.pushName || key.pushName || msgData.notifyName || from;
 
+    // Extract quoted/reply message info from contextInfo
+    let quotedMessageId: string | undefined;
+    let quotedMessageText: string | undefined;
+    let quotedMessageSender: string | undefined;
+
+    // contextInfo can be in various message types
+    const contextInfo = message.extendedTextMessage?.contextInfo ||
+                        message.imageMessage?.contextInfo ||
+                        message.videoMessage?.contextInfo ||
+                        message.audioMessage?.contextInfo ||
+                        message.documentMessage?.contextInfo ||
+                        message.stickerMessage?.contextInfo;
+
+    if (contextInfo?.stanzaId) {
+      quotedMessageId = contextInfo.stanzaId;
+      // Get quoted message sender
+      const participant = contextInfo.participant || contextInfo.remoteJid || '';
+      quotedMessageSender = participant
+        .replace('@s.whatsapp.net', '')
+        .replace('@c.us', '')
+        .replace('@lid', '');
+
+      // Get quoted message text
+      const quotedMsg = contextInfo.quotedMessage;
+      if (quotedMsg) {
+        quotedMessageText = quotedMsg.conversation ||
+                           quotedMsg.extendedTextMessage?.text ||
+                           quotedMsg.imageMessage?.caption ||
+                           quotedMsg.videoMessage?.caption ||
+                           quotedMsg.documentMessage?.caption ||
+                           (quotedMsg.imageMessage ? '[صورة]' : null) ||
+                           (quotedMsg.videoMessage ? '[فيديو]' : null) ||
+                           (quotedMsg.audioMessage ? '[رسالة صوتية]' : null) ||
+                           (quotedMsg.documentMessage ? '[مستند]' : null) ||
+                           (quotedMsg.stickerMessage ? '[ملصق]' : null) ||
+                           '[رسالة]';
+      }
+      console.log('📎 Quoted message detected:', { quotedMessageId, quotedMessageSender, quotedMessageText });
+    }
+
     // Get timestamp
     let timestamp = new Date();
     if (msgData.messageTimestamp) {
@@ -244,6 +292,9 @@ function parseWasenderMessage(msgData: any): ParsedMessage | null {
       timestamp,
       mediaType,
       mediaUrl,
+      quotedMessageId,
+      quotedMessageText,
+      quotedMessageSender,
     };
   } catch (error) {
     console.error('❌ Error parsing message:', error);

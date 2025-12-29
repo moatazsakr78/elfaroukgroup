@@ -17,6 +17,14 @@ export interface FilterGroup {
   itemCount?: number;
 }
 
+// خيار موقع (فرع أو مخزن)
+export interface LocationOption {
+  id: string;
+  name: string;
+  type: 'branch' | 'warehouse';
+  label: string; // مثل "فرع: المحل الرئيسي"
+}
+
 // نتيجة الفلتر البسيط (اختيار واحد)
 export interface SimpleFiltersResult {
   customerId: string | null;
@@ -25,8 +33,8 @@ export interface SimpleFiltersResult {
   productId: string | null;
   categoryId: string | null;
   safeId: string | null;
-  branchId: string | null;
-  warehouseId: string | null;
+  locationId: string | null;
+  locationType: 'branch' | 'warehouse' | null;
 }
 
 // نتيجة الفلتر المتعدد (اختيار متعدد)
@@ -37,8 +45,7 @@ export interface MultiFiltersResult {
   productIds: string[];
   categoryIds: string[];
   safeIds: string[];
-  branchIds: string[];
-  warehouseIds: string[];
+  locationIds: string[]; // فروع ومخازن مدمجة
 }
 
 // القيم الافتراضية للفلتر البسيط
@@ -49,8 +56,8 @@ export const initialSimpleFilters: SimpleFiltersResult = {
   productId: null,
   categoryId: null,
   safeId: null,
-  branchId: null,
-  warehouseId: null
+  locationId: null,
+  locationType: null
 };
 
 // القيم الافتراضية للفلتر المتعدد
@@ -61,8 +68,7 @@ export const initialMultiFilters: MultiFiltersResult = {
   productIds: [],
   categoryIds: [],
   safeIds: [],
-  branchIds: [],
-  warehouseIds: []
+  locationIds: []
 };
 
 // نوع الفلتر النشط
@@ -76,8 +82,7 @@ export interface ReportFiltersData {
   products: FilterOption[];
   categories: FilterGroup[];
   safes: FilterOption[];
-  branches: FilterOption[];
-  warehouses: FilterOption[];
+  locations: LocationOption[]; // فروع ومخازن مدمجة
   isLoading: boolean;
   error: string | null;
 }
@@ -91,8 +96,7 @@ export function getSimpleFiltersCount(filters: SimpleFiltersResult): number {
   if (filters.productId) count++;
   if (filters.categoryId) count++;
   if (filters.safeId) count++;
-  if (filters.branchId) count++;
-  if (filters.warehouseId) count++;
+  if (filters.locationId) count++;
   return count;
 }
 
@@ -105,7 +109,6 @@ export function getMultiFiltersCount(filters: MultiFiltersResult): number {
     filters.productIds.length +
     filters.categoryIds.length +
     filters.safeIds.length +
-    filters.branchIds.length +
-    filters.warehouseIds.length
+    filters.locationIds.length
   );
 }

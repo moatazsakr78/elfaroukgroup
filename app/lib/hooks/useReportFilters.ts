@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../supabase/client'
-import { FilterOption, FilterGroup, ReportFiltersData } from '@/app/types/filters'
+import { FilterOption, FilterGroup, ReportFiltersData, LocationOption } from '@/app/types/filters'
 
 /**
  * Hook لجلب جميع بيانات الفلاتر المطلوبة للتقارير
@@ -16,8 +16,7 @@ export function useReportFilters(): ReportFiltersData & { refetch: () => Promise
     products: [],
     categories: [],
     safes: [],
-    branches: [],
-    warehouses: [],
+    locations: [],
     isLoading: true,
     error: null
   })
@@ -49,10 +48,11 @@ export function useReportFilters(): ReportFiltersData & { refetch: () => Promise
           .select('id, name, parent_id')
           .order('name'),
 
-        // 3. المستخدمين (الموظفين)
+        // 3. المستخدمين (الموظفين فقط - استبعاد user و جملة)
         supabase
           .from('auth_users')
-          .select('id, name, email'),
+          .select('id, name, email, role')
+          .not('role', 'in', '("user","جملة")'),
 
         // 4. المنتجات
         supabase
@@ -124,15 +124,21 @@ export function useReportFilters(): ReportFiltersData & { refetch: () => Promise
         name: s.name || 'بدون اسم'
       }))
 
-      const branches: FilterOption[] = (branchesRes.data || []).map(b => ({
-        id: b.id,
-        name: b.name || 'بدون اسم'
-      }))
-
-      const warehouses: FilterOption[] = (warehousesRes.data || []).map(w => ({
-        id: w.id,
-        name: w.name || 'بدون اسم'
-      }))
+      // دمج الفروع والمخازن في قائمة واحدة
+      const locations: LocationOption[] = [
+        ...(branchesRes.data || []).map(b => ({
+          id: b.id,
+          name: b.name || 'بدون اسم',
+          type: 'branch' as const,
+          label: `فرع: ${b.name || 'بدون اسم'}`
+        })),
+        ...(warehousesRes.data || []).map(w => ({
+          id: w.id,
+          name: w.name || 'بدون اسم',
+          type: 'warehouse' as const,
+          label: `مخزن: ${w.name || 'بدون اسم'}`
+        }))
+      ]
 
       setData({
         customers,
@@ -141,8 +147,7 @@ export function useReportFilters(): ReportFiltersData & { refetch: () => Promise
         products,
         categories,
         safes,
-        branches,
-        warehouses,
+        locations,
         isLoading: false,
         error: null
       })
