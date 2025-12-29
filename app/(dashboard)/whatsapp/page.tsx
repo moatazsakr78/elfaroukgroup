@@ -166,6 +166,26 @@ export default function WhatsAppPage() {
     }
   }, [fetchMessages])
 
+  // Mark messages as read when conversation is opened
+  const markConversationAsRead = useCallback(async (phoneNumber: string) => {
+    try {
+      await fetch('/api/whatsapp/mark-as-read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phoneNumber })
+      })
+
+      // Update local state immediately for better UX
+      setConversations(prev => prev.map(conv =>
+        conv.phoneNumber === phoneNumber
+          ? { ...conv, unreadCount: 0 }
+          : conv
+      ))
+    } catch (error) {
+      console.error('Error marking as read:', error)
+    }
+  }, [])
+
   // Initial fetch and polling
   useEffect(() => {
     fetchMessages()
@@ -712,7 +732,12 @@ export default function WhatsAppPage() {
                 filteredConversations.map((conv) => (
                   <div
                     key={conv.phoneNumber}
-                    onClick={() => setSelectedConversation(conv.phoneNumber)}
+                    onClick={() => {
+                      setSelectedConversation(conv.phoneNumber)
+                      if (conv.unreadCount > 0) {
+                        markConversationAsRead(conv.phoneNumber)
+                      }
+                    }}
                     className={`p-3 border-b border-gray-600/50 cursor-pointer transition-colors ${
                       selectedConversation === conv.phoneNumber
                         ? 'bg-green-600/20 border-r-2 border-r-green-500'

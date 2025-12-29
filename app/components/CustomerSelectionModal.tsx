@@ -17,7 +17,8 @@ interface Customer {
   name: string;
   phone: string | null;
   city: string | null;
-  account_balance: number | null;
+  opening_balance: number | null;
+  calculated_balance: number; // Calculated: opening_balance + sales - payments + loans
   rank: string | null;
   category: string | null;
   loyalty_points: number | null;
@@ -59,10 +60,10 @@ export default function CustomerSelectionModal({
       setIsLoading(true);
       setError(null);
 
-      // Fetch customers
+      // Fetch customers with opening_balance
       const { data: customersData, error: customersError } = await supabase
         .from("customers")
-        .select("*")
+        .select("id, name, phone, city, opening_balance, rank, category, loyalty_points, is_active, group_id")
         .eq("is_active", true)
         .order("name", { ascending: true });
 
@@ -72,7 +73,52 @@ export default function CustomerSelectionModal({
         return;
       }
 
-      setCustomers(customersData || []);
+      // Fetch all sales for balance calculation
+      const { data: salesData } = await supabase
+        .from("sales")
+        .select("customer_id, total_amount");
+
+      // Fetch all customer payments for balance calculation (includes notes to identify loans)
+      const { data: paymentsData } = await supabase
+        .from("customer_payments")
+        .select("customer_id, amount, notes");
+
+      // Calculate balance for each customer
+      const customersWithBalance = (customersData || []).map((customer) => {
+        const openingBalance = customer.opening_balance || 0;
+
+        // Sum of all sales for this customer
+        const salesBalance = (salesData || [])
+          .filter((sale) => sale.customer_id === customer.id)
+          .reduce((total, sale) => total + (sale.total_amount || 0), 0);
+
+        // Calculate payments with proper handling for loans vs regular payments
+        // السلفة (loan) = adds to balance (customer owes more) - identified by notes starting with "سلفة"
+        // الدفعة (payment) = reduces balance (customer paid their debt)
+        let totalLoans = 0;
+        let totalRegularPayments = 0;
+
+        (paymentsData || [])
+          .filter((p) => p.customer_id === customer.id)
+          .forEach((payment) => {
+            const isLoan = payment.notes?.startsWith('سلفة');
+            if (isLoan) {
+              totalLoans += (payment.amount || 0);
+            } else {
+              totalRegularPayments += (payment.amount || 0);
+            }
+          });
+
+        // Final balance = opening + sales + loans - payments
+        const calculatedBalance = openingBalance + salesBalance + totalLoans - totalRegularPayments;
+
+        return {
+          ...customer,
+          calculated_balance: calculatedBalance,
+        };
+      });
+
+      setCustomers(customersWithBalance);
 
       // Fetch customer groups with customer counts
       const { data: groupsData, error: groupsError } = await supabase
@@ -324,14 +370,14 @@ export default function CustomerSelectionModal({
                           <div className="text-left">
                             <div
                               className={`font-medium ${
-                                (customer.account_balance ?? 0) > 0
+                                customer.calculated_balance > 0
                                   ? "text-green-400"
-                                  : (customer.account_balance ?? 0) < 0
+                                  : customer.calculated_balance < 0
                                   ? "text-red-400"
                                   : "text-gray-400"
                               }`}
                             >
-                              {(customer.account_balance || 0).toLocaleString()}{" "}
+                              {customer.calculated_balance.toLocaleString()}{" "}
                               ج.م
                             </div>
                             {customer.loyalty_points && customer.loyalty_points > 0 && (
