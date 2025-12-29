@@ -8,6 +8,17 @@ import SimpleDateFilterModal, { DateFilter } from '@/app/components/SimpleDateFi
 import { supabase } from '@/app/lib/supabase/client';
 import ProductsFilterModal from '@/app/components/ProductsFilterModal';
 import CustomersFilterModal from '@/app/components/CustomersFilterModal';
+import SimpleFilterModal from '@/app/components/SimpleFilterModal';
+import MultiFilterModal from '@/app/components/MultiFilterModal';
+import {
+  SimpleFiltersResult,
+  MultiFiltersResult,
+  initialSimpleFilters,
+  initialMultiFilters,
+  getSimpleFiltersCount,
+  getMultiFiltersCount,
+  ActiveFilterType
+} from '@/app/types/filters';
 import ColumnsControlModal from '@/app/components/ColumnsControlModal';
 import { useFormatPrice } from '@/lib/hooks/useCurrency';
 
@@ -592,6 +603,13 @@ function ReportsPageContent() {
   const [showCustomersFilter, setShowCustomersFilter] = useState(false);
   const [selectedCustomerIds, setSelectedCustomerIds] = useState<string[]>([]);
   const [selectedCustomerGroupIds, setSelectedCustomerGroupIds] = useState<string[]>([]);
+
+  // New filter modals states
+  const [showSimpleFilter, setShowSimpleFilter] = useState(false);
+  const [showMultiFilter, setShowMultiFilter] = useState(false);
+  const [simpleFilters, setSimpleFilters] = useState<SimpleFiltersResult>(initialSimpleFilters);
+  const [multiFilters, setMultiFilters] = useState<MultiFiltersResult>(initialMultiFilters);
+  const [activeFilterType, setActiveFilterType] = useState<ActiveFilterType>(null);
   const [showProductsReport, setShowProductsReport] = useState(false);
   const [productsReportData, setProductsReportData] = useState<any[]>([]);
   const [showCategoriesReport, setShowCategoriesReport] = useState(false);
@@ -2356,51 +2374,48 @@ function ReportsPageContent() {
               <span className="text-sm">تصدير</span>
             </button>
 
-            <button 
-              onClick={openProductsReport}
+            {/* زر فلتر بسيط */}
+            <button
+              onClick={() => setShowSimpleFilter(true)}
               className={`flex flex-col items-center p-2 cursor-pointer min-w-[80px] ${
-                selectedProductIds.length > 0 || selectedCategoryIds.length > 0
+                activeFilterType === 'simple' && getSimpleFiltersCount(simpleFilters) > 0
+                  ? 'text-blue-400 bg-blue-500/10'
+                  : 'text-gray-300 hover:text-white'
+              }`}
+            >
+              <FunnelIcon className="h-5 w-5 mb-1" />
+              <span className="text-sm">فلتر بسيط</span>
+              {activeFilterType === 'simple' && getSimpleFiltersCount(simpleFilters) > 0 && (
+                <span className="text-xs bg-blue-500/20 text-blue-400 px-1 rounded">
+                  {getSimpleFiltersCount(simpleFilters)}
+                </span>
+              )}
+            </button>
+
+            {/* زر فلتر متعدد */}
+            <button
+              onClick={() => setShowMultiFilter(true)}
+              className={`flex flex-col items-center p-2 cursor-pointer min-w-[80px] ${
+                activeFilterType === 'multi' && getMultiFiltersCount(multiFilters) > 0
                   ? 'text-green-400 bg-green-500/10'
                   : 'text-gray-300 hover:text-white'
               }`}
             >
               <FunnelIcon className="h-5 w-5 mb-1" />
-              <span className="text-sm">المنتجات</span>
-              {(selectedProductIds.length > 0 || selectedCategoryIds.length > 0) && (
+              <span className="text-sm">فلتر متعدد</span>
+              {activeFilterType === 'multi' && getMultiFiltersCount(multiFilters) > 0 && (
                 <span className="text-xs bg-green-500/20 text-green-400 px-1 rounded">
-                  {selectedProductIds.length + selectedCategoryIds.length}
+                  {getMultiFiltersCount(multiFilters)}
                 </span>
               )}
             </button>
 
-            <button 
-              onClick={() => setShowCustomersFilter(true)}
-              className={`flex flex-col items-center p-2 cursor-pointer min-w-[80px] ${
-                selectedCustomerIds.length > 0 || selectedCustomerGroupIds.length > 0
-                  ? 'text-green-400 bg-green-500/10'
-                  : 'text-gray-300 hover:text-white'
-              }`}
-            >
-              <UserGroupIcon className="h-5 w-5 mb-1" />
-              <span className="text-sm">العملاء</span>
-              {(selectedCustomerIds.length > 0 || selectedCustomerGroupIds.length > 0) && (
-                <span className="text-xs bg-green-500/20 text-green-400 px-1 rounded">
-                  {selectedCustomerIds.length + selectedCustomerGroupIds.length}
-                </span>
-              )}
-            </button>
-
-            <button 
+            <button
               onClick={() => setShowDateFilter(true)}
               className="flex flex-col items-center p-2 text-gray-300 hover:text-white cursor-pointer min-w-[80px]"
             >
               <CalendarDaysIcon className="h-5 w-5 mb-1" />
               <span className="text-sm">تواريخ</span>
-            </button>
-
-            <button className="flex flex-col items-center p-2 text-gray-300 hover:text-white cursor-pointer min-w-[80px]">
-              <FunnelIcon className="h-5 w-5 mb-1" />
-              <span className="text-sm">فروع ومخازن</span>
             </button>
 
             <button className="flex flex-col items-center p-2 text-gray-300 hover:text-white cursor-pointer min-w-[80px]">
@@ -3104,6 +3119,34 @@ function ReportsPageContent() {
           }}
           initialSelectedCustomers={selectedCustomerIds}
           initialSelectedGroups={selectedCustomerGroupIds}
+        />
+
+        {/* Simple Filter Modal */}
+        <SimpleFilterModal
+          isOpen={showSimpleFilter}
+          onClose={() => setShowSimpleFilter(false)}
+          onApply={(filters) => {
+            setSimpleFilters(filters);
+            setActiveFilterType('simple');
+            // Reset multi filters when using simple filter
+            setMultiFilters(initialMultiFilters);
+            console.log('Simple Filters Applied:', filters);
+          }}
+          initialFilters={simpleFilters}
+        />
+
+        {/* Multi Filter Modal */}
+        <MultiFilterModal
+          isOpen={showMultiFilter}
+          onClose={() => setShowMultiFilter(false)}
+          onApply={(filters) => {
+            setMultiFilters(filters);
+            setActiveFilterType('multi');
+            // Reset simple filters when using multi filter
+            setSimpleFilters(initialSimpleFilters);
+            console.log('Multi Filters Applied:', filters);
+          }}
+          initialFilters={multiFilters}
         />
 
         {/* Columns Control Modal with async loading */}
