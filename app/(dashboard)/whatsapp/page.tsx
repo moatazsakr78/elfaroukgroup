@@ -23,6 +23,7 @@ import {
   SignalIcon,
   SignalSlashIcon,
   ArrowRightIcon,
+  ArrowUturnLeftIcon,
 } from '@heroicons/react/24/outline'
 
 interface Message {
@@ -36,6 +37,10 @@ interface Message {
   media_url?: string
   created_at: string
   is_read?: boolean
+  // للرد على الرسائل
+  quoted_message_id?: string
+  quoted_message_text?: string
+  quoted_message_sender?: string
 }
 
 interface Conversation {
@@ -58,6 +63,117 @@ interface WhatsAppContact {
 
 type AttachmentType = 'image' | 'video' | 'document' | 'location' | null
 
+// MessageBubble Component with swipe and context menu support
+interface MessageBubbleProps {
+  msg: Message
+  onReply: (msg: Message) => void
+  onContextMenu: (e: React.MouseEvent, msg: Message) => void
+  renderMessageContent: (msg: Message) => React.ReactNode
+  formatTime: (timestamp: string) => string
+}
+
+function MessageBubble({ msg, onReply, onContextMenu, renderMessageContent, formatTime }: MessageBubbleProps) {
+  const [touchStart, setTouchStart] = useState(0)
+  const [swipeOffset, setSwipeOffset] = useState(0)
+  const [isSwiping, setIsSwiping] = useState(false)
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchStart(e.touches[0].clientX)
+    setIsSwiping(true)
+  }
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isSwiping) return
+    const diff = touchStart - e.touches[0].clientX
+    // Only allow swipe left (positive diff)
+    if (diff > 0) {
+      setSwipeOffset(Math.min(diff, 80))
+    }
+  }
+
+  const handleTouchEnd = () => {
+    if (swipeOffset > 50) {
+      onReply(msg)
+    }
+    setSwipeOffset(0)
+    setIsSwiping(false)
+  }
+
+  return (
+    <div
+      className={`flex ${msg.message_type === 'outgoing' ? 'justify-start' : 'justify-end'} relative group`}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
+      {/* Reply indicator on swipe */}
+      <div
+        className={`absolute ${msg.message_type === 'outgoing' ? 'left-0' : 'right-0'} top-1/2 -translate-y-1/2 transition-opacity duration-200`}
+        style={{
+          opacity: swipeOffset > 20 ? Math.min(swipeOffset / 60, 1) : 0,
+          transform: `translateY(-50%) translateX(${msg.message_type === 'outgoing' ? -40 : 40}px)`
+        }}
+      >
+        <div className="bg-green-600 rounded-full p-2">
+          <ArrowUturnLeftIcon className="h-4 w-4 text-white" />
+        </div>
+      </div>
+
+      <div
+        className={`max-w-[85%] md:max-w-[70%] rounded-lg px-3 md:px-4 py-2 cursor-pointer select-none ${
+          msg.message_type === 'outgoing'
+            ? 'bg-green-600 text-white rounded-bl-none'
+            : 'bg-[#374151] text-white rounded-br-none'
+        }`}
+        style={{
+          wordBreak: 'break-word',
+          transform: `translateX(${msg.message_type === 'outgoing' ? -swipeOffset : swipeOffset}px)`,
+          transition: isSwiping ? 'none' : 'transform 0.2s ease-out'
+        }}
+        onContextMenu={(e) => onContextMenu(e, msg)}
+      >
+        {/* Quoted message preview */}
+        {msg.quoted_message_text && (
+          <div className={`rounded px-2 py-1 mb-2 border-r-2 ${
+            msg.message_type === 'outgoing'
+              ? 'bg-green-700/50 border-white/50'
+              : 'bg-black/20 border-green-500'
+          }`}>
+            <p className={`text-xs font-medium ${
+              msg.message_type === 'outgoing' ? 'text-white/80' : 'text-green-400'
+            }`}>
+              {msg.quoted_message_sender}
+            </p>
+            <p className="text-xs text-gray-300 truncate">{msg.quoted_message_text}</p>
+          </div>
+        )}
+        {renderMessageContent(msg)}
+        <div className={`flex items-center gap-1 mt-1 ${
+          msg.message_type === 'outgoing' ? 'justify-start' : 'justify-end'
+        }`}>
+          <span className="text-xs opacity-70">
+            {formatTime(msg.created_at)}
+          </span>
+          {msg.message_type === 'outgoing' && (
+            <CheckCircleIcon className="h-3 w-3 opacity-70" />
+          )}
+        </div>
+      </div>
+
+      {/* Hover reply button for desktop */}
+      <button
+        onClick={() => onReply(msg)}
+        className={`hidden md:flex opacity-0 group-hover:opacity-100 transition-opacity absolute top-1/2 -translate-y-1/2 ${
+          msg.message_type === 'outgoing' ? '-left-8' : '-right-8'
+        } p-1.5 bg-gray-600 hover:bg-gray-500 rounded-full`}
+        title="رد"
+      >
+        <ArrowUturnLeftIcon className="h-3.5 w-3.5 text-white" />
+      </button>
+    </div>
+  )
+}
+
 export default function WhatsAppPage() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -74,6 +190,10 @@ export default function WhatsAppPage() {
   const [isRecordingVoice, setIsRecordingVoice] = useState(false)
   const [showMobileChat, setShowMobileChat] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  // Reply state
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; msg: Message } | null>(null)
 
   // Attachment state
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false)
@@ -482,6 +602,13 @@ export default function WhatsAppPage() {
         to: selectedConversation,
       }
 
+      // Add quotedMessageId if replying to a message
+      if (replyingTo) {
+        requestBody.quotedMessageId = replyingTo.message_id
+        requestBody.quotedMessageText = replyingTo.message_text
+        requestBody.quotedMessageSender = replyingTo.message_type === 'outgoing' ? 'أنت' : replyingTo.customer_name
+      }
+
       if (attachmentType) {
         requestBody.messageType = attachmentType
 
@@ -519,6 +646,7 @@ export default function WhatsAppPage() {
       if (data.success) {
         setNewMessage('')
         resetAttachment()
+        setReplyingTo(null) // Clear reply after sending
         fetchMessages()
       } else {
         setError(data.error || 'فشل في إرسال الرسالة')
@@ -883,28 +1011,16 @@ export default function WhatsAppPage() {
                                 </span>
                               </div>
                             )}
-                            <div className={`flex ${msg.message_type === 'outgoing' ? 'justify-start' : 'justify-end'}`}>
-                              <div
-                                className={`max-w-[85%] md:max-w-[70%] rounded-lg px-3 md:px-4 py-2 ${
-                                  msg.message_type === 'outgoing'
-                                    ? 'bg-green-600 text-white rounded-bl-none'
-                                    : 'bg-[#374151] text-white rounded-br-none'
-                                }`}
-                                style={{ wordBreak: 'break-word' }}
-                              >
-                                {renderMessageContent(msg)}
-                                <div className={`flex items-center gap-1 mt-1 ${
-                                  msg.message_type === 'outgoing' ? 'justify-start' : 'justify-end'
-                                }`}>
-                                  <span className="text-xs opacity-70">
-                                    {formatTime(msg.created_at)}
-                                  </span>
-                                  {msg.message_type === 'outgoing' && (
-                                    <CheckCircleIcon className="h-3 w-3 opacity-70" />
-                                  )}
-                                </div>
-                              </div>
-                            </div>
+                            <MessageBubble
+                              msg={msg}
+                              onReply={(message) => setReplyingTo(message)}
+                              onContextMenu={(e, message) => {
+                                e.preventDefault()
+                                setContextMenu({ x: e.clientX, y: e.clientY, msg: message })
+                              }}
+                              renderMessageContent={renderMessageContent}
+                              formatTime={formatTime}
+                            />
                           </div>
                         )
                       })}
@@ -1078,6 +1194,26 @@ export default function WhatsAppPage() {
                   </div>
                 )}
 
+                {/* Reply Preview Bar */}
+                {replyingTo && (
+                  <div className="bg-[#2B3544] px-4 py-2 border-t border-gray-600 flex items-center gap-3">
+                    <div className="w-1 h-10 bg-green-500 rounded-full flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-green-400 text-xs font-medium">
+                        {replyingTo.message_type === 'outgoing' ? 'أنت' : replyingTo.customer_name}
+                      </p>
+                      <p className="text-gray-400 text-sm truncate">{replyingTo.message_text}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setReplyingTo(null)}
+                      className="p-1 text-gray-400 hover:text-white hover:bg-gray-600/50 rounded-full transition-colors flex-shrink-0"
+                    >
+                      <XMarkIcon className="h-5 w-5" />
+                    </button>
+                  </div>
+                )}
+
                 {/* Message Input */}
                 <form onSubmit={handleSendMessage} className="bg-[#374151] px-4 py-3 border-t border-gray-600">
                   {error && (
@@ -1230,6 +1366,36 @@ export default function WhatsAppPage() {
           </div>
         </div>
       </div>
+
+      {/* Context Menu for Reply */}
+      {contextMenu && (
+        <>
+          {/* Backdrop to close menu */}
+          <div
+            className="fixed inset-0 z-50"
+            onClick={() => setContextMenu(null)}
+          />
+          {/* Menu */}
+          <div
+            className="fixed z-50 bg-[#2B3544] border border-gray-600 rounded-lg shadow-lg py-1 min-w-[140px]"
+            style={{
+              left: Math.min(contextMenu.x, window.innerWidth - 160),
+              top: Math.min(contextMenu.y, window.innerHeight - 100),
+            }}
+          >
+            <button
+              onClick={() => {
+                setReplyingTo(contextMenu.msg)
+                setContextMenu(null)
+              }}
+              className="flex items-center gap-2 w-full px-4 py-2 text-white hover:bg-gray-600/50 text-sm"
+            >
+              <ArrowUturnLeftIcon className="h-4 w-4" />
+              <span>رد على الرسالة</span>
+            </button>
+          </div>
+        </>
+      )}
 
       {/* Global Styles */}
       <style jsx global>{`

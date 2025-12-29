@@ -39,6 +39,10 @@ interface SendMessageRequest {
   pollQuestion?: string;
   pollOptions?: string[];
   selectableOptionsCount?: number;
+  // For reply/quoted messages
+  quotedMessageId?: string;
+  quotedMessageText?: string;
+  quotedMessageSender?: string;
 }
 
 export async function POST(request: NextRequest) {
@@ -60,6 +64,9 @@ export async function POST(request: NextRequest) {
       pollQuestion,
       pollOptions,
       selectableOptionsCount,
+      quotedMessageId,
+      quotedMessageText,
+      quotedMessageSender,
     } = body;
 
     // Validate required fields
@@ -83,7 +90,7 @@ export async function POST(request: NextRequest) {
             { status: 400 }
           );
         }
-        result = await sendWhatsAppMessage(cleanNumber, message);
+        result = await sendWhatsAppMessage(cleanNumber, message, quotedMessageId);
         messageText = message;
         break;
 
@@ -183,6 +190,10 @@ export async function POST(request: NextRequest) {
           media_type: mediaType,
           media_url: mediaUrl || null,
           created_at: new Date().toISOString(),
+          // Quoted message fields
+          quoted_message_id: quotedMessageId || null,
+          quoted_message_text: quotedMessageText || null,
+          quoted_message_sender: quotedMessageSender || null,
         });
       } catch (dbError) {
         console.log('Note: Could not save to database:', dbError);

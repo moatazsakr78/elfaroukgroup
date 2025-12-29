@@ -186,18 +186,24 @@ export function cleanPhoneNumber(phone: string): string {
 
 // ============ Send Message Functions ============
 
-// Send a text message
+// Send a text message (with optional quoted message for replies)
 export async function sendWhatsAppMessage(
   to: string,
-  message: string
+  message: string,
+  quotedMessageId?: string
 ): Promise<SendMessageResponse> {
   try {
     const cleanNumber = cleanPhoneNumber(to);
 
-    const payload: WasenderTextPayload = {
+    const payload: any = {
       to: cleanNumber,
       text: message,
     };
+
+    // Add quotedMessageId if replying to a message
+    if (quotedMessageId) {
+      payload.quotedMessageId = quotedMessageId;
+    }
 
     const data = await makeApiRequest('/send-message', 'POST', payload);
 
