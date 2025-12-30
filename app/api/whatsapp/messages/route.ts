@@ -31,6 +31,38 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ messages: [], conversations: [] });
     }
 
+    // Fetch reactions for all messages
+    const messageIds = (data || []).map(m => m.message_id);
+    let reactionsMap: Record<string, { emoji: string; from_number: string; is_from_me: boolean }[]> = {};
+
+    if (messageIds.length > 0) {
+      const { data: reactions, error: reactionsError } = await supabase
+        .schema('elfaroukgroup')
+        .from('whatsapp_reactions')
+        .select('message_id, emoji, from_number, is_from_me')
+        .in('message_id', messageIds);
+
+      if (!reactionsError && reactions) {
+        // Group reactions by message_id
+        for (const reaction of reactions) {
+          if (!reactionsMap[reaction.message_id]) {
+            reactionsMap[reaction.message_id] = [];
+          }
+          reactionsMap[reaction.message_id].push({
+            emoji: reaction.emoji,
+            from_number: reaction.from_number,
+            is_from_me: reaction.is_from_me
+          });
+        }
+      }
+    }
+
+    // Add reactions to each message
+    const messagesWithReactions = (data || []).map(msg => ({
+      ...msg,
+      reactions: reactionsMap[msg.message_id] || []
+    }));
+
     // Group messages by phone number for conversations view
     const conversations = new Map<string, {
       phoneNumber: string;
@@ -82,7 +114,7 @@ export async function GET(request: NextRequest) {
     );
 
     return NextResponse.json({
-      messages: data || [],
+      messages: messagesWithReactions,
       conversations: sortedConversations,
     });
   } catch (error) {

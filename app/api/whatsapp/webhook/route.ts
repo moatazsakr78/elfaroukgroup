@@ -142,6 +142,60 @@ export async function POST(request: NextRequest) {
     } else if (event === 'webhook.test') {
       // Test webhook event
       console.log('🧪 Webhook test received');
+    } else if (event === 'messages.reaction') {
+      // Handle reaction events
+      console.log('👍 Reaction event received:', JSON.stringify(body.data, null, 2));
+
+      const reactionsData = body.data;
+      const reactions = Array.isArray(reactionsData) ? reactionsData : [reactionsData];
+
+      for (const reactionData of reactions) {
+        const key = reactionData.key || {};
+        const reaction = reactionData.reaction || {};
+
+        // Get the message ID that was reacted to
+        const messageId = reaction.key?.id || key.id;
+        const emoji = reaction.text;
+        const fromNumber = key.cleanedSenderPn || key.remoteJid?.replace('@s.whatsapp.net', '').replace('@c.us', '') || '';
+        const isFromMe = key.fromMe === true;
+
+        if (messageId) {
+          // If emoji is empty or null, it means removing the reaction
+          if (!emoji || emoji === '') {
+            const { error: deleteError } = await supabase
+              .schema('elfaroukgroup')
+              .from('whatsapp_reactions')
+              .delete()
+              .eq('message_id', messageId)
+              .eq('from_number', fromNumber);
+
+            if (deleteError) {
+              console.error('❌ Error removing reaction:', deleteError.message);
+            } else {
+              console.log('🗑️ Reaction removed from message:', messageId);
+            }
+          } else {
+            // Add or update the reaction
+            const { error: upsertError } = await supabase
+              .schema('elfaroukgroup')
+              .from('whatsapp_reactions')
+              .upsert({
+                message_id: messageId,
+                from_number: fromNumber,
+                emoji: emoji,
+                is_from_me: isFromMe
+              }, {
+                onConflict: 'message_id,from_number'
+              });
+
+            if (upsertError) {
+              console.error('❌ Error storing reaction:', upsertError.message);
+            } else {
+              console.log('👍 Reaction stored:', emoji, 'on message:', messageId, 'from:', fromNumber);
+            }
+          }
+        }
+      }
     } else {
       console.log('📝 Unknown event type:', event);
     }

@@ -44,6 +44,12 @@ interface Message {
   quoted_message_id?: string
   quoted_message_text?: string
   quoted_message_sender?: string
+  // للـ reactions
+  reactions?: {
+    emoji: string
+    from_number: string
+    is_from_me: boolean
+  }[]
 }
 
 interface Conversation {
@@ -151,6 +157,30 @@ function MessageBubble({ msg, onReply, onContextMenu, renderMessageContent, form
           </div>
         )}
         {renderMessageContent(msg)}
+
+        {/* Reactions Display */}
+        {msg.reactions && msg.reactions.length > 0 && (
+          <div className={`flex flex-wrap gap-1 mt-1 ${
+            msg.message_type === 'outgoing' ? 'justify-start' : 'justify-end'
+          }`}>
+            {Object.entries(
+              msg.reactions.reduce((acc, r) => {
+                acc[r.emoji] = (acc[r.emoji] || 0) + 1;
+                return acc;
+              }, {} as Record<string, number>)
+            ).map(([emoji, count]) => (
+              <span
+                key={emoji}
+                className="bg-black/30 rounded-full px-1.5 py-0.5 text-xs flex items-center gap-0.5"
+                title={msg.reactions?.filter(r => r.emoji === emoji).map(r => r.from_number).join(', ')}
+              >
+                <span>{emoji}</span>
+                {count > 1 && <span className="text-gray-300 text-[10px]">{count}</span>}
+              </span>
+            ))}
+          </div>
+        )}
+
         <div className={`flex items-center gap-1 mt-1 ${
           msg.message_type === 'outgoing' ? 'justify-start' : 'justify-end'
         }`}>
@@ -1333,8 +1363,8 @@ export default function WhatsAppPage() {
                       )}
                     </div>
 
-                    {/* Emoji Picker Button */}
-                    <div className="relative">
+                    {/* Emoji Picker Button - يظهر فقط على الديسكتوب لأن الموبايل فيه emoji مدمج */}
+                    <div className="relative hidden md:block">
                       <button
                         type="button"
                         onClick={() => setShowEmojiPicker(!showEmojiPicker)}

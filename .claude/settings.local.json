@@ -334,7 +334,10 @@
       "Bash(start http://localhost:3000/safes)",
       "WebFetch(domain:wasenderapi.com)",
       "WebFetch(domain:www.wasenderapi.com)",
-      "Bash(start http://localhost:3000/whatsapp)"
+      "Bash(start http://localhost:3000/whatsapp)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:pypi.org)",
+      "WebFetch(domain:blog.ultramsg.com)"
     ],
     "deny": [],
     "additionalDirectories": [
