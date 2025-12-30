@@ -40,7 +40,7 @@ interface SendMessageRequest {
   pollOptions?: string[];
   selectableOptionsCount?: number;
   // For reply/quoted messages
-  quotedMsgId?: number; // WasenderAPI integer ID for replyTo
+  quotedMsgId?: number | string; // WasenderAPI integer ID or WhatsApp string ID for replyTo
   quotedMessageId?: string; // WhatsApp string ID for our database
   quotedMessageText?: string;
   quotedMessageSender?: string;

@@ -158,7 +158,7 @@ export async function POST(request: NextRequest) {
 // Parse WasenderAPI message format
 interface ParsedMessage {
   messageId: string;
-  msgId?: number; // WasenderAPI integer ID for replyTo
+  msgId?: number; // WasenderAPI integer ID for replyTo (only available for sent messages)
   from: string;
   customerName: string;
   text: string;
@@ -179,10 +179,16 @@ function parseWasenderMessage(msgData: any): ParsedMessage | null {
     // Get message ID
     const messageId = key.id || msgData.id || `msg_${Date.now()}`;
 
-    // Get msgId (integer) from WasenderAPI - needed for replyTo
+    // Get msgId from WasenderAPI - needed for replyTo
+    // WasenderAPI returns msgId only for sent messages
+    // Note: msg_id column is bigint, so we only store integer values
+    // For incoming messages without msgId, the frontend uses message_id (string) as fallback
     const msgId = msgData.msgId || msgData.msg_id || key.msgId || null;
+
     if (msgId) {
       console.log('📌 Found msgId:', msgId);
+    } else {
+      console.log('📌 No msgId found, will use message_id as fallback for replies');
     }
 
     // Get phone number - WasenderAPI uses cleanedSenderPn or cleanedParticipantPn
@@ -294,7 +300,7 @@ function parseWasenderMessage(msgData: any): ParsedMessage | null {
 
     return {
       messageId,
-      msgId: msgId ? Number(msgId) : undefined,
+      msgId: msgId ? Number(msgId) : undefined, // Convert to number for bigint column
       from,
       customerName,
       text,

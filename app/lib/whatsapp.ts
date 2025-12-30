@@ -191,7 +191,7 @@ export function cleanPhoneNumber(phone: string): string {
 export async function sendWhatsAppMessage(
   to: string,
   message: string,
-  replyToMsgId?: number // WasenderAPI integer msgId for replying
+  replyToMsgId?: number | string // WasenderAPI msgId (integer) or WhatsApp message ID (string)
 ): Promise<SendMessageResponse> {
   try {
     const cleanNumber = cleanPhoneNumber(to);
@@ -201,9 +201,11 @@ export async function sendWhatsAppMessage(
       text: message,
     };
 
-    // Add replyTo if replying to a message (WasenderAPI requires integer msgId)
+    // Add replyTo if replying to a message
+    // WasenderAPI may accept both integer msgId and string WhatsApp message ID
     if (replyToMsgId) {
       payload.replyTo = replyToMsgId;
+      console.log('📎 Sending with replyTo:', replyToMsgId, typeof replyToMsgId);
     }
 
     const data = await makeApiRequest('/send-message', 'POST', payload);
