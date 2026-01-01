@@ -74,6 +74,13 @@ const loadSettingsOnce = async (): Promise<ProductDisplaySettings> => {
   return settingsPromise;
 };
 
+// Function to clear cached settings (call after settings are updated)
+export function clearSettingsCache() {
+  cachedSettings = null;
+  settingsPromise = null;
+  console.log('🗑️ [useProductFilter] Cache cleared');
+}
+
 export function useProductFilter() {
   const [displaySettings, setDisplaySettings] = useState<ProductDisplaySettings>({
     display_mode: 'show_all',

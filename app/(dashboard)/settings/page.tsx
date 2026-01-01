@@ -26,6 +26,7 @@ import { useStoreDisplaySettings } from '@/lib/hooks/useStoreDisplaySettings';
 import { useCompanySettings } from '@/lib/hooks/useCompanySettings';
 import { useStoreThemes } from '@/lib/hooks/useStoreTheme';
 import { supabase } from '@/app/lib/supabase/client';
+import { clearSettingsCache } from '@/lib/hooks/useProductFilter';
 import LogoEditor from '@/app/components/LogoEditor';
 
 // Custom dropdown component with delete buttons
@@ -733,7 +734,45 @@ export default function SettingsPage() {
           socialMedia: socialMedia,
           branches: branches
         });
+      } else if (selectedCategory === 'store') {
+        // Save product display mode
+        const { data: existingData } = await supabase
+          .from('product_display_settings')
+          .select('id')
+          .single();
+
+        if (existingData?.id) {
+          const { error: displayModeError } = await supabase
+            .from('product_display_settings')
+            .update({
+              display_mode: productDisplayMode,
+              selected_branches: selectedBranches,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', existingData.id);
+
+          if (displayModeError) {
+            console.error('Error saving product display mode:', displayModeError);
+            throw displayModeError;
+          }
+        } else {
+          const { error: displayModeError } = await supabase
+            .from('product_display_settings')
+            .insert({
+              display_mode: productDisplayMode,
+              selected_warehouses: [],
+              selected_branches: selectedBranches
+            });
+
+          if (displayModeError) {
+            console.error('Error saving product display mode:', displayModeError);
+            throw displayModeError;
+          }
+        }
       }
+
+      // Clear the product display settings cache so the store reflects changes immediately
+      clearSettingsCache();
 
       alert('تم حفظ الإعدادات بنجاح!');
     } catch (error) {
