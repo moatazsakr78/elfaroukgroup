@@ -4225,31 +4225,6 @@ function POSPageContent() {
                   )}
                 </button>
 
-                {/* Conditional Customer/Supplier Button */}
-                {isPurchaseMode ? (
-                  <button
-                    onClick={toggleSupplierModal}
-                    className="flex flex-col items-center p-2 text-gray-300 hover:text-white cursor-pointer min-w-[80px] transition-all relative"
-                  >
-                    <BuildingStorefrontIcon className="h-5 w-5 mb-1" />
-                    <span className="text-sm">اختيار مورد</span>
-                    {!selectedSupplier && (
-                      <div className="w-1 h-1 bg-red-400 rounded-full mt-1"></div>
-                    )}
-                  </button>
-                ) : (
-                  <button
-                    onClick={toggleCustomerModal}
-                    className="flex flex-col items-center p-2 text-gray-300 hover:text-white cursor-pointer min-w-[80px] transition-all relative"
-                  >
-                    <UserIcon className="h-5 w-5 mb-1" />
-                    <span className="text-sm">اختيار عميل</span>
-                    {!selections.customer && (
-                      <div className="w-1 h-1 bg-red-400 rounded-full mt-1"></div>
-                    )}
-                  </button>
-                )}
-
                 {/* Conditional Branch/Warehouse Button */}
                 {isPurchaseMode ? (
                   <button
@@ -4503,31 +4478,6 @@ function POSPageContent() {
                   <div className="w-1 h-1 bg-red-400 rounded-full absolute -top-1 -right-1"></div>
                 )}
               </button>
-
-              {/* Conditional Customer/Supplier Button */}
-              {isPurchaseMode ? (
-                <button
-                  onClick={toggleSupplierModal}
-                  className="flex items-center gap-2 px-3 py-2 bg-[#2B3544] border border-gray-600 rounded text-gray-300 hover:text-white hover:bg-[#374151] cursor-pointer whitespace-nowrap flex-shrink-0 transition-colors relative"
-                >
-                  <BuildingStorefrontIcon className="h-4 w-4" />
-                  <span className="text-xs">اختيار مورد</span>
-                  {!selectedSupplier && (
-                    <div className="w-1 h-1 bg-red-400 rounded-full absolute -top-1 -right-1"></div>
-                  )}
-                </button>
-              ) : (
-                <button
-                  onClick={toggleCustomerModal}
-                  className="flex items-center gap-2 px-3 py-2 bg-[#2B3544] border border-gray-600 rounded text-gray-300 hover:text-white hover:bg-[#374151] cursor-pointer whitespace-nowrap flex-shrink-0 transition-colors relative"
-                >
-                  <UserIcon className="h-4 w-4" />
-                  <span className="text-xs">اختيار عميل</span>
-                  {!selections.customer && (
-                    <div className="w-1 h-1 bg-red-400 rounded-full absolute -top-1 -right-1"></div>
-                  )}
-                </button>
-              )}
 
               {/* Conditional Branch/Warehouse Button */}
               {isPurchaseMode ? (
