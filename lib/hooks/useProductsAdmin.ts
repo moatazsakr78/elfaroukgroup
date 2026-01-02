@@ -427,7 +427,7 @@ export function useProductsAdmin(options?: { selectedBranches?: string[] }) {
         'postgres_changes',
         {
           event: '*',
-          schema: 'public',
+          schema: 'elfaroukgroup',
           table: 'products',
         },
         (payload) => {
@@ -445,7 +445,7 @@ export function useProductsAdmin(options?: { selectedBranches?: string[] }) {
         'postgres_changes',
         {
           event: '*',
-          schema: 'public',
+          schema: 'elfaroukgroup',
           table: 'inventory',
         },
         (payload) => {

@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-// Simple Supabase client setup
+// Simple Supabase client setup with elfaroukgroup schema
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  {
+    db: { schema: 'elfaroukgroup' }
+  }
 )
 
 export async function POST(request: NextRequest) {
@@ -14,25 +17,82 @@ export async function POST(request: NextRequest) {
     console.log('API request:', { action, productId, branchId, quantity, auditStatus })
     
     if (action === 'update_inventory') {
-      // Use stored procedure with SECURITY DEFINER to bypass RLS
-      const { data, error } = await supabase
-        .rpc('update_inventory_quantity', {
-          input_product_id: productId,
-          input_branch_id: branchId,
-          input_quantity: parseInt(quantity)
-        })
-        
+      console.log('Updating inventory:', { productId, branchId, quantity })
+
+      // First check if the record exists
+      const { data: existingRecord, error: checkError } = await supabase
+        .from('inventory')
+        .select('id, quantity, product_id, branch_id')
+        .eq('product_id', productId)
+        .eq('branch_id', branchId)
+        .maybeSingle()
+
+      if (checkError) {
+        console.error('Error checking inventory record:', checkError)
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Error checking inventory record',
+            details: checkError.message
+          },
+          { status: 500 }
+        )
+      }
+
+      const newQuantity = parseInt(quantity)
+      let data
+      let error
+
+      if (existingRecord) {
+        // Update existing record
+        const result = await supabase
+          .from('inventory')
+          .update({
+            quantity: newQuantity,
+            last_updated: new Date().toISOString()
+          })
+          .eq('id', existingRecord.id)
+          .select('*')
+          .single()
+
+        data = result.data
+        error = result.error
+      } else {
+        // Insert new record
+        const result = await supabase
+          .from('inventory')
+          .insert({
+            product_id: productId,
+            branch_id: branchId,
+            quantity: newQuantity,
+            last_updated: new Date().toISOString()
+          })
+          .select('*')
+          .single()
+
+        data = result.data
+        error = result.error
+      }
+
       if (error) {
         console.error('Supabase error:', error)
-        throw error
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Failed to update inventory',
+            details: error.message
+          },
+          { status: 500 }
+        )
       }
-      
+
       console.log('Successfully updated inventory:', data)
-      
-      return NextResponse.json({ 
-        success: true, 
+
+      return NextResponse.json({
+        success: true,
         data,
-        message: 'Inventory updated successfully' 
+        message: 'Inventory updated successfully',
+        previousQuantity: existingRecord?.quantity || 0
       })
     }
     

@@ -337,7 +337,12 @@
       "Bash(start http://localhost:3000/whatsapp)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:pypi.org)",
-      "WebFetch(domain:blog.ultramsg.com)"
+      "WebFetch(domain:blog.ultramsg.com)",
+      "mcp__playwright__playwright_get",
+      "Bash(git -C \"C:\\\\Users\\\\pc\\\\Desktop\\\\elfaroukgroup\" log --oneline -20)",
+      "Bash(git -C \"C:\\\\Users\\\\pc\\\\Desktop\\\\elfaroukgroup\" show 4f9c543 --stat)",
+      "Bash(git -C \"C:\\\\Users\\\\pc\\\\Desktop\\\\elfaroukgroup\" diff lib/hooks/useProductsAdmin.ts)",
+      "Bash(git -C \"C:\\\\Users\\\\pc\\\\Desktop\\\\elfaroukgroup\" diff .claude/settings.local.json)"
     ],
     "deny": [],
     "additionalDirectories": [

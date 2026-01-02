@@ -32,7 +32,13 @@ export async function GET(request: NextRequest) {
     if (error) {
       // If table doesn't exist, return empty array
       console.log('Database query error:', error.message);
-      return NextResponse.json({ messages: [], conversations: [] });
+      return NextResponse.json({ messages: [], conversations: [] }, {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        }
+      });
     }
 
     // Fetch reactions for all messages
@@ -120,9 +126,21 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       messages: messagesWithReactions,
       conversations: sortedConversations,
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      }
     });
   } catch (error) {
     console.error('Fetch messages error:', error);
-    return NextResponse.json({ messages: [], conversations: [] });
+    return NextResponse.json({ messages: [], conversations: [] }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      }
+    });
   }
 }
