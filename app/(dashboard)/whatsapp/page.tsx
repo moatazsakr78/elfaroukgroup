@@ -292,7 +292,6 @@ export default function WhatsAppPage() {
   const fetchConversations = useCallback(async () => {
     try {
       setError(null)
-      console.log('📱 Fetching conversations...')
 
       // Fetch conversations and contacts in parallel
       const [messagesRes, contactsRes] = await Promise.all([
@@ -300,19 +299,10 @@ export default function WhatsAppPage() {
         fetch('/api/whatsapp/contacts')
       ])
 
-      console.log('📱 Response status:', messagesRes.status, contactsRes.status)
-
-      if (!messagesRes.ok) {
-        console.error('📱 Messages API error:', messagesRes.status, messagesRes.statusText)
-        throw new Error(`Messages API error: ${messagesRes.status}`)
-      }
-
       const messagesData = await messagesRes.json()
       const contactsData = await contactsRes.json()
 
       console.log('📱 Loaded conversations:', messagesData.conversations?.length || 0)
-      console.log('📱 First 3 conversations:', JSON.stringify(messagesData.conversations?.slice(0, 3), null, 2))
-      console.log('📱 contactsData:', contactsData?.length || 0)
 
       setContacts(contactsData || [])
 
@@ -326,19 +316,11 @@ export default function WhatsAppPage() {
           profilePictureUrl: contact?.profile_picture_url || null
         }
       })
-      console.log('📱 Setting conversations:', conversationsWithPictures.length)
-      // DEBUG: Alert to confirm data is received
-      if (conversationsWithPictures.length > 0) {
-        console.log('✅ SUCCESS: Got', conversationsWithPictures.length, 'conversations!')
-      } else {
-        console.warn('⚠️ WARNING: No conversations received from API!')
-      }
       setConversations(conversationsWithPictures)
     } catch (err) {
       console.error('Error fetching conversations:', err)
       setError('فشل في تحميل المحادثات')
     } finally {
-      console.log('📱 Setting isLoading to false')
       setIsLoading(false)
     }
   }, [])
@@ -464,9 +446,6 @@ export default function WhatsAppPage() {
     conv.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
     conv.phoneNumber.includes(searchQuery)
   )
-
-  // Debug logging for render
-  console.log('🔄 Render: isLoading=', isLoading, 'conversations=', conversations.length, 'filtered=', filteredConversations.length)
 
   // Reset attachment state
   const resetAttachment = () => {

@@ -44,9 +44,9 @@ export async function GET(request: NextRequest) {
       query = query.eq('from_number', phoneNumber);
     }
 
-    const { data, error } = await query;
+    const { data: rawData, error } = await query;
 
-    console.log(`📨 Fetched ${data?.length || 0} messages from database`);
+    console.log(`📨 Fetched ${rawData?.length || 0} messages from database`);
 
     if (error) {
       // If table doesn't exist, return empty array
@@ -58,6 +58,29 @@ export async function GET(request: NextRequest) {
           'Expires': '0',
         }
       });
+    }
+
+    // Validate and filter out corrupted messages
+    const data = (rawData || []).filter(msg => {
+      // Required fields validation
+      if (!msg.from_number || typeof msg.from_number !== 'string' || msg.from_number.trim() === '') {
+        console.warn(`⚠️ Skipping message with invalid from_number:`, msg.id);
+        return false;
+      }
+      if (!msg.message_id) {
+        console.warn(`⚠️ Skipping message with missing message_id:`, msg.id);
+        return false;
+      }
+      if (!msg.created_at || isNaN(new Date(msg.created_at).getTime())) {
+        console.warn(`⚠️ Skipping message with invalid created_at:`, msg.id);
+        return false;
+      }
+      return true;
+    });
+
+    const skippedCount = (rawData?.length || 0) - data.length;
+    if (skippedCount > 0) {
+      console.log(`⚠️ Skipped ${skippedCount} invalid messages`);
     }
 
     // Fetch reactions for all messages (using batched queries to avoid URL length limit)

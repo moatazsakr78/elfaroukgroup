@@ -71,6 +71,16 @@ export async function POST(request: NextRequest) {
         const message = parseWasenderMessage(msgData);
 
         if (message) {
+          // Extra validation before storing
+          if (!message.from || message.from.trim() === '') {
+            console.warn('⚠️ Skipping message: invalid phone number');
+            continue;
+          }
+          if (!message.messageId) {
+            console.warn('⚠️ Skipping message: missing message ID');
+            continue;
+          }
+
           const messageTypeLabel = isOutgoing ? '📤 Outgoing' : '📥 Incoming';
           console.log(`${messageTypeLabel} message (${event}):`, message.customerName, '-', message.text);
 
