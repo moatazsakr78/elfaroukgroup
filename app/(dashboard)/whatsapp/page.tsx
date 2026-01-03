@@ -27,6 +27,7 @@ import {
   FaceSmileIcon,
 } from '@heroicons/react/24/outline'
 import { EmojiPicker } from '../../components/EmojiPicker'
+import { getSupabase } from '@/app/lib/supabase/client'
 
 interface Message {
   id: string
@@ -402,18 +403,47 @@ export default function WhatsAppPage() {
     }
   }, [fetchConversations, checkConnectionStatus])
 
-  // Refresh selected conversation messages when conversations update
+  // Supabase Realtime subscription for incoming messages
   useEffect(() => {
-    if (selectedConversation) {
-      // Refresh messages for the selected conversation every 30 seconds
-      // (Optimistic Update handles sent messages immediately)
-      const messageInterval = setInterval(() => {
-        fetchConversationMessages(selectedConversation)
-      }, 30000)
+    if (!selectedConversation) return
 
-      return () => clearInterval(messageInterval)
+    const supabase = getSupabase()
+
+    // Subscribe to new messages for this conversation
+    const channel = supabase
+      .channel(`whatsapp_messages_${selectedConversation}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'elfaroukgroup',
+          table: 'whatsapp_messages',
+          filter: `from_number=eq.${selectedConversation}`
+        },
+        (payload) => {
+          console.log('📩 Realtime: New message received', payload)
+          const newMsg = payload.new as Message
+
+          // Only add incoming messages (outgoing are handled by Optimistic Update)
+          if (newMsg.message_type === 'incoming') {
+            setMessages(prev => {
+              // Avoid duplicates
+              const exists = prev.some(m => m.message_id === newMsg.message_id)
+              if (exists) return prev
+              return [...prev, newMsg]
+            })
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('📡 Realtime subscription status:', status)
+      })
+
+    return () => {
+      console.log('📡 Cleaning up Realtime subscription')
+      supabase.removeChannel(channel)
     }
-  }, [selectedConversation, fetchConversationMessages])
+  }, [selectedConversation])
 
   // Scroll to bottom only when needed (new messages or conversation change)
   useEffect(() => {
