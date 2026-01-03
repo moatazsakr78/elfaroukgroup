@@ -67,6 +67,13 @@ export async function POST(request: NextRequest) {
         const key = msgData.key || {};
         const isOutgoing = key.fromMe === true;
 
+        // Skip outgoing messages - they're already saved by Send API
+        // This prevents duplicate messages in the database
+        if (isOutgoing) {
+          console.log('⏭️ Skipping outgoing message (already saved by Send API)');
+          continue;
+        }
+
         // Parse WasenderAPI message format
         const message = parseWasenderMessage(msgData);
 
@@ -81,8 +88,7 @@ export async function POST(request: NextRequest) {
             continue;
           }
 
-          const messageTypeLabel = isOutgoing ? '📤 Outgoing' : '📥 Incoming';
-          console.log(`${messageTypeLabel} message (${event}):`, message.customerName, '-', message.text);
+          console.log(`📥 Incoming message (${event}):`, message.customerName, '-', message.text);
 
           // Check if message contains media that needs decryption
           let mediaUrl = message.mediaUrl;
@@ -109,12 +115,12 @@ export async function POST(request: NextRequest) {
               message_id: message.messageId,
               msg_id: message.msgId || null, // WasenderAPI integer ID for replyTo
               from_number: message.from,
-              customer_name: isOutgoing ? 'الفاروق جروب' : message.customerName,
+              customer_name: message.customerName,
               message_text: message.text,
-              message_type: isOutgoing ? 'outgoing' : 'incoming',
+              message_type: 'incoming',
               media_type: message.mediaType || 'text',
               media_url: mediaUrl || null,
-              is_read: isOutgoing ? true : false,
+              is_read: false,
               created_at: message.timestamp.toISOString(),
               // Quoted/Reply message fields
               quoted_message_id: message.quotedMessageId || null,
@@ -130,16 +136,14 @@ export async function POST(request: NextRequest) {
           } else {
             console.log('✅ Message stored successfully');
 
-            // Sync contact and fetch profile picture only for incoming messages
-            if (!isOutgoing) {
-              syncContactWithProfilePicture(message.from, message.customerName)
-                .then(contact => {
-                  if (contact?.profile_picture_url) {
-                    console.log('📷 Contact profile picture synced:', contact.profile_picture_url);
-                  }
-                })
-                .catch(err => console.error('❌ Error syncing contact:', err));
-            }
+            // Sync contact and fetch profile picture for incoming messages
+            syncContactWithProfilePicture(message.from, message.customerName)
+              .then(contact => {
+                if (contact?.profile_picture_url) {
+                  console.log('📷 Contact profile picture synced:', contact.profile_picture_url);
+                }
+              })
+              .catch(err => console.error('❌ Error syncing contact:', err));
           }
         }
       }
