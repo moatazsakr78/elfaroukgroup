@@ -16,6 +16,8 @@ import {
 import { usePerformanceMonitor } from "../../lib/utils/performanceMonitor";
 import { useSystemCurrency, useFormatPrice } from "@/lib/hooks/useCurrency";
 import { preloadImagesInBackground, getPreloadStats } from "@/lib/utils/imagePreloader";
+import { getLastPurchaseInfo, LastPurchaseInfo } from "@/app/lib/utils/purchase-cost-management";
+import PurchaseHistoryModal from "@/app/components/PurchaseHistoryModal";
 
 // Editable Field Component for inline editing
 interface EditableFieldProps {
@@ -210,6 +212,8 @@ function POSPageContent() {
   const [showAddToCartModal, setShowAddToCartModal] = useState(false);
   const [showColorSelectionModal, setShowColorSelectionModal] = useState(false);
   const [modalProduct, setModalProduct] = useState<any>(null);
+  const [lastPurchaseInfo, setLastPurchaseInfo] = useState<LastPurchaseInfo | null>(null);
+  const [showPurchaseHistoryModal, setShowPurchaseHistoryModal] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [isProcessingInvoice, setIsProcessingInvoice] = useState(false);
@@ -500,6 +504,14 @@ function POSPageContent() {
     window.addEventListener('resize', checkDevice);
     return () => window.removeEventListener('resize', checkDevice);
   }, []);
+
+  // Fetch last purchase info when product modal opens
+  useEffect(() => {
+    if (showProductModal && modalProduct?.id) {
+      setLastPurchaseInfo(null); // Reset while loading
+      getLastPurchaseInfo(modalProduct.id).then(setLastPurchaseInfo);
+    }
+  }, [showProductModal, modalProduct?.id]);
 
   // Cleanup: Clear any stale edit invoice data from localStorage on page load
   // This prevents old data from interfering with new edit sessions
@@ -1786,6 +1798,26 @@ function POSPageContent() {
 
     return Math.max(0, itemsTotal);
   }, [cartItems, cartDiscount, cartDiscountType]);
+
+  // حساب الربح السري
+  const calculateProfit = useCallback(() => {
+    return cartItems.reduce((totalProfit, item) => {
+      const costPrice = item.cost_price || item.product?.cost_price || 0
+      const sellingPrice = item.price
+      const quantity = item.quantity
+      // حساب الربح مع خصم المنتج
+      let itemTotal = sellingPrice * quantity
+      if (item.discount) {
+        if (item.discountType === "percentage") {
+          itemTotal -= (itemTotal * item.discount) / 100
+        } else {
+          itemTotal -= item.discount
+        }
+      }
+      const itemProfit = itemTotal - (costPrice * quantity)
+      return totalProfit + itemProfit
+    }, 0)
+  }, [cartItems])
 
   // =============================================
   // 🔍 useEffect للإضافة المباشرة عند مسح الباركود
@@ -4971,22 +5003,46 @@ function POSPageContent() {
                 </div>
               </div>
 
-              {/* Right Side - Change Calculator */}
+              {/* Right Side - Change Calculator + Secret Info */}
               {!isTransferMode && !isPurchaseMode && (
-                <div className="flex flex-col items-end self-start">
-                  <input
-                    type="number"
-                    value={paidAmount}
-                    onChange={(e) => setPaidAmount(e.target.value)}
-                    placeholder="المدفوع"
-                    className="w-24 px-2 py-1 bg-[#2B3544] border border-gray-600 rounded text-white text-xs placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 text-left"
-                    dir="ltr"
-                  />
-                  {paidAmount && parseFloat(paidAmount) > 0 && (
-                    <span className="text-orange-400 text-xs font-medium mt-1">
-                      الباقي: {(parseFloat(paidAmount) - calculateTotalWithDiscounts()).toFixed(0)}
-                    </span>
-                  )}
+                <div className="flex items-start gap-6">
+                  {/* معلومات سرية - ربح الفاتورة ورصيد العميل */}
+                  <div className="flex items-center gap-4 text-xs text-gray-500 font-mono self-center">
+                    {/* PD: الربح - يظهر دائماً مع وجود منتجات */}
+                    {cartItems.length > 0 && (
+                      <span title="ربح الفاتورة">
+                        PD: {calculateProfit().toFixed(0)}
+                      </span>
+                    )}
+                    {/* قبل/بعد: رصيد العميل - يظهر فقط مع عميل غير افتراضي */}
+                    {selections.customer && selections.customer.id !== defaultCustomer?.id && cartItems.length > 0 && (
+                      <>
+                        <span className="text-red-400" title="رصيد العميل قبل">
+                          قبل: {(selections.customer.account_balance || 0).toFixed(0)}
+                        </span>
+                        <span className="text-green-400" title="رصيد العميل بعد">
+                          بعد: {((selections.customer.account_balance || 0) + calculateTotalWithDiscounts() - parseFloat(paidAmount || '0')).toFixed(0)}
+                        </span>
+                      </>
+                    )}
+                  </div>
+
+                  {/* حاسبة الباقي */}
+                  <div className="flex flex-col items-end">
+                    <input
+                      type="number"
+                      value={paidAmount}
+                      onChange={(e) => setPaidAmount(e.target.value)}
+                      placeholder="المدفوع"
+                      className="w-24 px-2 py-1 bg-[#2B3544] border border-gray-600 rounded text-white text-xs placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 text-left"
+                      dir="ltr"
+                    />
+                    {paidAmount && parseFloat(paidAmount) > 0 && (
+                      <span className="text-orange-400 text-xs font-medium mt-1">
+                        الباقي: {(parseFloat(paidAmount) - calculateTotalWithDiscounts()).toFixed(0)}
+                      </span>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -6240,6 +6296,54 @@ function POSPageContent() {
                       </div>
                     </div>
 
+                    {/* Profit & Purchase Info Card */}
+                    <div className="bg-[#374151] rounded-xl p-6 border border-[#4A5568]">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="w-8 h-8 bg-yellow-600/20 rounded-lg flex items-center justify-center">
+                          <span className="text-yellow-400 text-sm">📈</span>
+                        </div>
+                        <h3 className="text-lg font-semibold text-white">الربح ومعلومات الشراء</h3>
+                      </div>
+
+                      {/* ربح المنتج - بنفس شكل PD */}
+                      <div className="bg-[#2B3544] rounded-lg p-4 mb-4">
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-400 text-sm">ربح المنتج</span>
+                          <span className="text-xs text-gray-500 font-mono">
+                            PD: {((modalProduct.price || 0) - (modalProduct.cost_price || 0)).toFixed(0)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* آخر سعر شراء واسم المورد */}
+                      {lastPurchaseInfo ? (
+                        <div className="space-y-3">
+                          <div className="flex justify-between items-center py-2 border-b border-gray-600/50">
+                            <span className="text-gray-400">آخر سعر شراء</span>
+                            <span className="text-orange-400 font-bold">
+                              {lastPurchaseInfo.unitPrice.toFixed(2)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center py-2 border-b border-gray-600/50">
+                            <span className="text-gray-400">المورد</span>
+                            <span className="text-white font-medium">
+                              {lastPurchaseInfo.supplierName}
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => setShowPurchaseHistoryModal(true)}
+                            className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors"
+                          >
+                            عرض تاريخ الشراء
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="text-gray-500 text-sm text-center py-4">
+                          لا يوجد سجل شراء لهذا المنتج
+                        </p>
+                      )}
+                    </div>
+
                     {/* Description Card */}
                     {modalProduct.description && (
                       <div className="bg-[#374151] rounded-xl p-6 border border-[#4A5568]">
@@ -6971,6 +7075,16 @@ function POSPageContent() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Purchase History Modal */}
+      {modalProduct && (
+        <PurchaseHistoryModal
+          isOpen={showPurchaseHistoryModal}
+          onClose={() => setShowPurchaseHistoryModal(false)}
+          productId={modalProduct.id}
+          productName={modalProduct.name}
+        />
       )}
     </div>
   );
