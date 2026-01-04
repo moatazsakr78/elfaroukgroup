@@ -5031,10 +5031,10 @@ function POSPageContent() {
                     {selections.customer && selections.customer.id !== defaultCustomer?.id && cartItems.length > 0 && (
                       <>
                         <span className="text-red-400" title="رصيد العميل قبل">
-                          قبل: {(selections.customer.account_balance || 0).toFixed(0)}
+                          قبل: {(selections.customer.calculated_balance || 0).toFixed(0)}
                         </span>
                         <span className="text-green-400" title="رصيد العميل بعد">
-                          بعد: {((selections.customer.account_balance || 0) + calculateTotalWithDiscounts() - parseFloat(paidAmount || '0')).toFixed(0)}
+                          بعد: {((selections.customer.calculated_balance || 0) + calculateTotalWithDiscounts() - parseFloat(paidAmount || '0')).toFixed(0)}
                         </span>
                       </>
                     )}
