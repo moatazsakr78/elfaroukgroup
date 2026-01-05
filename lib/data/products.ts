@@ -68,19 +68,18 @@ export async function getWebsiteProducts() {
     if (products && products.length > 0) {
       const productIds = products.map(p => p.id);
 
-      // Query 1: Fetch colors
+      // Query 1: Fetch ALL colors (avoid .in() with large arrays - causes Bad Request)
       const { data: colorsData } = await supabase
         .from('product_color_shape_definitions')
         .select('id, product_id, name, color_hex, image_url, sort_order')
-        .in('product_id', productIds)
         .eq('variant_type', 'color')
         .order('sort_order', { ascending: true });
 
-      // Query 2: Fetch inventory totals
+      // Query 2: Fetch ALL inventory totals (avoid .in() with large arrays - causes Bad Request)
+      // Then filter in JavaScript - more efficient for 800+ products
       const { data: inventoryData, error: inventoryError } = await supabase
         .from('inventory')
-        .select('product_id, quantity')
-        .in('product_id', productIds);
+        .select('product_id, quantity');
 
       if (inventoryError) {
         console.error('Error fetching inventory data:', inventoryError);
@@ -123,7 +122,9 @@ export async function getWebsiteProducts() {
 
         // Override stock values with actual inventory totals
         products.forEach((product: any) => {
-          product.stock = stockMap.get(product.id) || 0;
+          const totalQty = stockMap.get(product.id) || 0;
+          product.stock = totalQty;
+          product.totalQuantity = totalQty; // ← إضافة هذا الحقل لـ DesktopHome
         });
       }
 
