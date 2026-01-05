@@ -882,10 +882,35 @@ export default function InventoryPage() {
 
       console.log('Update successful:', result.data)
 
-      // Refresh the products data to show the updated quantity
-      console.log('Refreshing products data...')
-      await fetchProducts()  // Force refetch (wrapper already uses force=true)
-      console.log('Products data refreshed')
+      // ✨ Smart update - Update only this product's inventory (no full refetch!)
+      const updatedInventory = result.data
+      setProducts(prevProducts =>
+        prevProducts.map(product => {
+          if (product.id === selectedProductForQuantity.id) {
+            // Update this product's inventory data
+            const newInventoryData = {
+              ...product.inventoryData,
+              [branchId]: {
+                ...product.inventoryData?.[branchId],
+                quantity: newQuantity,
+              }
+            }
+
+            // Recalculate total quantity
+            const newTotalQuantity = Object.values(newInventoryData).reduce(
+              (sum, inv: any) => sum + (inv?.quantity || 0), 0
+            )
+
+            return {
+              ...product,
+              inventoryData: newInventoryData,
+              totalQuantity: newTotalQuantity
+            } as any
+          }
+          return product
+        })
+      )
+      console.log('✅ Product inventory updated locally (no full refetch)')
 
       // ✨ Refresh website cache instantly (On-Demand ISR)
       console.log('🔄 Refreshing website cache for product...')
@@ -933,18 +958,22 @@ export default function InventoryPage() {
       console.error('Missing product ID or branch ID')
       return
     }
-    
+
     const productId = auditContextMenu.productId
     const branchId = auditContextMenu.branchId
-    
+
     // Close context menu
     setAuditContextMenu({ show: false, x: 0, y: 0, productId: '', branchId: '' })
-    
+
+    // ✨ Store previous status for rollback
+    const currentProduct = products.find(p => p.id === productId)
+    const previousStatus = currentProduct?.inventoryData?.[branchId]?.audit_status || 'غير مجرود'
+
     try {
       console.log('Updating audit status:', { productId, branchId, newStatus })
-      
+
       // Optimistic update - update UI immediately
-      setProducts(prevProducts => 
+      setProducts(prevProducts =>
         prevProducts.map(product => {
           if (product.id === productId) {
             return {
@@ -961,7 +990,7 @@ export default function InventoryPage() {
           return product
         })
       )
-      
+
       // Call API in background
       const response = await fetch('/api/supabase', {
         method: 'POST',
@@ -975,25 +1004,41 @@ export default function InventoryPage() {
           auditStatus: newStatus
         })
       })
-      
+
       const result = await response.json()
-      
+
       if (!response.ok || !result.success) {
-        // If API fails, revert the optimistic update
-        await fetchProducts()
+        // ✨ Smart rollback - restore only this product's previous status (no full refetch!)
+        setProducts(prevProducts =>
+          prevProducts.map(product => {
+            if (product.id === productId) {
+              return {
+                ...product,
+                inventoryData: {
+                  ...product.inventoryData,
+                  [branchId]: {
+                    ...product.inventoryData?.[branchId],
+                    audit_status: previousStatus
+                  } as any
+                }
+              } as any
+            }
+            return product
+          })
+        )
         throw new Error(result.error || 'Failed to update audit status')
       }
-      
-      console.log('Audit status updated successfully:', result)
-      
+
+      console.log('✅ Audit status updated successfully:', result)
+
       // Don't refresh - rely on real-time subscription to update the data
       // The optimistic update should persist until the real-time update arrives
-      
+
     } catch (error) {
       console.error('Error updating audit status:', error)
       alert('فشل في تحديث حالة الجرد: ' + (error instanceof Error ? error.message : 'خطأ غير معروف'))
     }
-  }, [auditContextMenu.productId, auditContextMenu.branchId, setProducts, fetchProducts])
+  }, [auditContextMenu.productId, auditContextMenu.branchId, setProducts, products])
   
   // Handle audit status filter toggle
   const handleAuditStatusToggle = useCallback((status: string) => {
