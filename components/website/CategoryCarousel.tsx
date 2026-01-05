@@ -151,25 +151,6 @@ export default function CategoryCarousel({
         </button>
       )}
 
-      {/* Dots Indicator */}
-      {categories.length > itemsPerView && (
-        <div className="flex justify-center mt-6 gap-2">
-          {Array.from({ length: Math.ceil((categories.length - itemsPerView + 1)) }, (_, index) => (
-            <button
-              key={index}
-              onClick={() => setCurrentIndex(index)}
-              className={`w-3 h-3 rounded-full transition-all duration-300 ${
-                index === currentIndex 
-                  ? 'scale-110' 
-                  : 'hover:bg-gray-400'
-              }`}
-              style={{
-                backgroundColor: index === currentIndex ? 'var(--primary-color)' : '#D1D5DB'
-              }}
-            />
-          ))}
-        </div>
-      )}
     </div>
   );
 }

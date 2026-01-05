@@ -7,11 +7,11 @@ import { createClient } from '@supabase/supabase-js';
 import type { Database } from '@/app/lib/supabase/database.types';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-// Use service role key for server-side queries (has full access to inventory table)
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+// Use anon key for server-side queries (RLS is disabled in this project)
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-// Create a server-side Supabase client with service role key
-const supabase = createClient<Database, 'elfaroukgroup'>(supabaseUrl, supabaseServiceKey, {
+// Create a server-side Supabase client with anon key
+const supabase = createClient<Database, 'elfaroukgroup'>(supabaseUrl, supabaseAnonKey, {
   db: {
     schema: 'elfaroukgroup' // Use elfaroukgroup schema for multi-tenant architecture
   },
@@ -77,10 +77,20 @@ export async function getWebsiteProducts() {
         .order('sort_order', { ascending: true });
 
       // Query 2: Fetch inventory totals
-      const { data: inventoryData } = await supabase
+      const { data: inventoryData, error: inventoryError } = await supabase
         .from('inventory')
         .select('product_id, quantity')
         .in('product_id', productIds);
+
+      if (inventoryError) {
+        console.error('Error fetching inventory data:', inventoryError);
+      }
+
+      // Debug: Log inventory data
+      console.log('📦 Inventory fetched:', inventoryData?.length || 0, 'records');
+      if (inventoryData && inventoryData.length > 0) {
+        console.log('📦 Sample inventory:', inventoryData[0]);
+      }
 
       // Process colors
       if (colorsData) {
