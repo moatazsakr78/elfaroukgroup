@@ -198,125 +198,142 @@ export async function createSalesInvoice({
     // Note: Invoices are only assigned to the selected safe - no duplication to main safe
     // Each safe shows only its own invoices
 
-    // Update inventory quantities
-    for (const item of cartItems) {
-      // First get current quantity, then update
-      const { data: currentInventory, error: getError } = await supabase
-        .from('inventory')
-        .select('quantity')
-        .eq('product_id', item.product.id)
-        .eq('branch_id', selections.branch.id)
-        .single()
+    // Update inventory quantities (parallel execution for better performance)
+    const inventoryUpdatePromises = cartItems.map(async (item) => {
+      try {
+        // First get current quantity, then update
+        const { data: currentInventory, error: getError } = await supabase
+          .from('inventory')
+          .select('quantity')
+          .eq('product_id', item.product.id)
+          .eq('branch_id', selections.branch.id)
+          .single()
 
-      if (getError) {
-        console.warn(`Failed to get current inventory for product ${item.product.id}:`, getError.message)
-        continue
-      }
-
-      // For returns, add quantity back; for sales, subtract
-      const quantityChange = isReturn ? item.quantity : -item.quantity
-      const newQuantity = Math.max(0, (currentInventory?.quantity || 0) + quantityChange)
-
-      const { error: inventoryError } = await supabase
-        .from('inventory')
-        .update({
-          quantity: newQuantity
-        })
-        .eq('product_id', item.product.id)
-        .eq('branch_id', selections.branch.id)
-
-      if (inventoryError) {
-        console.warn(`Failed to update inventory for product ${item.product.id}:`, inventoryError.message)
-        // Don't throw error here as the sale was created successfully
-      }
-
-      // Update product variant quantities if the item has color selections
-      if (item.selectedColors && Object.keys(item.selectedColors).length > 0) {
-        for (const [colorName, colorQuantity] of Object.entries(item.selectedColors as Record<string, number>)) {
-          if (colorQuantity > 0) {
-            // First, get the variant definition ID from product_color_shape_definitions
-            const { data: variantDefinition, error: defError } = await supabase
-              .from('product_color_shape_definitions')
-              .select('id')
-              .eq('product_id', item.product.id)
-              .eq('name', colorName)
-              .eq('variant_type', 'color')
-              .single()
-
-            if (defError || !variantDefinition) {
-              console.warn(`Failed to get variant definition for product ${item.product.id}, color ${colorName}:`, defError?.message)
-              continue
-            }
-
-            // Get current quantity from product_variant_quantities
-            const { data: currentQuantity, error: qtyGetError } = await supabase
-              .from('product_variant_quantities')
-              .select('quantity')
-              .eq('variant_definition_id', variantDefinition.id)
-              .eq('branch_id', selections.branch.id)
-              .single()
-
-            if (qtyGetError && qtyGetError.code !== 'PGRST116') {
-              console.warn(`Failed to get current quantity for variant ${variantDefinition.id}:`, qtyGetError.message)
-              continue
-            }
-
-            // For returns, add quantity back; for sales, subtract
-            const variantQuantityChange = isReturn ? colorQuantity : -colorQuantity
-            const newVariantQuantity = Math.max(0, (currentQuantity?.quantity || 0) + variantQuantityChange)
-
-            // Update or insert quantity in product_variant_quantities
-            const { error: qtyUpdateError } = await supabase
-              .from('product_variant_quantities')
-              .upsert({
-                variant_definition_id: variantDefinition.id,
-                branch_id: selections.branch.id,
-                quantity: newVariantQuantity,
-                updated_at: new Date().toISOString()
-              }, {
-                onConflict: 'variant_definition_id,branch_id'
-              })
-
-            if (qtyUpdateError) {
-              console.warn(`Failed to update variant quantity for variant ${variantDefinition.id}:`, qtyUpdateError.message)
-              // Don't throw error here as the sale was created successfully
-            }
-          }
+        if (getError) {
+          console.warn(`Failed to get current inventory for product ${item.product.id}:`, getError.message)
+          return
         }
+
+        // For returns, add quantity back; for sales, subtract
+        const quantityChange = isReturn ? item.quantity : -item.quantity
+        const newQuantity = Math.max(0, (currentInventory?.quantity || 0) + quantityChange)
+
+        const { error: inventoryError } = await supabase
+          .from('inventory')
+          .update({
+            quantity: newQuantity
+          })
+          .eq('product_id', item.product.id)
+          .eq('branch_id', selections.branch.id)
+
+        if (inventoryError) {
+          console.warn(`Failed to update inventory for product ${item.product.id}:`, inventoryError.message)
+        }
+      } catch (err) {
+        console.warn(`Error updating inventory for product ${item.product.id}:`, err)
       }
+    })
+
+    // Update product variant quantities in parallel
+    const variantUpdatePromises = cartItems
+      .filter(item => item.selectedColors && Object.keys(item.selectedColors).length > 0)
+      .flatMap(item => {
+        return Object.entries(item.selectedColors as Record<string, number>)
+          .filter(([_, colorQuantity]) => colorQuantity > 0)
+          .map(async ([colorName, colorQuantity]) => {
+            try {
+              // First, get the variant definition ID from product_color_shape_definitions
+              const { data: variantDefinition, error: defError } = await supabase
+                .from('product_color_shape_definitions')
+                .select('id')
+                .eq('product_id', item.product.id)
+                .eq('name', colorName)
+                .eq('variant_type', 'color')
+                .single()
+
+              if (defError || !variantDefinition) {
+                console.warn(`Failed to get variant definition for product ${item.product.id}, color ${colorName}:`, defError?.message)
+                return
+              }
+
+              // Get current quantity from product_variant_quantities
+              const { data: currentQuantity, error: qtyGetError } = await supabase
+                .from('product_variant_quantities')
+                .select('quantity')
+                .eq('variant_definition_id', variantDefinition.id)
+                .eq('branch_id', selections.branch.id)
+                .single()
+
+              if (qtyGetError && qtyGetError.code !== 'PGRST116') {
+                console.warn(`Failed to get current quantity for variant ${variantDefinition.id}:`, qtyGetError.message)
+                return
+              }
+
+              // For returns, add quantity back; for sales, subtract
+              const variantQuantityChange = isReturn ? colorQuantity : -colorQuantity
+              const newVariantQuantity = Math.max(0, (currentQuantity?.quantity || 0) + variantQuantityChange)
+
+              // Update or insert quantity in product_variant_quantities
+              const { error: qtyUpdateError } = await supabase
+                .from('product_variant_quantities')
+                .upsert({
+                  variant_definition_id: variantDefinition.id,
+                  branch_id: selections.branch.id,
+                  quantity: newVariantQuantity,
+                  updated_at: new Date().toISOString()
+                }, {
+                  onConflict: 'variant_definition_id,branch_id'
+                })
+
+              if (qtyUpdateError) {
+                console.warn(`Failed to update variant quantity for variant ${variantDefinition.id}:`, qtyUpdateError.message)
+              }
+            } catch (err) {
+              console.warn(`Error updating variant for product ${item.product.id}, color ${colorName}:`, err)
+            }
+          })
+      })
+
+    // Execute all inventory and variant updates in parallel
+    await Promise.all([...inventoryUpdatePromises, ...variantUpdatePromises])
+
+    // Fetch all payment methods at once (optimization: single query instead of loop)
+    const paymentMethodIds = paymentSplitData?.filter(p => p.paymentMethodId).map(p => p.paymentMethodId) || []
+    let methodMap = new Map<string, string>()
+
+    if (paymentMethodIds.length > 0) {
+      const { data: allPaymentMethods } = await supabase
+        .from('payment_methods')
+        .select('id, name')
+        .in('id', paymentMethodIds)
+
+      methodMap = new Map(allPaymentMethods?.map(m => [m.id, m.name]) || [])
     }
 
-    // Save payment split data to customer_payments table
+    // Save payment split data to customer_payments table (batch insert instead of loop)
     if (!isReturn && paymentSplitData && paymentSplitData.length > 0) {
-      for (const payment of paymentSplitData) {
-        if (payment.amount > 0 && payment.paymentMethodId) {
-          // Get payment method name from ID
-          const { data: paymentMethodData } = await supabase
-            .from('payment_methods')
-            .select('name')
-            .eq('id', payment.paymentMethodId)
-            .single()
+      const validPayments = paymentSplitData.filter(p => p.amount > 0 && p.paymentMethodId)
 
-          const paymentMethodName = paymentMethodData?.name || 'cash'
+      if (validPayments.length > 0) {
+        const allPayments = validPayments.map(payment => ({
+          customer_id: customerId,
+          amount: payment.amount,
+          payment_method: methodMap.get(payment.paymentMethodId) || 'cash',
+          notes: `دفعة من فاتورة رقم ${invoiceNumber}`,
+          payment_date: new Date().toISOString().split('T')[0],
+          created_by: userId || null,
+          safe_id: hasNoSafe ? null : selections.record.id
+        }))
 
-          const { error: paymentError } = await supabase
-            .from('customer_payments')
-            .insert({
-              customer_id: customerId,
-              amount: payment.amount,
-              payment_method: paymentMethodName,
-              notes: `دفعة من فاتورة رقم ${invoiceNumber}`,
-              payment_date: new Date().toISOString().split('T')[0],
-              created_by: userId || null,
-              safe_id: hasNoSafe ? null : selections.record.id
-            })
+        const { error: paymentError } = await supabase
+          .from('customer_payments')
+          .insert(allPayments)
 
-          if (paymentError) {
-            console.warn('Failed to save payment entry:', paymentError.message)
-            console.error('Payment error details:', paymentError)
-          } else {
-            console.log(`✅ Payment saved: ${payment.amount} via ${paymentMethodName}`)
-          }
+        if (paymentError) {
+          console.warn('Failed to save payment entries:', paymentError.message)
+          console.error('Payment error details:', paymentError)
+        } else {
+          console.log(`✅ ${allPayments.length} payments saved successfully`)
         }
       }
     }
@@ -327,27 +344,20 @@ export async function createSalesInvoice({
     // The balance is computed in real-time from sales and customer_payments tables
 
     // Calculate cash amount from payments (cash payments go to drawer)
+    // Using methodMap from above instead of querying again (optimization)
     let cashToDrawer = 0
+    const cashPaymentMethods = ['cash', 'نقدي', 'كاش']
 
     if (paymentSplitData && paymentSplitData.length > 0) {
-      // If there's split payment data, find cash payments
-      for (const payment of paymentSplitData) {
-        if (payment.amount > 0 && payment.paymentMethodId) {
-          // Get payment method to check if it's cash
-          const { data: paymentMethodData } = await supabase
-            .from('payment_methods')
-            .select('name')
-            .eq('id', payment.paymentMethodId)
-            .single()
+      // Use the methodMap we already fetched (no additional queries needed)
+      cashToDrawer = paymentSplitData
+        .filter(p => p.amount > 0 && p.paymentMethodId)
+        .filter(p => {
+          const methodName = methodMap.get(p.paymentMethodId)?.toLowerCase() || ''
+          return cashPaymentMethods.includes(methodName)
+        })
+        .reduce((sum, p) => sum + p.amount, 0)
 
-          // If payment method is cash (نقدي or cash), add to drawer
-          if (paymentMethodData?.name?.toLowerCase() === 'cash' ||
-              paymentMethodData?.name === 'نقدي' ||
-              paymentMethodData?.name === 'كاش') {
-            cashToDrawer += payment.amount
-          }
-        }
-      }
       // للمرتجعات: الفلوس تخرج من الخزنة (قيمة سالبة)
       if (isReturn) {
         cashToDrawer = -cashToDrawer
