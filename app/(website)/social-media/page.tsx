@@ -2,7 +2,7 @@ import { Metadata } from 'next';
 import Link from 'next/link';
 import SocialMediaGrid from '@/components/website/SocialMediaGrid';
 import { getSocialMediaData } from '@/lib/data/socialMedia';
-import { getCompanySettings, getStoreTheme } from '@/lib/data/products';
+import { getStoreTheme } from '@/lib/data/products';
 
 /**
  * Social Media Page - Server Component with Static Generation + ISR
@@ -26,9 +26,8 @@ export const dynamic = 'force-static';
 
 export default async function SocialMediaPage() {
   // Fetch data on the server
-  const [socialMediaData, companySettings, theme] = await Promise.all([
+  const [socialMediaData, theme] = await Promise.all([
     getSocialMediaData(),
-    getCompanySettings(),
     getStoreTheme()
   ]);
 
@@ -64,19 +63,10 @@ export default async function SocialMediaPage() {
               <span className="font-semibold">العودة</span>
             </Link>
 
-            {/* Logo and title */}
-            <div className="flex items-center gap-3">
-              {companySettings?.logoUrl && (
-                <img
-                  src={companySettings.logoUrl}
-                  alt={companySettings.name || 'Logo'}
-                  className="w-10 h-10 object-contain rounded-lg"
-                />
-              )}
-              <h1 className="text-xl font-bold text-white">
-                {companySettings?.name || 'تابعنا'}
-              </h1>
-            </div>
+            {/* Title */}
+            <h1 className="text-xl font-bold text-white">
+              تابعنا
+            </h1>
 
             {/* Spacer for centering */}
             <div className="w-20" />
@@ -135,7 +125,7 @@ export default async function SocialMediaPage() {
 
       {/* Footer */}
       <footer className="mt-auto py-6 text-center text-gray-500 text-sm">
-        <p>© {new Date().getFullYear()} {companySettings?.name || 'El Farouk Group'}</p>
+        <p>© {new Date().getFullYear()} El Farouk Group</p>
       </footer>
     </div>
   );

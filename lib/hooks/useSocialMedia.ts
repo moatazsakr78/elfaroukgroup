@@ -3,6 +3,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/app/lib/supabase/client';
 
+// Type assertion for new tables not yet in generated types
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const db = supabase as any;
+
 // Types
 export interface SocialMediaLink {
   id: string;
@@ -74,7 +78,7 @@ export function useSocialMedia() {
       setIsLoading(true);
       setError(null);
 
-      let query = supabase
+      let query = db
         .from('social_media_links')
         .select('*')
         .order('display_order', { ascending: true });
@@ -98,7 +102,7 @@ export function useSocialMedia() {
   // Fetch settings
   const fetchSettings = useCallback(async () => {
     try {
-      const { data, error: fetchError } = await supabase
+      const { data, error: fetchError } = await db
         .from('social_media_settings')
         .select('*')
         .single();
@@ -109,7 +113,7 @@ export function useSocialMedia() {
         setSettings(data);
       } else {
         // Create default settings if none exist
-        const { data: newSettings, error: insertError } = await supabase
+        const { data: newSettings, error: insertError } = await db
           .from('social_media_settings')
           .insert({ icon_shape: 'square' })
           .select()
@@ -130,7 +134,7 @@ export function useSocialMedia() {
       setError(null);
 
       // Get max display_order
-      const { data: maxOrderData } = await supabase
+      const { data: maxOrderData } = await db
         .from('social_media_links')
         .select('display_order')
         .order('display_order', { ascending: false })
@@ -139,7 +143,7 @@ export function useSocialMedia() {
 
       const newOrder = (maxOrderData?.display_order ?? -1) + 1;
 
-      const { data, error: insertError } = await supabase
+      const { data, error: insertError } = await db
         .from('social_media_links')
         .insert({
           ...linkData,
@@ -166,7 +170,7 @@ export function useSocialMedia() {
     try {
       setError(null);
 
-      const { data, error: updateError } = await supabase
+      const { data, error: updateError } = await db
         .from('social_media_links')
         .update(updates)
         .eq('id', id)
@@ -191,7 +195,7 @@ export function useSocialMedia() {
     try {
       setError(null);
 
-      const { error: deleteError } = await supabase
+      const { error: deleteError } = await db
         .from('social_media_links')
         .delete()
         .eq('id', id);
@@ -217,7 +221,7 @@ export function useSocialMedia() {
       const link = links.find(l => l.id === id);
       if (!link) throw new Error('الرابط غير موجود');
 
-      const { data, error: updateError } = await supabase
+      const { data, error: updateError } = await db
         .from('social_media_links')
         .update({ is_active: !link.is_active })
         .eq('id', id)
@@ -250,7 +254,7 @@ export function useSocialMedia() {
 
       // Batch update
       for (const update of updates) {
-        const { error: updateError } = await supabase
+        const { error: updateError } = await db
           .from('social_media_links')
           .update({ display_order: update.display_order })
           .eq('id', update.id);
@@ -278,7 +282,7 @@ export function useSocialMedia() {
         throw new Error('الإعدادات غير موجودة');
       }
 
-      const { data, error: updateError } = await supabase
+      const { data, error: updateError } = await db
         .from('social_media_settings')
         .update(newSettings)
         .eq('id', settings.id)
@@ -361,12 +365,12 @@ export function useSocialMediaPublic() {
     const fetchData = async () => {
       try {
         const [linksResponse, settingsResponse] = await Promise.all([
-          supabase
+          db
             .from('social_media_links')
             .select('*')
             .eq('is_active', true)
             .order('display_order', { ascending: true }),
-          supabase
+          db
             .from('social_media_settings')
             .select('*')
             .single()

@@ -4,13 +4,13 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import type { Database } from '@/app/lib/supabase/database.types';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-// Create a server-side Supabase client
-const supabase = createClient<Database, 'elfaroukgroup'>(supabaseUrl, supabaseAnonKey, {
+// Create a server-side Supabase client for social media tables
+// Note: Using untyped client since these tables are new and not in generated types yet
+const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   db: {
     schema: 'elfaroukgroup'
   },
