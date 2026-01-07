@@ -11,6 +11,7 @@ import CategoriesTreeView from './CategoriesTreeView'
 import ColorAssignmentModal from './ColorAssignmentModal'
 import ColorChangeModal from './ColorChangeModal'
 import ColumnsControlModal from './ColumnsControlModal'
+import MissingDataFilterModal, { filterProductsByMissingData } from './MissingDataFilterModal'
 import { useBranches, Branch, ProductVariant } from '../lib/hooks/useBranches'
 import { useProductsAdmin, Product } from '@/lib/hooks/useProductsAdmin'
 import {
@@ -33,7 +34,8 @@ import {
   EyeIcon,
   XMarkIcon,
   FolderIcon,
-  FolderOpenIcon
+  FolderOpenIcon,
+  ExclamationTriangleIcon
 } from '@heroicons/react/24/outline'
 
 // Database category interface
@@ -89,6 +91,11 @@ export default function ProductsTabletView({
   const [selectedBranches, setSelectedBranches] = useState<{[key: string]: boolean}>({})
   const [tempSelectedBranches, setTempSelectedBranches] = useState<{[key: string]: boolean}>({})
   const [isCategoriesHidden, setIsCategoriesHidden] = useState(true)
+
+  // Missing data filter state
+  const [showMissingDataModal, setShowMissingDataModal] = useState(false)
+  const [missingDataFilter, setMissingDataFilter] = useState<Set<string>>(new Set())
+  const [missingDataFilterMode, setMissingDataFilterMode] = useState<'OR' | 'AND'>('OR')
 
   // Ref for scrollable toolbar
   const toolbarRef = useRef<HTMLDivElement>(null)
@@ -619,10 +626,16 @@ export default function ProductsTabletView({
     fetchCategories()
   }, [])
 
-  const filteredProducts = products.filter(product =>
+  // Filter products by search query
+  let filteredProducts = products.filter(product =>
     product.name.includes(searchQuery) ||
     (product.barcode && product.barcode.includes(searchQuery))
   )
+
+  // Apply missing data filter
+  if (missingDataFilter.size > 0) {
+    filteredProducts = filterProductsByMissingData(filteredProducts, missingDataFilter, missingDataFilterMode)
+  }
 
   // Toggle categories visibility
   const toggleCategoriesVisibility = () => {
@@ -789,6 +802,20 @@ export default function ProductsTabletView({
             >
               <ArrowPathIcon className="h-4 w-4" />
               <span className="text-xs">تغيير اللون</span>
+            </button>
+
+            <button
+              onClick={() => setShowMissingDataModal(true)}
+              className={`flex items-center gap-2 px-3 py-2 cursor-pointer whitespace-nowrap rounded transition-colors ${
+                missingDataFilter.size > 0
+                  ? 'text-yellow-400 hover:text-yellow-300 bg-yellow-900/20 hover:bg-yellow-900/30'
+                  : 'text-gray-300 hover:text-white bg-[#2B3544] hover:bg-[#434E61]'
+              }`}
+            >
+              <ExclamationTriangleIcon className="h-4 w-4" />
+              <span className="text-xs">
+                منتجات بدون {missingDataFilter.size > 0 ? `(${missingDataFilter.size})` : ''}
+              </span>
             </button>
 
           </div>
@@ -1278,6 +1305,20 @@ export default function ProductsTabletView({
         onClose={() => setShowColumnsModal(false)}
         columns={getAllColumns}
         onColumnsChange={handleColumnsChange}
+      />
+
+      {/* Missing Data Filter Modal */}
+      <MissingDataFilterModal
+        isOpen={showMissingDataModal}
+        onClose={() => setShowMissingDataModal(false)}
+        onApply={(filters, mode) => {
+          setMissingDataFilter(filters)
+          setMissingDataFilterMode(mode)
+        }}
+        initialFilters={missingDataFilter}
+        initialFilterMode={missingDataFilterMode}
+        isMobile={true}
+        branches={branches}
       />
 
       {/* Mobile/Tablet Branches Modal */}

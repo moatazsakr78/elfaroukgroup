@@ -118,6 +118,11 @@ export default function ProductsPage() {
   // Barcode print modal state
   const [showBarcodePrintModal, setShowBarcodePrintModal] = useState(false)
 
+  // Missing data filter state
+  const [showMissingDataModal, setShowMissingDataModal] = useState(false)
+  const [missingDataFilter, setMissingDataFilter] = useState<Set<string>>(new Set())
+  const [missingDataFilterMode, setMissingDataFilterMode] = useState<'OR' | 'AND'>('OR')
+
   // Scroll state for hiding/showing toolbar
   const [isToolbarHidden, setIsToolbarHidden] = useState(false)
   const [lastScrollY, setLastScrollY] = useState(0)
@@ -866,8 +871,13 @@ export default function ProductsPage() {
       )
     }
 
+    // Missing data filter
+    if (missingDataFilter.size > 0) {
+      filtered = filterProductsByMissingData(filtered, missingDataFilter, missingDataFilterMode)
+    }
+
     return filtered
-  }, [products, searchQuery, selectedCategory, categories, getAllSubcategoryIds])
+  }, [products, searchQuery, selectedCategory, categories, getAllSubcategoryIds, missingDataFilter, missingDataFilterMode])
 
   // Use tablet view if detected as tablet or mobile device
   if (isTablet) {
@@ -1080,17 +1090,31 @@ export default function ProductsPage() {
               <span className="text-sm">الألوان والأشكال</span>
             </button>
 
-            <button 
+            <button
               onClick={() => selectedProduct && setShowColorChangeModal(true)}
               className={`flex flex-col items-center p-2 cursor-pointer min-w-[80px] ${
                 selectedProduct
-                  ? 'text-orange-300 hover:text-orange-100' 
+                  ? 'text-orange-300 hover:text-orange-100'
                   : 'text-gray-500 cursor-not-allowed'
               }`}
               disabled={!selectedProduct}
             >
               <ArrowPathIcon className="h-5 w-5 mb-1" />
               <span className="text-sm">تغيير اللون</span>
+            </button>
+
+            <button
+              onClick={() => setShowMissingDataModal(true)}
+              className={`flex flex-col items-center p-2 cursor-pointer min-w-[80px] ${
+                missingDataFilter.size > 0
+                  ? 'text-yellow-400 hover:text-yellow-300'
+                  : 'text-gray-300 hover:text-white'
+              }`}
+            >
+              <ExclamationTriangleIcon className="h-5 w-5 mb-1" />
+              <span className="text-sm">
+                منتجات بدون {missingDataFilter.size > 0 ? `(${missingDataFilter.size})` : ''}
+              </span>
             </button>
 
           </div>
@@ -2101,6 +2125,19 @@ export default function ProductsPage() {
         isOpen={showBarcodePrintModal}
         onClose={() => setShowBarcodePrintModal(false)}
         products={filteredProducts}
+        branches={branches}
+      />
+
+      {/* Missing Data Filter Modal */}
+      <MissingDataFilterModal
+        isOpen={showMissingDataModal}
+        onClose={() => setShowMissingDataModal(false)}
+        onApply={(filters, mode) => {
+          setMissingDataFilter(filters)
+          setMissingDataFilterMode(mode)
+        }}
+        initialFilters={missingDataFilter}
+        initialFilterMode={missingDataFilterMode}
         branches={branches}
       />
 

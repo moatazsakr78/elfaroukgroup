@@ -3,7 +3,13 @@
 import { useState, useEffect } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 
-// Filter field definitions
+// Branch interface
+interface Branch {
+  id: string;
+  name: string;
+}
+
+// Filter field definitions (static sections - inventory is dynamic)
 const FILTER_SECTIONS = [
   {
     id: 'basic',
@@ -31,19 +37,12 @@ const FILTER_SECTIONS = [
     ]
   },
   {
-    id: 'inventory',
-    title: 'المخزون',
-    icon: '📦',
-    fields: [
-      { id: 'stock', label: 'المخزون' },
-    ]
-  },
-  {
     id: 'media',
     title: 'الوسائط',
     icon: '🖼️',
     fields: [
-      { id: 'images', label: 'الصور' },
+      { id: 'main_image', label: 'الصورة الرئيسية' },
+      { id: 'sub_images', label: 'الصور الفرعية' },
       { id: 'videos', label: 'الفيديوهات' },
     ]
   }
@@ -56,6 +55,7 @@ interface MissingDataFilterModalProps {
   initialFilters?: Set<string>;
   initialFilterMode?: 'OR' | 'AND';
   isMobile?: boolean;
+  branches?: Branch[];
 }
 
 export default function MissingDataFilterModal({
@@ -64,7 +64,8 @@ export default function MissingDataFilterModal({
   onApply,
   initialFilters = new Set(),
   initialFilterMode = 'OR',
-  isMobile = false
+  isMobile = false,
+  branches = []
 }: MissingDataFilterModalProps) {
   const [selectedFilters, setSelectedFilters] = useState<Set<string>>(new Set(initialFilters));
   const [filterMode, setFilterMode] = useState<'OR' | 'AND'>(initialFilterMode);
@@ -162,7 +163,10 @@ export default function MissingDataFilterModal({
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div
+          className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
           {FILTER_SECTIONS.map((section) => (
             <div key={section.id} className="bg-[#374151] rounded-lg overflow-hidden">
               {/* Section Header */}
@@ -190,6 +194,50 @@ export default function MissingDataFilterModal({
               </div>
             </div>
           ))}
+
+          {/* Dynamic Inventory Section - Based on branches */}
+          {branches.length > 0 && (
+            <div className="bg-[#374151] rounded-lg overflow-hidden">
+              {/* Section Header */}
+              <div className="flex items-center gap-2 px-4 py-2 bg-[#2B3544] border-b border-gray-600">
+                <span>📦</span>
+                <span className="text-white font-medium">المخزون</span>
+              </div>
+
+              {/* Branch Fields */}
+              <div className="p-3 space-y-3">
+                {branches.map((branch) => (
+                  <div key={branch.id} className="flex items-center gap-2">
+                    {/* Branch Stock (quantity = 0) */}
+                    <label
+                      className="flex-1 flex items-center gap-3 p-2 rounded-lg hover:bg-[#4B5563] cursor-pointer transition-colors"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedFilters.has(`stock_branch_${branch.id}`)}
+                        onChange={() => toggleFilter(`stock_branch_${branch.id}`)}
+                        className="w-5 h-5 rounded border-gray-500 text-blue-600 focus:ring-blue-500 focus:ring-offset-0 bg-gray-700"
+                      />
+                      <span className="text-gray-200">{branch.name}</span>
+                    </label>
+
+                    {/* Low Stock (quantity < min_stock) */}
+                    <label
+                      className="flex items-center gap-2 p-2 rounded-lg hover:bg-[#4B5563] cursor-pointer transition-colors bg-[#2B3544]"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedFilters.has(`lowstock_branch_${branch.id}`)}
+                        onChange={() => toggleFilter(`lowstock_branch_${branch.id}`)}
+                        className="w-4 h-4 rounded border-gray-500 text-orange-500 focus:ring-orange-500 focus:ring-offset-0 bg-gray-700"
+                      />
+                      <span className="text-orange-400 text-sm whitespace-nowrap">منخفض عند</span>
+                    </label>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -265,18 +313,29 @@ export function isProductMissingData(product: any, fieldId: string): boolean {
       return !product.price3 || product.price3 === 0;
     case 'price4':
       return !product.price4 || product.price4 === 0;
-    case 'stock':
-      const totalQty = product.totalQuantity ?? product.stock ?? 0;
-      return totalQty === 0;
-    case 'images':
-      const hasMainImage = product.main_image_url && product.main_image_url.trim() !== '';
-      const hasAllImages = product.allImages && product.allImages.length > 0;
-      return !hasMainImage && !hasAllImages;
+    case 'main_image':
+      return !product.main_image_url || product.main_image_url.trim() === '';
+    case 'sub_images':
+      return !product.allImages || product.allImages.length === 0;
     case 'videos':
       const hasVideoUrl = product.video_url && product.video_url.trim() !== '';
       const hasVideos = product.productVideos && product.productVideos.length > 0;
       return !hasVideoUrl && !hasVideos;
     default:
+      // Dynamic branch stock filters
+      if (fieldId.startsWith('stock_branch_')) {
+        const branchId = fieldId.replace('stock_branch_', '');
+        const branchQty = product.branchQuantities?.[branchId] ?? 0;
+        return branchQty === 0;
+      }
+      // Dynamic branch low stock filters
+      if (fieldId.startsWith('lowstock_branch_')) {
+        const branchId = fieldId.replace('lowstock_branch_', '');
+        const branchQty = product.branchQuantities?.[branchId] ?? 0;
+        const minStock = product.branchMinStocks?.[branchId] ?? 0;
+        // Product has low stock if quantity > 0 but < min_stock
+        return branchQty > 0 && minStock > 0 && branchQty < minStock;
+      }
       return false;
   }
 }
