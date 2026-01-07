@@ -15,6 +15,7 @@ import ProductDetailsModal from '@/app/components/ProductDetailsModal';
 import CartModal from '@/app/components/CartModal';
 import QuantityModal from './QuantityModal';
 import { useCart } from '@/lib/contexts/CartContext';
+import { useFavorites } from '@/lib/contexts/FavoritesContext';
 import { useCartBadge } from '@/lib/hooks/useCartBadge';
 import { useCompanySettings } from '@/lib/hooks/useCompanySettings';
 import { useProductDisplaySettings } from '@/lib/hooks/useProductDisplaySettings';
@@ -76,6 +77,9 @@ export default function MobileHome({
   // Get cart badge count and cart functions
   const { cartBadgeCount } = useCartBadge();
   const { addToCart } = useCart();
+
+  // Get favorites
+  const { favorites } = useFavorites();
 
   // Get store categories with their products
   const { categoriesWithProducts, isLoading: isCategoriesLoading } = useStoreCategoriesWithProducts();
@@ -374,8 +378,27 @@ export default function MobileHome({
 
   // Convert store categories to website format
   useEffect(() => {
+    const convertedCategories: any[] = [];
+
+    // Add favorites category as first category (only if there are favorites)
+    if (favorites.length > 0) {
+      // Get first favorite product image as category image
+      const firstFavoriteProduct = websiteProducts.find(p => favorites.includes(String(p.id)));
+      const favoriteCategoryImage = firstFavoriteProduct?.image || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=400&h=300&fit=crop';
+
+      convertedCategories.push({
+        id: 'favorites',
+        name: 'المفضلة',
+        description: 'المنتجات المفضلة لديك',
+        icon: '❤️',
+        image: favoriteCategoryImage,
+        productCount: favorites.length
+      });
+    }
+
+    // Add store categories
     if (categoriesWithProducts && categoriesWithProducts.length > 0) {
-      const convertedCategories = categoriesWithProducts.map((storeCategory: any) => ({
+      const storeCategories = categoriesWithProducts.map((storeCategory: any) => ({
         id: storeCategory.id,
         name: storeCategory.name,
         description: storeCategory.description || storeCategory.name,
@@ -384,11 +407,11 @@ export default function MobileHome({
         productCount: storeCategory.products?.length || 0
       }));
 
-      setCategories(convertedCategories);
-    } else {
-      setCategories([]);
+      convertedCategories.push(...storeCategories);
     }
-  }, [categoriesWithProducts]);
+
+    setCategories(convertedCategories);
+  }, [categoriesWithProducts, favorites, websiteProducts]);
 
   // Set client-side flag after component mounts
   useEffect(() => {
@@ -470,8 +493,14 @@ export default function MobileHome({
   const filteredProducts = React.useMemo(() => {
     let productsToFilter = websiteProducts;
 
+    // Handle favorites category
+    if (selectedCategory === 'المفضلة') {
+      productsToFilter = websiteProducts.filter(product =>
+        favorites.includes(String(product.id))
+      );
+    }
     // If a specific store category is selected, get products from that category
-    if (selectedCategory !== 'الكل' && categoriesWithProducts.length > 0) {
+    else if (selectedCategory !== 'الكل' && categoriesWithProducts.length > 0) {
       const selectedStoreCategory = categoriesWithProducts.find((cat: any) => cat.name === selectedCategory);
       if (selectedStoreCategory && selectedStoreCategory.products) {
         // Convert store category products to website product format
@@ -508,7 +537,7 @@ export default function MobileHome({
 
       return matchesSearch;
     });
-  }, [websiteProducts, selectedCategory, searchQuery, categoriesWithProducts]);
+  }, [websiteProducts, selectedCategory, searchQuery, categoriesWithProducts, favorites]);
 
   const featuredProducts = websiteProducts.filter(product => product.isFeatured || product.isOnSale);
 

@@ -1,10 +1,9 @@
 'use client';
 
 import { useRef, useEffect } from 'react';
-import { 
+import {
   ClipboardDocumentListIcon,
-  UserIcon,
-  HeartIcon
+  UserIcon
 } from '@heroicons/react/24/outline';
 
 interface DropdownMenuProps {
@@ -67,17 +66,6 @@ export default function DropdownMenu({ isOpen, onClose }: DropdownMenuProps) {
         >
           <UserIcon className="h-5 w-5 flex-shrink-0" />
           <span className="text-sm font-medium">الملف الشخصي</span>
-        </button>
-        
-        <button
-          onClick={() => {
-            window.location.href = '/favorites';
-            onClose();
-          }}
-          className="flex items-center gap-3 w-full px-4 py-3 text-white hover:bg-[#4B5563] transition-colors text-right"
-        >
-          <HeartIcon className="h-5 w-5 flex-shrink-0" />
-          <span className="text-sm font-medium">المفضلة</span>
         </button>
       </div>
     </div>

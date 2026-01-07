@@ -9,9 +9,9 @@ import { useWebsiteCurrency } from '@/lib/hooks/useCurrency';
 import { useRatingsDisplay } from '../../lib/hooks/useRatingSettings';
 import { useStoreDisplaySettings } from '../../lib/hooks/useStoreDisplaySettings';
 import { useProductVoting } from '@/app/lib/hooks/useProductVoting';
+import { useFavorites } from '@/lib/contexts/FavoritesContext';
 import ProductVoteModal from './ProductVoteModal';
 import ShapeSelector from './ShapeSelector';
-import FavoriteButton from './FavoriteButton';
 
 interface InteractiveProductCardProps {
   product: Product;
@@ -69,6 +69,10 @@ export default function InteractiveProductCard({
 
   // Check if user has already voted
   const hasUserVoted = voteStats.userVote !== null;
+
+  // Get favorites functions
+  const { isFavorite, toggleFavorite } = useFavorites();
+  const isProductFavorite = isFavorite(String(product.id));
 
   // Helper function to parse description safely
   const parseDescription = (desc: any): string => {
@@ -368,13 +372,26 @@ export default function InteractiveProductCard({
           </span>
         )}
 
-        {/* Favorite Button */}
-        <div className="absolute top-2 left-2 z-10">
-          <FavoriteButton
-            productId={String(product.id)}
-            size={deviceType === 'mobile' ? 'sm' : 'md'}
-          />
-        </div>
+        {/* Favorite Indicator - Only show if product is in favorites */}
+        {isProductFavorite && (
+          <div className="absolute top-2 left-2 z-10">
+            <div className={`${deviceType === 'mobile' ? 'w-7 h-7' : 'w-9 h-9'} flex items-center justify-center rounded-full bg-red-500 shadow-lg`}>
+              <svg
+                className={`${deviceType === 'mobile' ? 'w-4 h-4' : 'w-5 h-5'}`}
+                fill="white"
+                stroke="white"
+                strokeWidth={2}
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+                />
+              </svg>
+            </div>
+          </div>
+        )}
 
       </div>
       
@@ -696,7 +713,38 @@ export default function InteractiveProductCard({
               e.preventDefault();
             }}
           >
-            <h3 className="text-lg font-bold text-center mb-6 text-gray-800">إضافة ملاحظة</h3>
+            <h3 className="text-lg font-bold text-center mb-4 text-gray-800">إضافة ملاحظة</h3>
+
+            {/* Favorite Toggle Button */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                toggleFavorite(String(product.id));
+              }}
+              className={`w-full flex items-center justify-center gap-2 p-3 mb-4 rounded-lg border-2 transition-all duration-200 ${
+                isProductFavorite
+                  ? 'bg-red-50 border-red-500 text-red-600'
+                  : 'bg-gray-50 border-gray-300 text-gray-600 hover:border-red-300 hover:bg-red-50'
+              }`}
+            >
+              <svg
+                className="w-5 h-5"
+                fill={isProductFavorite ? '#EF4444' : 'none'}
+                stroke={isProductFavorite ? '#EF4444' : 'currentColor'}
+                strokeWidth={2}
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+                />
+              </svg>
+              <span className="font-medium">
+                {isProductFavorite ? 'إزالة من المفضلة' : 'إضافة للمفضلة'}
+              </span>
+            </button>
 
             <textarea
               value={note}

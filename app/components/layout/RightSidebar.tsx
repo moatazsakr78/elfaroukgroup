@@ -4,7 +4,6 @@ import { useRef, useEffect } from 'react';
 import {
   ClipboardDocumentListIcon,
   UserIcon,
-  HeartIcon,
   XMarkIcon,
   UsersIcon,
   CubeIcon,
@@ -216,24 +215,7 @@ export default function RightSidebar({ isOpen, onClose }: RightSidebarProps) {
                   </div>
                 </button>
 
-                {/* Favorites */}
-                <button
-                  onClick={() => {
-                    window.location.href = '/favorites';
-                    onClose();
-                  }}
-                  className="flex items-center gap-3 w-full p-3 text-black hover:bg-gray-300 rounded-lg transition-colors text-right group"
-                >
-                  <div className="p-2 bg-[var(--primary-color)] rounded-full group-hover:bg-[var(--interactive-color)] transition-colors">
-                    <HeartIcon className="h-5 w-5 text-white" />
-                  </div>
-                  <div className="flex-1 text-right">
-                    <h3 className="font-semibold text-base text-black">المفضلة</h3>
-                    <p className="text-xs text-gray-600">المنتجات والعناصر المفضلة لديك</p>
-                  </div>
-                </button>
-
-                {/* Orders List - New Button Below Favorites */}
+                {/* Orders List */}
                 <button
                   onClick={() => {
                     // Navigate to my-orders page
