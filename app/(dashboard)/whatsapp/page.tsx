@@ -443,6 +443,36 @@ export default function WhatsAppPage() {
     }
   }, [selectedConversation])
 
+  // Supabase Broadcast subscription for cross-device sync of outgoing messages
+  useEffect(() => {
+    if (!selectedConversation) return
+
+    const supabase = getSupabase()
+
+    // Channel for broadcast (cross-device sync)
+    const broadcastChannel = supabase
+      .channel(`whatsapp_broadcast_${selectedConversation}`)
+      .on('broadcast', { event: 'new_message' }, (payload) => {
+        console.log('📡 Broadcast: New message received', payload)
+        const newMsg = payload.payload as Message
+
+        setMessages(prev => {
+          // Avoid duplicates (Optimistic Update may have added it already)
+          const exists = prev.some(m => m.message_id === newMsg.message_id)
+          if (exists) return prev
+          return [...prev, newMsg]
+        })
+      })
+      .subscribe((status) => {
+        console.log('📡 Broadcast subscription status:', status)
+      })
+
+    return () => {
+      console.log('📡 Cleaning up Broadcast subscription')
+      supabase.removeChannel(broadcastChannel)
+    }
+  }, [selectedConversation])
+
   // Scroll to bottom only when needed (new messages or conversation change)
   useEffect(() => {
     const currentMessageCount = messages.filter(m => m.from_number === selectedConversation).length
@@ -791,6 +821,22 @@ export default function WhatsAppPage() {
         }
 
         setMessages(prev => [...prev, sentMessage])
+
+        // Broadcast to other devices for cross-device sync
+        const supabase = getSupabase()
+        supabase
+          .channel(`whatsapp_broadcast_${selectedConversation}`)
+          .send({
+            type: 'broadcast',
+            event: 'new_message',
+            payload: sentMessage
+          })
+          .then(() => {
+            console.log('📡 Broadcast sent successfully')
+          })
+          .catch((err) => {
+            console.error('📡 Broadcast failed:', err)
+          })
 
         // مسح الـ input
         setNewMessage('')
