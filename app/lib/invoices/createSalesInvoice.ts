@@ -104,7 +104,8 @@ export async function createSalesInvoice({
     }, 0)
 
     // Generate unique invoice number using database sequence (atomic operation)
-    const { data: seqData, error: seqError } = await supabase.rpc('get_next_sales_invoice_number')
+    // @ts-ignore - function exists in database but not in generated types
+    const { data: seqData, error: seqError } = await supabase.rpc('get_next_sales_invoice_number' as any)
     if (seqError) {
       console.error('Error generating invoice number:', seqError)
       throw new Error('فشل في توليد رقم الفاتورة')
