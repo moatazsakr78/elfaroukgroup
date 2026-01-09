@@ -182,9 +182,12 @@ export async function POST(request: NextRequest) {
     }
 
     if (result.success) {
+      // Generate message_id if not provided by WasenderAPI
+      const generatedMessageId = result.messageId || `sent_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+
       // Store message in database
       const { error: dbError } = await supabase.schema('elfaroukgroup').from('whatsapp_messages').insert({
-        message_id: result.messageId,
+        message_id: generatedMessageId,
         msg_id: result.msgId || null, // WasenderAPI integer ID for replyTo
         from_number: cleanNumber,
         customer_name: 'الفاروق جروب',
@@ -205,7 +208,7 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        messageId: result.messageId,
+        messageId: generatedMessageId,
         msgId: result.msgId, // Return msgId for client if needed
       });
     } else {
