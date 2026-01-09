@@ -103,8 +103,13 @@ export async function createSalesInvoice({
       return sum + (isReturn ? -itemProfit : itemProfit)
     }, 0)
 
-    // Generate invoice number
-    const invoiceNumber = `INV-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+    // Generate unique invoice number using database sequence (atomic operation)
+    const { data: seqData, error: seqError } = await supabase.rpc('get_next_sales_invoice_number')
+    if (seqError) {
+      console.error('Error generating invoice number:', seqError)
+      throw new Error('فشل في توليد رقم الفاتورة')
+    }
+    const invoiceNumber = seqData as string
 
     // Get current time
     const now = new Date()

@@ -664,10 +664,24 @@ export default function PermissionsPage() {
         // تم إزالة تحديث الأدوار التلقائي للحفاظ على التعديلات اليدوية
         // await updateUserRoles();
 
-        const { data, error } = await supabase
+        // جلب user_profiles
+        const { data: profilesData, error: profilesError } = await supabase
           .from('user_profiles')
-          .select('id, full_name, role, is_admin, created_at, avatar_url, email')
+          .select('id, full_name, role, is_admin, created_at, avatar_url')
           .order('created_at', { ascending: false });
+
+        // جلب الإيميلات من auth_users
+        const { data: authData, error: authError } = await supabase
+          .from('auth_users')
+          .select('id, email');
+
+        // دمج البيانات - إضافة الإيميل من auth_users
+        const data = profilesData?.map(profile => ({
+          ...profile,
+          email: authData?.find(auth => auth.id === profile.id)?.email || null
+        }));
+
+        const error = profilesError || authError;
 
         console.log('🔍 بيانات المستخدمين مع is_admin:', data);
 
