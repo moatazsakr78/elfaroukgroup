@@ -29,6 +29,8 @@ import {
   ComputerDesktopIcon,
   CheckIcon,
   XMarkIcon,
+  ChevronDownIcon,
+  ChevronLeftIcon,
 } from '@heroicons/react/24/outline';
 import TopHeader from '@/app/components/layout/TopHeader';
 import Sidebar from '@/app/components/layout/Sidebar';
@@ -44,6 +46,7 @@ import { useAuth } from '@/lib/useAuth';
 import { usePermissions } from '@/lib/hooks/usePermissions';
 import { useRoleRestrictions } from '@/lib/hooks/useRoleRestrictions';
 import { usePermissionTemplates, PermissionTemplate } from '@/lib/hooks/usePermissionTemplates';
+import { RoleType, ROLE_TYPES, ROLE_TYPE_COLORS } from '@/types/permissions';
 
 // Map icon names to components
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -91,6 +94,8 @@ interface User {
   createdAt: string | null;
   avatar_url: string | null;
   is_admin: boolean; // قيمة is_admin لتحديد ما إذا كان المستخدم محمي من تغيير الرتبة
+  permission_id: string | null; // صلاحية المستخدم المخصصة
+  permission_name: string | null; // اسم الصلاحية للعرض
 }
 
 interface ActionButton {
@@ -127,8 +132,15 @@ export default function PermissionsPage() {
     deleteTemplate,
     getTemplateRestrictions,
     setRestrictions: setTemplateRestrictions,
+    getTemplatesByRole,
     refetch: refetchTemplates,
   } = usePermissionTemplates();
+
+  // الدور المحدد حالياً لعرض صلاحياته
+  const [selectedRoleType, setSelectedRoleType] = useState<RoleType>('أدمن رئيسي');
+
+  // الصلاحيات المفلترة حسب الدور المحدد
+  const filteredTemplates = getTemplatesByRole(selectedRoleType);
 
   // سيتم تحديثه عند اختيار دور
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
@@ -144,6 +156,8 @@ export default function PermissionsPage() {
   const [isAddPermissionModalOpen, setIsAddPermissionModalOpen] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [updatingRole, setUpdatingRole] = useState(false);
+  const [editingPermissionUserId, setEditingPermissionUserId] = useState<string | null>(null);
+  const [updatingPermission, setUpdatingPermission] = useState(false);
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
   const [derivedRoles, setDerivedRoles] = useState<Role[]>([]);
   const [isAddRoleModalOpen, setIsAddRoleModalOpen] = useState(false);
@@ -212,7 +226,7 @@ export default function PermissionsPage() {
   // إنشاء قالب جديد
   const handleCreateTemplate = async () => {
     console.log('[PermissionsPage] handleCreateTemplate called');
-    console.log('[PermissionsPage] newTemplateName:', newTemplateName);
+    console.log('[PermissionsPage] newTemplateName:', newTemplateName, 'roleType:', selectedRoleType);
 
     if (!newTemplateName.trim()) {
       console.log('[PermissionsPage] Template name is empty, returning');
@@ -221,7 +235,7 @@ export default function PermissionsPage() {
 
     setIsCreatingTemplate(true);
     try {
-      const newTemplate = await createTemplate(newTemplateName.trim(), newTemplateDescription.trim());
+      const newTemplate = await createTemplate(newTemplateName.trim(), selectedRoleType, newTemplateDescription.trim());
       console.log('[PermissionsPage] createTemplate result:', newTemplate);
 
       if (newTemplate) {
@@ -231,11 +245,11 @@ export default function PermissionsPage() {
         // فتح شاشة تعديل صلاحيات القالب الجديد
         handleStartEditTemplatePermissions(newTemplate.id);
       } else {
-        alert('فشل في إنشاء القالب. يرجى المحاولة مرة أخرى.');
+        alert('فشل في إنشاء الصلاحية. يرجى المحاولة مرة أخرى.');
       }
     } catch (error) {
       console.error('[PermissionsPage] Error in handleCreateTemplate:', error);
-      alert('حدث خطأ أثناء إنشاء القالب');
+      alert('حدث خطأ أثناء إنشاء الصلاحية');
     } finally {
       setIsCreatingTemplate(false);
     }
@@ -338,8 +352,18 @@ export default function PermissionsPage() {
   // الصلاحيات الخاصة بالتصنيف المحدد في وضع تعديل القالب
   const editingTemplateCategoryPermissions = useMemo(() => {
     if (!selectedTemplateCategoryId) return [];
+
+    // تحقق إذا كانت الصفحة مخفية (page access restricted)
+    const category = categories.find((c) => c.id === selectedTemplateCategoryId);
+    if (category) {
+      const pageAccessCode = `page_access.${category.name_en}`;
+      if (editingTemplateRestrictions.includes(pageAccessCode)) {
+        return []; // الصفحة مخفية، لا نعرض صلاحياتها
+      }
+    }
+
     return permissionDefinitions.filter((p) => p.category_id === selectedTemplateCategoryId);
-  }, [permissionDefinitions, selectedTemplateCategoryId]);
+  }, [permissionDefinitions, selectedTemplateCategoryId, categories, editingTemplateRestrictions]);
 
   // اسم التصنيف المحدد في وضع تعديل القالب
   const editingTemplateCategoryName = useMemo(() => {
@@ -633,6 +657,90 @@ export default function PermissionsPage() {
     }
   };
 
+  // تحديث صلاحية مستخدم معين
+  const updateUserPermission = async (userId: string, permissionId: string | null) => {
+    setUpdatingPermission(true);
+    try {
+      console.log('🔄 محاولة تحديث صلاحية المستخدم:', { userId, permissionId });
+
+      // التحقق من تسجيل الدخول باستخدام NextAuth
+      if (!isAuthenticated || !authUser?.id) {
+        console.error('❌ المستخدم غير مسجل دخول');
+        alert('⛔ يجب تسجيل الدخول أولاً');
+        setUpdatingPermission(false);
+        return false;
+      }
+
+      // التحقق من صلاحيات المستخدم الحالي
+      if (!currentUserProfile) {
+        console.error('❌ فشل في جلب بيانات المستخدم الحالي');
+        alert('⛔ فشل في التحقق من صلاحياتك');
+        setUpdatingPermission(false);
+        return false;
+      }
+
+      // فقط الأدمن الرئيسي يمكنه تغيير الصلاحيات
+      if (currentUserProfile.role !== 'أدمن رئيسي' || !isAdmin) {
+        console.warn('⚠️ المستخدم لا يملك صلاحيات كافية');
+        alert('⛔ ليس لديك صلاحية لتغيير صلاحيات المستخدمين - فقط الأدمن الرئيسي يمكنه ذلك');
+        setUpdatingPermission(false);
+        return false;
+      }
+
+      // تحديث الصلاحية
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .update({
+          permission_id: permissionId || null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId)
+        .select('id, full_name, permission_id');
+
+      if (error) {
+        console.error('❌ خطأ في تحديث الصلاحية:', error);
+        alert('فشل في تحديث الصلاحية: ' + error.message);
+        return false;
+      }
+
+      // تأكد من أن التحديث تم بنجاح
+      if (data && data.length > 0) {
+        console.log('✅ تم تحديث الصلاحية في قاعدة البيانات:', data[0]);
+
+        // جلب اسم الصلاحية الجديدة
+        let newPermissionName: string | null = null;
+        if (permissionId) {
+          const template = templates.find(t => t.id === permissionId);
+          newPermissionName = template?.name || null;
+        }
+
+        // تحديث البيانات محلياً
+        setRealUsers(prev => prev.map(user =>
+          user.id === userId
+            ? { ...user, permission_id: permissionId || null, permission_name: newPermissionName }
+            : user
+        ));
+
+        setEditingPermissionUserId(null);
+        console.log('✅ تم تحديث صلاحية المستخدم بنجاح');
+
+        alert('✅ تم تحديث الصلاحية بنجاح!\n\n⚠️ ملاحظة: المستخدم يحتاج لتسجيل الخروج وإعادة تسجيل الدخول لتفعيل الصلاحية الجديدة.');
+
+        return true;
+      } else {
+        console.error('❌ فشل التحديث - لا توجد بيانات مُحدَثة');
+        alert('فشل في تحديث الصلاحية - لم يتم التحديث');
+        return false;
+      }
+    } catch (error) {
+      console.error('❌ خطأ عام في تحديث الصلاحية:', error);
+      alert('حدث خطأ غير متوقع: ' + (error as Error).message);
+      return false;
+    } finally {
+      setUpdatingPermission(false);
+    }
+  };
+
   // قائمة الأدوار المتاحة - تم إزالة دور الكاشير نهائياً
   const availableRoles = ['عميل', 'جملة', 'موظف', 'أدمن رئيسي'];
 
@@ -683,10 +791,10 @@ export default function PermissionsPage() {
         // تم إزالة تحديث الأدوار التلقائي للحفاظ على التعديلات اليدوية
         // await updateUserRoles();
 
-        // جلب user_profiles
-        const { data: profilesData, error: profilesError } = await supabase
+        // جلب user_profiles مع permission_id
+        const { data: profilesData, error: profilesError } = await (supabase as any)
           .from('user_profiles')
-          .select('id, full_name, role, is_admin, created_at, avatar_url')
+          .select('id, full_name, role, is_admin, created_at, avatar_url, permission_id')
           .order('created_at', { ascending: false });
 
         // جلب الإيميلات من auth_users
@@ -694,10 +802,19 @@ export default function PermissionsPage() {
           .from('auth_users')
           .select('id, email');
 
-        // دمج البيانات - إضافة الإيميل من auth_users
-        const data = profilesData?.map(profile => ({
+        // جلب أسماء الصلاحيات من permission_templates
+        const { data: permTemplatesData } = await (supabase as any)
+          .from('permission_templates')
+          .select('id, name')
+          .eq('is_active', true);
+
+        // دمج البيانات - إضافة الإيميل واسم الصلاحية
+        const data = profilesData?.map((profile: any) => ({
           ...profile,
-          email: authData?.find(auth => auth.id === profile.id)?.email || null
+          email: authData?.find((auth: any) => auth.id === profile.id)?.email || null,
+          permission_name: profile.permission_id
+            ? permTemplatesData?.find((pt: any) => pt.id === profile.permission_id)?.name || null
+            : null
         }));
 
         const error = profilesError || authError;
@@ -726,7 +843,9 @@ export default function PermissionsPage() {
             lastLogin: 'غير متوفر',
             createdAt: user.created_at ? new Date(user.created_at).toLocaleDateString('ar-EG') : null,
             avatar_url: user.avatar_url || null,
-            is_admin: user.is_admin || false
+            is_admin: user.is_admin || false,
+            permission_id: user.permission_id || null,
+            permission_name: user.permission_name || null
           }));
           
           console.log('✅ المستخدمين المنسقين:', formattedUsers);
@@ -767,7 +886,7 @@ export default function PermissionsPage() {
     { id: '20', module: 'الصلاحيات', action: 'إدارة', description: 'إدارة صلاحيات المستخدمين' },
   ];
 
-  // Main 4 roles - Fixed roles that cannot be edited or deleted
+  // الأدوار الأساسية الثلاثة - لا يمكن تعديلها أو حذفها
   const mainRoles: Role[] = [
     {
       id: 'client',
@@ -792,7 +911,7 @@ export default function PermissionsPage() {
     {
       id: 'employee',
       name: 'موظف',
-      description: 'صلاحيات كاملة لجميع صفحات النظام والمتجر',
+      description: 'صلاحيات كاملة لجميع صفحات النظام والمتجر مع إدارة كاملة',
       userCount: realUsers.filter(u => u.role === 'موظف').length,
       permissions: permissions.map(p => p.id),
       createdAt: '2024-01-01',
@@ -842,7 +961,7 @@ export default function PermissionsPage() {
   }, [categories, permissionDefinitions]);
 
   // بناء شجرة الصلاحيات ديناميكياً من قاعدة البيانات
-  const permissionTreeData: TreeNode[] = useMemo(() => {
+  const permissionTreeData = useMemo(() => {
     // تصفية التصنيفات حسب parent_type
     const adminCategories = categories.filter((c) => c.parent_type === 'admin');
     const storeCategories = categories.filter((c) => c.parent_type === 'store');
@@ -856,6 +975,8 @@ export default function PermissionsPage() {
         children: adminCategories.map((cat) => ({
           id: cat.id,
           name: cat.name,
+          name_en: cat.name_en,
+          pageAccessCode: `page_access.${cat.name_en}`,
           icon: cat.icon ? iconMap[cat.icon] : undefined,
           count: categoryStats[cat.id],
         })),
@@ -868,6 +989,8 @@ export default function PermissionsPage() {
         children: storeCategories.map((cat) => ({
           id: cat.id,
           name: cat.name,
+          name_en: cat.name_en,
+          pageAccessCode: `page_access.${cat.name_en}`,
           icon: cat.icon ? iconMap[cat.icon] : undefined,
           count: categoryStats[cat.id],
         })),
@@ -953,17 +1076,20 @@ export default function PermissionsPage() {
     }
   ];
 
-  // أعمدة جدول قوالب الصلاحيات
+  // أعمدة جدول الصلاحيات
   const templateColumns = [
     {
       id: 'name',
-      header: 'اسم القالب',
+      header: 'اسم الصلاحية',
       accessor: 'name' as keyof PermissionTemplate,
       width: 250,
-      render: (value: any) => (
+      render: (value: any, item: PermissionTemplate) => (
         <div className="flex items-center gap-2">
           <KeyIcon className="h-4 w-4 text-blue-400" />
           <span className="font-medium text-white">{value}</span>
+          {value === 'عام' && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-400">افتراضي</span>
+          )}
         </div>
       )
     },
@@ -1116,23 +1242,64 @@ export default function PermissionsPage() {
       )
     },
     {
-      id: 'actions',
-      header: 'الإجراءات',
-      accessor: 'id' as keyof User,
-      width: 120,
-      render: (value: any, user: User) => (
-        <div className="flex items-center gap-1">
-          <button className="p-1 text-gray-400 hover:text-blue-400 transition-colors">
-            <EyeIcon className="h-4 w-4" />
-          </button>
-          <button className="p-1 text-gray-400 hover:text-yellow-400 transition-colors">
-            <PencilIcon className="h-4 w-4" />
-          </button>
-          <button className="p-1 text-gray-400 hover:text-red-400 transition-colors">
-            <TrashIcon className="h-4 w-4" />
-          </button>
-        </div>
-      )
+      id: 'permission',
+      header: 'الصلاحية',
+      accessor: 'permission_id' as keyof User,
+      width: 180,
+      render: (value: any, user: User) => {
+        // فلترة الصلاحيات حسب دور المستخدم
+        // الموظف يرى صلاحياته + صلاحيات الأدمن الرئيسي
+        const userRoleType = user.role as RoleType;
+        const filteredTemplates = userRoleType === 'موظف'
+          ? templates.filter(t => t.role_type === 'موظف' || t.role_type === 'أدمن رئيسي')
+          : templates.filter(t => t.role_type === userRoleType);
+
+        return (
+          <div className="flex items-center gap-2">
+            {editingPermissionUserId === user.id ? (
+              <div className="flex items-center gap-2 w-full">
+                <select
+                  className="bg-[#2B3544] border border-gray-600 rounded-md px-2 py-1 text-white text-xs flex-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={value || ''}
+                  onChange={(e) => updateUserPermission(user.id, e.target.value || null)}
+                  disabled={updatingPermission}
+                >
+                  <option value="">عام</option>
+                  {filteredTemplates.filter(t => t.name !== 'عام').map(perm => (
+                    <option key={perm.id} value={perm.id}>{perm.name}</option>
+                  ))}
+                </select>
+                {updatingPermission && (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400"></div>
+                )}
+                <button
+                  onClick={() => setEditingPermissionUserId(null)}
+                  className="text-gray-400 hover:text-gray-300 text-xs"
+                  disabled={updatingPermission}
+                >
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 w-full">
+                <span className={`px-2 py-1 text-white text-xs rounded-full ${
+                  user.permission_name && user.permission_name !== 'عام'
+                    ? 'bg-cyan-600'
+                    : 'bg-gray-600'
+                }`}>
+                  {user.permission_name || 'عام'}
+                </span>
+                <button
+                  onClick={() => setEditingPermissionUserId(user.id)}
+                  className="text-xs text-gray-400 hover:text-blue-400"
+                >
+                  <PencilIcon className="h-3 w-3" />
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      }
     }
   ];
 
@@ -1373,23 +1540,131 @@ export default function PermissionsPage() {
                   </button>
 
                   <h4 className="text-gray-300 text-sm font-medium mb-3">شجرة الصلاحيات</h4>
-                  <TreeView
-                    data={permissionTreeData}
-                    selectedId={selectedTemplateCategoryId || undefined}
-                    onItemClick={(item) => {
-                      // لا نستدعي toggleTreeNode هنا لأن onToggle يتولى ذلك تلقائياً
-                      if (!item.children) {
-                        // إذا كان التصنيف محدد بالفعل، قم بإلغاء التحديد
-                        if (selectedTemplateCategoryId === item.id) {
-                          setSelectedTemplateCategoryId(null);
-                        } else {
-                          // إذا لم يكن محدداً، قم بتحديده
-                          setSelectedTemplateCategoryId(item.id);
-                        }
-                      }
-                    }}
-                    onToggle={toggleTreeNode}
-                  />
+
+                  {/* Custom TreeView with Page Access Checkboxes */}
+                  <div className="w-full">
+                    {permissionTreeData.map((section) => {
+                      const SectionIcon = section.icon;
+                      return (
+                        <div key={section.id}>
+                          {/* Section Header (صفحات الإدارة / صفحات المتجر) */}
+                          <div
+                            className="flex items-center gap-2.5 px-3 py-2.5 cursor-pointer hover:bg-[#3A4553] rounded-lg mx-1 my-0.5"
+                            onClick={() => toggleTreeNode(section.id)}
+                          >
+                            <button className="text-gray-400 hover:text-white flex-shrink-0 transition-colors">
+                              {section.isExpanded ? (
+                                <ChevronDownIcon className="h-4 w-4" />
+                              ) : (
+                                <ChevronLeftIcon className="h-4 w-4" />
+                              )}
+                            </button>
+                            {SectionIcon && <SectionIcon className="h-5 w-5 text-gray-400" />}
+                            <span className="text-sm font-medium text-gray-200">{section.name}</span>
+                          </div>
+
+                          {/* Pages with Checkboxes */}
+                          {section.isExpanded && section.children?.map((page: any) => {
+                            const PageIcon = page.icon;
+                            const isPageHidden = editingTemplateRestrictions.includes(page.pageAccessCode);
+                            const isSelected = selectedTemplateCategoryId === page.id && !isPageHidden;
+
+                            return (
+                              <div
+                                key={page.id}
+                                className={`flex items-center gap-2 px-3 py-2 mx-1 my-0.5 rounded-lg transition-all duration-200 ${
+                                  isSelected
+                                    ? 'bg-blue-600'
+                                    : isPageHidden
+                                      ? 'bg-red-500/10 opacity-60'
+                                      : 'hover:bg-[#2B3544]'
+                                }`}
+                                style={{ paddingRight: '28px' }}
+                              >
+                                {/* Page Access Checkbox */}
+                                <div
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleTemplateRestriction(page.pageAccessCode);
+                                    // إذا كانت الصفحة مخفية وتم إظهارها، لا نحتاج لعمل شيء إضافي
+                                    // إذا كانت الصفحة ظاهرة وتم إخفاؤها، نلغي التحديد إذا كانت محددة
+                                    if (!isPageHidden && selectedTemplateCategoryId === page.id) {
+                                      setSelectedTemplateCategoryId(null);
+                                    }
+                                  }}
+                                  className={`
+                                    flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center cursor-pointer transition-all duration-200
+                                    ${isPageHidden
+                                      ? 'bg-red-500 border-red-500 hover:bg-red-600 hover:border-red-600'
+                                      : 'bg-green-500 border-green-500 hover:bg-green-600 hover:border-green-600'
+                                    }
+                                  `}
+                                  title={isPageHidden ? 'الصفحة مخفية - اضغط للإظهار' : 'الصفحة ظاهرة - اضغط للإخفاء'}
+                                >
+                                  {isPageHidden ? (
+                                    <XMarkIcon className="w-3 h-3 text-white" />
+                                  ) : (
+                                    <CheckIcon className="w-3 h-3 text-white" />
+                                  )}
+                                </div>
+
+                                {/* Page Icon */}
+                                {PageIcon && (
+                                  <PageIcon className={`h-4 w-4 flex-shrink-0 ${
+                                    isSelected ? 'text-white' : isPageHidden ? 'text-gray-500' : 'text-gray-400'
+                                  }`} />
+                                )}
+
+                                {/* Page Name - Clickable only if page is visible */}
+                                <span
+                                  className={`text-sm font-medium flex-1 truncate ${
+                                    isSelected
+                                      ? 'text-white cursor-pointer'
+                                      : isPageHidden
+                                        ? 'text-gray-500 cursor-not-allowed line-through'
+                                        : 'text-gray-300 hover:text-white cursor-pointer'
+                                  }`}
+                                  onClick={() => {
+                                    if (!isPageHidden) {
+                                      if (selectedTemplateCategoryId === page.id) {
+                                        setSelectedTemplateCategoryId(null);
+                                      } else {
+                                        setSelectedTemplateCategoryId(page.id);
+                                      }
+                                    }
+                                  }}
+                                >
+                                  {page.name}
+                                </span>
+
+                                {/* Count Badge - Only show if page is visible */}
+                                {!isPageHidden && page.count && (
+                                  <span
+                                    className={`
+                                      text-xs px-2 py-0.5 rounded-full flex-shrink-0 font-medium
+                                      ${isSelected
+                                        ? 'bg-white/20 text-white'
+                                        : page.count.selected > 0
+                                          ? 'bg-red-500/20 text-red-400'
+                                          : 'bg-gray-600/50 text-gray-400'
+                                      }
+                                    `}
+                                  >
+                                    {page.count.selected}/{page.count.total}
+                                  </span>
+                                )}
+
+                                {/* Hidden indicator */}
+                                {isPageHidden && (
+                                  <span className="text-xs text-red-400 flex-shrink-0">مخفية</span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             )}
@@ -1407,13 +1682,17 @@ export default function PermissionsPage() {
                   <span className="text-blue-400 text-xs">معلومة:</span>
                   <p className="text-gray-300 text-xs mt-1">كل قالب يحدد الصلاحيات الممنوعة، وكل ما عداها يكون مسموحاً</p>
                 </div>
-                {/* إحصائيات القوالب */}
+                {/* إحصائيات الصلاحيات */}
                 <div className="mt-4">
                   <h4 className="text-gray-300 text-sm font-medium mb-3">إحصائيات</h4>
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-400">عدد القوالب:</span>
+                      <span className="text-gray-400">إجمالي الصلاحيات:</span>
                       <span className="text-white font-medium">{templates.length}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-400">صلاحيات {selectedRoleType}:</span>
+                      <span className={`font-medium ${ROLE_TYPE_COLORS[selectedRoleType].split(' ')[1]}`}>{filteredTemplates.length}</span>
                     </div>
                   </div>
                 </div>
@@ -1684,35 +1963,60 @@ export default function PermissionsPage() {
                     )}
                   </div>
                 ) : (
-                  /* وضع عرض جدول قوالب الصلاحيات */
-                  templates.length > 0 ? (
-                    <ResizableTable
-                      columns={templateColumns}
-                      data={templates}
-                      selectedRowId={selectedTemplateId || undefined}
-                      onRowClick={(item) => {
-                        if (selectedTemplateId === item.id) {
-                          setSelectedTemplateId(null);
-                        } else {
-                          setSelectedTemplateId(item.id);
-                        }
-                      }}
-                    />
-                  ) : (
-                    <div className="h-full flex items-center justify-center">
-                      <div className="text-center text-gray-400">
-                        <KeyIcon className="h-16 w-16 mx-auto mb-4 text-gray-600" />
-                        <p className="text-lg mb-2">لا توجد قوالب صلاحيات</p>
-                        <p className="text-sm mb-4">قم بإنشاء قالب صلاحيات جديد للبدء</p>
+                  /* وضع عرض جدول الصلاحيات مع تابات الأدوار */
+                  <div className="h-full flex flex-col">
+                    {/* تابات الأدوار */}
+                    <div className="flex items-center gap-2 p-4 border-b border-gray-700 bg-[#374151]">
+                      {ROLE_TYPES.map((roleType) => (
                         <button
-                          onClick={handleOpenAddTemplateModal}
-                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                          key={roleType}
+                          onClick={() => setSelectedRoleType(roleType)}
+                          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                            selectedRoleType === roleType
+                              ? `${ROLE_TYPE_COLORS[roleType]} border border-current`
+                              : 'text-gray-400 hover:text-white hover:bg-gray-600'
+                          }`}
                         >
-                          إنشاء قالب جديد
+                          {roleType}
+                          <span className="mr-2 px-1.5 py-0.5 rounded-full text-xs bg-gray-600/50">
+                            {getTemplatesByRole(roleType).length}
+                          </span>
                         </button>
-                      </div>
+                      ))}
                     </div>
-                  )
+
+                    {/* جدول الصلاحيات */}
+                    <div className="flex-1 overflow-hidden">
+                      {filteredTemplates.length > 0 ? (
+                        <ResizableTable
+                          columns={templateColumns}
+                          data={filteredTemplates}
+                          selectedRowId={selectedTemplateId || undefined}
+                          onRowClick={(item) => {
+                            if (selectedTemplateId === item.id) {
+                              setSelectedTemplateId(null);
+                            } else {
+                              setSelectedTemplateId(item.id);
+                            }
+                          }}
+                        />
+                      ) : (
+                        <div className="h-full flex items-center justify-center">
+                          <div className="text-center text-gray-400">
+                            <KeyIcon className="h-16 w-16 mx-auto mb-4 text-gray-600" />
+                            <p className="text-lg mb-2">لا توجد صلاحيات لدور {selectedRoleType}</p>
+                            <p className="text-sm mb-4">قم بإنشاء صلاحية جديدة للبدء</p>
+                            <button
+                              onClick={handleOpenAddTemplateModal}
+                              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                            >
+                              صلاحية جديدة
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 )
               ) : (
                 <ResizableTable
@@ -2085,7 +2389,7 @@ export default function PermissionsPage() {
 
           {/* Header */}
           <div className="bg-[#3A4553] px-4 py-3 flex items-center justify-start border-b border-[#4A5568]">
-            <h2 className="text-white text-lg font-medium flex-1 text-right">إضافة قالب صلاحيات جديد</h2>
+            <h2 className="text-white text-lg font-medium flex-1 text-right">إضافة صلاحية جديدة</h2>
             <button
               onClick={() => setIsAddTemplateModalOpen(false)}
               className="text-gray-400 hover:text-white"
@@ -2097,16 +2401,24 @@ export default function PermissionsPage() {
           {/* Content Area */}
           <div className="flex-1 overflow-y-auto scrollbar-hide p-6 space-y-4">
 
+            {/* Role Type Badge */}
+            <div className="flex items-center justify-end gap-2 p-3 bg-[#2B3441] rounded-lg border border-[#4A5568]">
+              <span className="text-gray-400 text-sm">صلاحية لدور:</span>
+              <span className={`px-3 py-1 rounded-full text-sm font-medium ${ROLE_TYPE_COLORS[selectedRoleType]}`}>
+                {selectedRoleType}
+              </span>
+            </div>
+
             {/* Template Name */}
             <div className="space-y-2">
               <label className="block text-white text-sm font-medium text-right">
-                اسم القالب *
+                اسم الصلاحية *
               </label>
               <input
                 type="text"
                 value={newTemplateName}
                 onChange={(e) => setNewTemplateName(e.target.value)}
-                placeholder="مثال: صلاحيات كاشير"
+                placeholder="مثال: محدود، بدون تقارير، كاشير..."
                 className="w-full px-3 py-2 bg-[#2B3441] border border-[#4A5568] rounded text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-[#5DADE2] focus:border-[#5DADE2] text-right text-sm"
               />
             </div>
@@ -2114,12 +2426,12 @@ export default function PermissionsPage() {
             {/* Description */}
             <div className="space-y-2">
               <label className="block text-white text-sm font-medium text-right">
-                وصف القالب
+                الوصف
               </label>
               <textarea
                 value={newTemplateDescription}
                 onChange={(e) => setNewTemplateDescription(e.target.value)}
-                placeholder="وصف اختياري للقالب"
+                placeholder="وصف اختياري للصلاحية"
                 rows={4}
                 className="w-full px-3 py-2 bg-[#2B3441] border border-[#4A5568] rounded text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-[#5DADE2] focus:border-[#5DADE2] text-right text-sm resize-none"
               />
@@ -2132,8 +2444,8 @@ export default function PermissionsPage() {
                 <KeyIcon className="h-4 w-4" />
               </h4>
               <div className="space-y-2 text-sm text-gray-300">
-                <p className="text-right">بعد إنشاء القالب، سيتم فتح شاشة تحديد الصلاحيات الممنوعة.</p>
-                <p className="text-right">يمكنك ربط هذا القالب بأي دور لاحقاً.</p>
+                <p className="text-right">بعد إنشاء الصلاحية، سيتم فتح شاشة تحديد القيود (الأزرار والميزات الممنوعة).</p>
+                <p className="text-right">صلاحية "عام" تعني أن الدور يعمل بالكامل بدون قيود.</p>
               </div>
             </div>
           </div>

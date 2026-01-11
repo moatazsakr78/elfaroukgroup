@@ -1941,7 +1941,7 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
       const salesChannel = supabase
         .channel('modal_sales_changes')
         .on('postgres_changes',
-          { event: '*', schema: 'public', table: 'sales' },
+          { event: '*', schema: 'elfaroukgroup', table: 'sales' },
           (payload: any) => {
             console.log('Sales real-time update:', payload)
             fetchSales()
@@ -1955,7 +1955,7 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
       const saleItemsChannel = supabase
         .channel('modal_sale_items_changes')
         .on('postgres_changes',
-          { event: '*', schema: 'public', table: 'sale_items' },
+          { event: '*', schema: 'elfaroukgroup', table: 'sale_items' },
           (payload: any) => {
             console.log('Sale items real-time update:', payload)
             if (sales.length > 0 && selectedTransaction < sales.length) {
@@ -1969,7 +1969,7 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
       const paymentsChannel = supabase
         .channel('modal_customer_payments_changes')
         .on('postgres_changes',
-          { event: '*', schema: 'public', table: 'customer_payments' },
+          { event: '*', schema: 'elfaroukgroup', table: 'customer_payments' },
           (payload: any) => {
             console.log('Customer payments real-time update:', payload)
             fetchCustomerPayments()

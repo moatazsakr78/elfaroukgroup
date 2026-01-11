@@ -9,6 +9,7 @@ export interface UserProfile {
   full_name: string;
   phone: string | null;
   role: string;
+  permission_id: string | null; // الصلاحية المعينة للمستخدم
   branch_id: string | null;
   avatar_url: string | null;
   is_active: boolean | null;

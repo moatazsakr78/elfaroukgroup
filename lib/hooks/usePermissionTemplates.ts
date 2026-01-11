@@ -2,11 +2,13 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/app/lib/supabase/client';
+import { RoleType } from '@/types/permissions';
 
 export interface PermissionTemplate {
   id: string;
   name: string;
   description: string | null;
+  role_type: RoleType;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -29,7 +31,7 @@ interface UsePermissionTemplatesReturn {
   error: string | null;
 
   // CRUD operations
-  createTemplate: (name: string, description?: string) => Promise<PermissionTemplate | null>;
+  createTemplate: (name: string, roleType: RoleType, description?: string) => Promise<PermissionTemplate | null>;
   updateTemplate: (id: string, name: string, description?: string) => Promise<boolean>;
   deleteTemplate: (id: string) => Promise<boolean>;
 
@@ -41,6 +43,9 @@ interface UsePermissionTemplatesReturn {
   addRestriction: (templateId: string, permissionCode: string) => Promise<boolean>;
   removeRestriction: (templateId: string, permissionCode: string) => Promise<boolean>;
   setRestrictions: (templateId: string, permissionCodes: string[]) => Promise<boolean>;
+
+  // Filter by role type
+  getTemplatesByRole: (roleType: RoleType) => PermissionTemplate[];
 
   // Refresh data
   refetch: () => Promise<void>;
@@ -80,13 +85,13 @@ export function usePermissionTemplates(): UsePermissionTemplatesReturn {
 
   // Create new template
   const createTemplate = useCallback(
-    async (name: string, description?: string): Promise<PermissionTemplate | null> => {
+    async (name: string, roleType: RoleType, description?: string): Promise<PermissionTemplate | null> => {
       try {
-        console.log('[usePermissionTemplates] Creating template:', { name, description });
+        console.log('[usePermissionTemplates] Creating template:', { name, roleType, description });
 
         const { data, error } = await (supabase as any)
           .from('permission_templates')
-          .insert([{ name, description: description || null }])
+          .insert([{ name, role_type: roleType, description: description || null }])
           .select()
           .single();
 
@@ -100,11 +105,19 @@ export function usePermissionTemplates(): UsePermissionTemplatesReturn {
         return newTemplate;
       } catch (err) {
         console.error('[usePermissionTemplates] Error creating template:', err);
-        setError(err instanceof Error ? err.message : 'فشل في إنشاء القالب');
+        setError(err instanceof Error ? err.message : 'فشل في إنشاء الصلاحية');
         return null;
       }
     },
     []
+  );
+
+  // Get templates filtered by role type
+  const getTemplatesByRole = useCallback(
+    (roleType: RoleType): PermissionTemplate[] => {
+      return templates.filter((t) => t.role_type === roleType);
+    },
+    [templates]
   );
 
   // Update template
@@ -302,6 +315,7 @@ export function usePermissionTemplates(): UsePermissionTemplatesReturn {
     addRestriction,
     removeRestriction,
     setRestrictions,
+    getTemplatesByRole,
     refetch: fetchTemplates,
   };
 }

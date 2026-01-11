@@ -20,6 +20,8 @@ import {
   ChatBubbleLeftRightIcon
 } from '@heroicons/react/24/outline'
 import { hasPageAccess, type UserRole } from '@/app/lib/auth/roleBasedAccess'
+import { usePermissionsContext } from '@/lib/contexts/PermissionsContext'
+import { PAGE_ACCESS_MAP } from '@/types/permissions'
 
 const allSidebarItems = [
   { href: '/dashboard', label: 'لوحة التحكم', icon: HomeIcon },
@@ -45,13 +47,23 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
   const pathname = usePathname()
   const { data: session, status } = useSession()
   const loading = status === 'loading'
+  const { hasPermission } = usePermissionsContext()
 
-  // Filter menu items based on user role
+  // Filter menu items based on user role AND page access permissions
   const sidebarItems = useMemo(() => {
     const userRole = session?.user?.role as UserRole | null
 
-    return allSidebarItems.filter(item => hasPageAccess(userRole, item.href))
-  }, [session?.user?.role])
+    return allSidebarItems.filter(item => {
+      // أولاً: التحقق من صلاحية الدور (الموجودة حالياً)
+      if (!hasPageAccess(userRole, item.href)) return false
+
+      // ثانياً: التحقق من صلاحية الصفحة (page_access.*)
+      const pageCode = PAGE_ACCESS_MAP[item.href]
+      if (pageCode && !hasPermission(pageCode)) return false
+
+      return true
+    })
+  }, [session?.user?.role, hasPermission])
 
   // Close sidebar when pressing ESC
   useEffect(() => {

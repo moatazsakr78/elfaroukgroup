@@ -10,8 +10,8 @@ export default function TestAuthPage() {
     isLoading,
     isAuthenticated,
     isAdmin,
-    isEmployee,
     isCustomer,
+    isWholesale,
     isAdminOrEmployee
   } = useAuth()
 
@@ -55,8 +55,8 @@ export default function TestAuthPage() {
               <p>أدمن رئيسي: {isAdmin ? '✅ نعم' : '❌ لا'}</p>
             </div>
 
-            <div className={`p-4 rounded ${isEmployee ? 'bg-green-900' : 'bg-red-900'}`}>
-              <p>موظف: {isEmployee ? '✅ نعم' : '❌ لا'}</p>
+            <div className={`p-4 rounded ${isWholesale ? 'bg-green-900' : 'bg-red-900'}`}>
+              <p>جملة: {isWholesale ? '✅ نعم' : '❌ لا'}</p>
             </div>
 
             <div className={`p-4 rounded ${isCustomer ? 'bg-green-900' : 'bg-red-900'}`}>
@@ -71,7 +71,7 @@ export default function TestAuthPage() {
 
         {/* محتوى للأدمن فقط */}
         <ProtectedSection
-          allowedRoles={['أدمن رئيسي', 'موظف']}
+          allowedRoles={['أدمن رئيسي']}
           fallback={
             <div className="bg-red-900 rounded-lg p-6">
               <p className="text-xl">❌ هذا المحتوى للمشرفين فقط</p>
@@ -80,7 +80,7 @@ export default function TestAuthPage() {
         >
           <div className="bg-green-900 rounded-lg p-6">
             <h3 className="text-xl font-bold mb-2">✅ محتوى المشرفين</h3>
-            <p>أنت تشاهد هذا لأنك أدمن رئيسي أو موظف</p>
+            <p>أنت تشاهد هذا لأنك أدمن رئيسي</p>
             <ul className="list-disc list-inside mt-4 space-y-2">
               <li>يمكنك الوصول لنقطة البيع</li>
               <li>يمكنك إدارة المخزون</li>

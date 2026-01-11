@@ -10,12 +10,11 @@ export function useAuth() {
 
   // Helper functions
   const isAdmin = userRole === 'أدمن رئيسي'
-  const isEmployee = userRole === 'موظف'
   const isCustomer = userRole === 'عميل'
   const isWholesale = userRole === 'جملة'
 
-  // Combined checks
-  const isAdminOrEmployee = isAdmin || isEmployee
+  // Combined checks (isAdmin replaces isAdminOrEmployee since موظف is not a valid role)
+  const isAdminOrEmployee = isAdmin
   const isCustomerOrWholesale = isCustomer || isWholesale
 
   // Check if user has specific role
@@ -36,7 +35,6 @@ export function useAuth() {
 
     // Role checks
     isAdmin,
-    isEmployee,
     isCustomer,
     isWholesale,
     isAdminOrEmployee,

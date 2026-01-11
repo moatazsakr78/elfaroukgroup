@@ -12,6 +12,9 @@ interface PermissionsContextValue {
   // Check permission (reverse logic: true = NOT restricted = allowed)
   hasPermission: (code: string) => boolean;
 
+  // Check page access permission
+  hasPageAccess: (pageNameEn: string) => boolean;
+
   // Check multiple permissions
   hasAllPermissions: (codes: string[]) => boolean;
   hasAnyPermission: (codes: string[]) => boolean;
@@ -33,7 +36,7 @@ export function PermissionsProvider({ children }: PermissionsProviderProps) {
 
   const { profile, isAdmin } = useUserProfile();
 
-  // Fetch user's role restrictions
+  // Fetch user's permission restrictions (المنطق الجديد: من permission_template_restrictions)
   const fetchUserRestrictions = useCallback(async () => {
     // إذا كان أدمن رئيسي، لا قيود
     if (isAdmin) {
@@ -42,7 +45,8 @@ export function PermissionsProvider({ children }: PermissionsProviderProps) {
       return;
     }
 
-    if (!profile?.role) {
+    // لو مفيش permission_id = صلاحية "عام" = لا قيود
+    if (!profile?.permission_id) {
       setUserRestrictions([]);
       setLoading(false);
       return;
@@ -52,26 +56,32 @@ export function PermissionsProvider({ children }: PermissionsProviderProps) {
       setLoading(true);
       setError(null);
 
-      // First, get the role ID from user_roles table
-      const { data: roleData, error: roleError } = await supabase
-        .from('user_roles')
-        .select('id')
-        .eq('name', profile.role)
+      // أولاً: نتحقق إذا كانت الصلاحية "عام" (لا قيود)
+      const { data: templateData, error: templateError } = await (supabase as any)
+        .from('permission_templates')
+        .select('name')
+        .eq('id', profile.permission_id)
         .single();
 
-      if (roleError) {
-        // Role not found in user_roles, might be a basic role
-        // Basic roles (عميل, جملة, موظف, أدمن رئيسي) don't have restrictions
+      if (templateError) {
+        // الصلاحية غير موجودة، نعتبرها "عام"
         setUserRestrictions([]);
         setLoading(false);
         return;
       }
 
-      // Fetch restrictions for this role
+      // لو الصلاحية اسمها "عام" = لا قيود
+      if (templateData?.name === 'عام') {
+        setUserRestrictions([]);
+        setLoading(false);
+        return;
+      }
+
+      // جيب قيود الصلاحية من permission_template_restrictions
       const { data: restrictionsData, error: restrictionsError } = await (supabase as any)
-        .from('role_restrictions')
+        .from('permission_template_restrictions')
         .select('permission_code')
-        .eq('role_id', roleData.id);
+        .eq('template_id', profile.permission_id);
 
       if (restrictionsError) throw restrictionsError;
 
@@ -84,7 +94,7 @@ export function PermissionsProvider({ children }: PermissionsProviderProps) {
     } finally {
       setLoading(false);
     }
-  }, [profile?.role, isAdmin]);
+  }, [profile?.permission_id, isAdmin]);
 
   useEffect(() => {
     fetchUserRestrictions();
@@ -120,11 +130,21 @@ export function PermissionsProvider({ children }: PermissionsProviderProps) {
     [hasPermission]
   );
 
+  // Check if user has access to a specific page
+  // Uses the page_access.{pageNameEn} code convention
+  const hasPageAccess = useCallback(
+    (pageNameEn: string): boolean => {
+      return hasPermission(`page_access.${pageNameEn}`);
+    },
+    [hasPermission]
+  );
+
   const value: PermissionsContextValue = {
     userRestrictions,
     loading,
     error,
     hasPermission,
+    hasPageAccess,
     hasAllPermissions,
     hasAnyPermission,
     refetch: fetchUserRestrictions,

@@ -1,5 +1,6 @@
 // Role-based access control utility
-export type UserRole = 'عميل' | 'جملة' | 'موظف' | 'أدمن رئيسي';
+// الأدوار الأساسية الثلاثة فقط
+export type UserRole = 'عميل' | 'جملة' | 'أدمن رئيسي';
 
 // Define allowed pages for each role
 export const rolePermissions: Record<UserRole, string[]> = {
@@ -26,31 +27,6 @@ export const rolePermissions: Record<UserRole, string[]> = {
     '/favorites',
     '/checkout',
     '/social-media', // السوشيال ميديا
-  ],
-  'موظف': [
-    // كل صفحات النظام + المتجر
-    // صفحات المتجر
-    '/',
-    '/store',
-    '/product',
-    '/social-media', // السوشيال ميديا
-
-    // صفحات الإدارة
-    '/customer-orders', // طلبات العملاء (مش my-orders)
-    '/admin/products', // إدارة المتجر (يشمل /admin/products/social-media)
-    '/shipping', // الشحن
-
-    // صفحات النظام
-    '/dashboard',
-    '/pos',
-    '/products', // إدارة المنتجات في النظام
-    '/inventory',
-    '/customers',
-    '/suppliers',
-    '/whatsapp', // محادثات واتساب
-    '/safes',
-    '/reports',
-    '/settings',
   ],
   'أدمن رئيسي': [
     // كل الصفحات - صلاحيات كاملة
@@ -113,18 +89,18 @@ export const hasPageAccess = (userRole: UserRole | null, pagePath: string): bool
 
 // Get user role based on is_admin flag (for backwards compatibility)
 export const getUserRoleFromProfile = (role: string | null, isAdmin: boolean): UserRole => {
-  // If role is already set to one of our main roles, use it
-  if (role && ['عميل', 'جملة', 'موظف', 'أدمن رئيسي'].includes(role)) {
+  // If role is already set to one of our 3 main roles, use it
+  if (role && ['عميل', 'جملة', 'أدمن رئيسي'].includes(role)) {
     return role as UserRole;
   }
-  
+
   // Otherwise, determine from is_admin flag
   return isAdmin ? 'أدمن رئيسي' : 'عميل';
 };
 
-// Check if user is admin (employee or main admin)
+// Check if user is admin
 export const isAdminRole = (userRole: UserRole | null): boolean => {
-  return userRole === 'موظف' || userRole === 'أدمن رئيسي';
+  return userRole === 'أدمن رئيسي';
 };
 
 // Check if user is customer (client or wholesale)

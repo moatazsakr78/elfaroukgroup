@@ -137,12 +137,33 @@ export const CATEGORY_ICONS: Record<string, string> = {
 };
 
 /**
+ * أنواع الأدوار المتاحة
+ */
+export type RoleType = 'أدمن رئيسي' | 'موظف' | 'عميل' | 'جملة';
+
+/**
+ * قائمة الأدوار الثابتة
+ */
+export const ROLE_TYPES: RoleType[] = ['أدمن رئيسي', 'موظف', 'عميل', 'جملة'];
+
+/**
+ * ألوان الأدوار
+ */
+export const ROLE_TYPE_COLORS: Record<RoleType, string> = {
+  'أدمن رئيسي': 'bg-red-500/20 text-red-400',
+  'موظف': 'bg-orange-500/20 text-orange-400',
+  'عميل': 'bg-blue-500/20 text-blue-400',
+  'جملة': 'bg-green-500/20 text-green-400',
+};
+
+/**
  * قالب الصلاحيات
  */
 export interface PermissionTemplate {
   id: string;
   name: string;
   description: string | null;
+  role_type: RoleType;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -164,3 +185,38 @@ export interface PermissionTemplateRestriction {
 export interface TemplateWithRestrictions extends PermissionTemplate {
   restrictions: string[];
 }
+
+/**
+ * عقدة شجرة الصلاحيات (للعرض في صفحة الصلاحيات)
+ */
+export interface PermissionTreeNode {
+  id: string;
+  name: string;
+  name_en?: string;
+  pageAccessCode?: string;  // كود صلاحية الصفحة: 'page_access.pos', 'page_access.products', etc.
+  icon?: React.ComponentType<{ className?: string }>;
+  count?: { selected: number; total: number };
+  children?: PermissionTreeNode[];
+  isExpanded?: boolean;
+}
+
+/**
+ * خريطة أكواد صلاحيات الصفحات
+ */
+export const PAGE_ACCESS_MAP: Record<string, string> = {
+  '/dashboard': 'page_access.dashboard',
+  '/pos': 'page_access.pos',
+  '/products': 'page_access.products',
+  '/inventory': 'page_access.inventory',
+  '/customers': 'page_access.customers',
+  '/suppliers': 'page_access.suppliers',
+  '/customer-orders': 'page_access.customer_orders',
+  '/whatsapp': 'page_access.whatsapp',
+  '/safes': 'page_access.safes',
+  '/reports': 'page_access.reports',
+  '/permissions': 'page_access.permissions',
+  '/settings': 'page_access.settings',
+  // صفحات المتجر
+  '/admin/products': 'page_access.store_products',
+  '/shipping': 'page_access.shipping_details',
+};
