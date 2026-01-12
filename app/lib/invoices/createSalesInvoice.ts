@@ -9,6 +9,8 @@ export interface CartItem {
   selectedColors?: { [key: string]: number } | null
   price: number
   total: number
+  branch_id?: string      // الفرع اللي اتباع منه المنتج (مطلوب للبيع، اختياري للشراء)
+  branch_name?: string   // اسم الفرع للعرض
 }
 
 export interface InvoiceSelections {
@@ -180,7 +182,8 @@ export async function createSalesInvoice({
         unit_price: item.price,
         cost_price: item.product.cost_price || 0,
         discount: 0,
-        notes: notesText
+        notes: notesText,
+        branch_id: item.branch_id || selections.branch.id // الفرع الخاص بكل منتج أو الفرع المحدد في الفاتورة
       }
     })
 
@@ -205,18 +208,23 @@ export async function createSalesInvoice({
     // Each safe shows only its own invoices
 
     // Update inventory quantities (parallel execution for better performance)
+    // كل منتج يتم خصمه من فرعه المحدد (item.branch_id)
     const inventoryUpdatePromises = cartItems.map(async (item) => {
       try {
+        // استخدام branch_id الخاص بكل منتج
+        // استخدم branch_id من المنتج أو من الفرع المحدد في الفاتورة كـ fallback
+        const itemBranchId = item.branch_id || selections.branch.id
+
         // First get current quantity, then update
         const { data: currentInventory, error: getError } = await supabase
           .from('inventory')
           .select('quantity')
           .eq('product_id', item.product.id)
-          .eq('branch_id', selections.branch.id)
+          .eq('branch_id', itemBranchId)
           .single()
 
         if (getError) {
-          console.warn(`Failed to get current inventory for product ${item.product.id}:`, getError.message)
+          console.warn(`Failed to get current inventory for product ${item.product.id} in branch ${itemBranchId}:`, getError.message)
           return
         }
 
@@ -230,10 +238,10 @@ export async function createSalesInvoice({
             quantity: newQuantity
           })
           .eq('product_id', item.product.id)
-          .eq('branch_id', selections.branch.id)
+          .eq('branch_id', itemBranchId)
 
         if (inventoryError) {
-          console.warn(`Failed to update inventory for product ${item.product.id}:`, inventoryError.message)
+          console.warn(`Failed to update inventory for product ${item.product.id} in branch ${itemBranchId}:`, inventoryError.message)
         }
       } catch (err) {
         console.warn(`Error updating inventory for product ${item.product.id}:`, err)
@@ -241,9 +249,12 @@ export async function createSalesInvoice({
     })
 
     // Update product variant quantities in parallel
+    // كل variant يتم خصمه من فرع المنتج المحدد (item.branch_id)
     const variantUpdatePromises = cartItems
       .filter(item => item.selectedColors && Object.keys(item.selectedColors).length > 0)
       .flatMap(item => {
+        // استخدم branch_id من المنتج أو من الفرع المحدد في الفاتورة كـ fallback
+        const itemBranchId = item.branch_id || selections.branch.id
         return Object.entries(item.selectedColors as Record<string, number>)
           .filter(([_, colorQuantity]) => colorQuantity > 0)
           .map(async ([colorName, colorQuantity]) => {
@@ -267,7 +278,7 @@ export async function createSalesInvoice({
                 .from('product_variant_quantities')
                 .select('quantity')
                 .eq('variant_definition_id', variantDefinition.id)
-                .eq('branch_id', selections.branch.id)
+                .eq('branch_id', itemBranchId)
                 .single()
 
               if (qtyGetError && qtyGetError.code !== 'PGRST116') {
@@ -284,7 +295,7 @@ export async function createSalesInvoice({
                 .from('product_variant_quantities')
                 .upsert({
                   variant_definition_id: variantDefinition.id,
-                  branch_id: selections.branch.id,
+                  branch_id: itemBranchId,
                   quantity: newVariantQuantity,
                   updated_at: new Date().toISOString()
                 }, {

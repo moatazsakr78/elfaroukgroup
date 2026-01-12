@@ -6,6 +6,8 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 const POS_COLUMN_VISIBILITY_KEY = 'pos-column-visibility-v2';
 import { useCart, CartProvider } from "@/lib/contexts/CartContext";
 import { useCartBadge } from "@/lib/hooks/useCartBadge";
+import { useUserProfile } from "@/lib/contexts/UserProfileContext";
+import { usePermissionCheck } from "@/lib/hooks/usePermissionCheck";
 import CartModal from "@/app/components/CartModal";
 import { useCompanySettings } from "@/lib/hooks/useCompanySettings";
 import {
@@ -157,6 +159,13 @@ function POSPageContent() {
   const formatPrice = useFormatPrice();
   const { companyName, logoUrl } = useCompanySettings();
   const { user } = useAuth();
+
+  // Get user profile for default branch
+  const { profile: userProfile, isAdmin } = useUserProfile();
+
+  // Permission check for changing branch
+  const { can: hasPermission } = usePermissionCheck();
+  const canChangeBranch = isAdmin || hasPermission('pos.change_branch');
 
   const [searchQuery, setSearchQuery] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -313,6 +322,7 @@ function POSPageContent() {
   const [editItemsLoaded, setEditItemsLoaded] = useState(false);
 
   // Use persistent selections hook for main tab defaults only
+  // تمرير فرع الموظف من user_profiles لتحديد الفرع الافتراضي
   const {
     selections: globalSelections,
     isLoaded: selectionsLoaded,
@@ -324,7 +334,8 @@ function POSPageContent() {
     hasRequiredForCart: globalHasRequiredForCart,
     hasRequiredForSale: globalHasRequiredForSale,
     defaultCustomer, // Default customer for new tabs
-  } = usePersistentSelections();
+    defaultBranch,   // Default branch for the user
+  } = usePersistentSelections(userProfile?.branch_id);
 
   // Get selections from active tab (tab-specific selections)
   const selections = useMemo(() => {
@@ -376,6 +387,25 @@ function POSPageContent() {
   const hasRequiredForSale = useCallback(() => {
     return selections.record && selections.customer && selections.branch;
   }, [selections.record, selections.customer, selections.branch]);
+
+  // Current branch for cart items - الفرع الحالي لإضافته للمنتجات في السلة
+  const currentBranch = useMemo(() => {
+    return selections.branch;
+  }, [selections.branch]);
+
+  // إظهار اسم الفرع جنب كل منتج فقط لو فيه أكتر من فرع في السلة
+  const showBranchPerItem = useMemo(() => {
+    if (cartItems.length === 0) return false;
+    const branchIds = cartItems.map(item => item.branch_id).filter(Boolean);
+    const uniqueBranches = new Set(branchIds);
+    console.log('Branch check:', {
+      cartItemsCount: cartItems.length,
+      branchIds,
+      uniqueCount: uniqueBranches.size,
+      cartItems: cartItems.map(item => ({ id: item.id, name: item.product?.name, branch_id: item.branch_id, branch_name: item.branch_name }))
+    });
+    return uniqueBranches.size > 1;
+  }, [cartItems]);
 
   // Categories state
   const [categories, setCategories] = useState<Category[]>([]);
@@ -1669,6 +1699,8 @@ function POSPageContent() {
         productId: product.id,
         quantity,
         selectedColor,
+        branchId: currentBranch?.id,
+        branchName: currentBranch?.name,
       });
 
       setCartItems((prev) => {
@@ -1724,6 +1756,9 @@ function POSPageContent() {
               ? { [selectedColor]: quantity }
               : undefined,
             color: selectedColor || null,
+            // إضافة معلومات الفرع للمنتج
+            branch_id: currentBranch?.id || '',
+            branch_name: currentBranch?.name || '',
           };
 
           newCart = [...prev, newCartItem];
@@ -1734,7 +1769,7 @@ function POSPageContent() {
         return newCart;
       });
     },
-    [updateActiveTabCart, getProductPriceByType, isPurchaseMode],
+    [updateActiveTabCart, getProductPriceByType, isPurchaseMode, currentBranch],
   );
 
   // OPTIMIZED: Remove from Cart
@@ -2009,7 +2044,7 @@ function POSPageContent() {
         return newCartItems;
       });
     } else {
-      // منتج جديد - إضافته
+      // منتج جديد - إضافته مع الفرع الحالي
       const newCartItem = {
         id: productWithPrice.id.toString(),
         product: productWithPrice,
@@ -2017,6 +2052,9 @@ function POSPageContent() {
         selectedColors: Object.keys(selections).length > 0 ? selections : null,
         price: productWithPrice.price || 0,
         total: (productWithPrice.price || 0) * totalQuantity,
+        // إضافة معلومات الفرع للمنتج
+        branch_id: currentBranch?.id || '',
+        branch_name: currentBranch?.name || '',
       };
 
       setCartItems((prev) => {
@@ -2398,6 +2436,8 @@ function POSPageContent() {
             : null,
           price: item.price,
           total: item.price * item.quantity,
+          branch_id: item.branch_id || selections.branch?.id || '',
+          branch_name: item.branch_name || selections.branch?.name || '',
         }));
 
         const result = await createSalesInvoice({
@@ -4343,16 +4383,34 @@ function POSPageContent() {
                     )}
                   </button>
                 ) : (
-                  <button
-                    onClick={toggleBranchModal}
-                    className="flex flex-col items-center p-2 text-gray-300 hover:text-white cursor-pointer min-w-[80px] transition-all relative"
-                  >
-                    <BuildingOfficeIcon className="h-5 w-5 mb-1" />
-                    <span className="text-sm">تحويل فرع</span>
-                    {!selections.branch && (
-                      <div className="w-1 h-1 bg-red-400 rounded-full mt-1"></div>
+                  <div className="flex flex-col items-center p-2 min-w-[80px] relative">
+                    {/* زر الفرع - قابل للتغيير لمن عنده صلاحية فقط */}
+                    {canChangeBranch ? (
+                      <button
+                        onClick={toggleBranchModal}
+                        className="flex flex-col items-center text-gray-300 hover:text-white cursor-pointer transition-all"
+                        title="اضغط لتغيير الفرع"
+                      >
+                        <BuildingOfficeIcon className="h-5 w-5 mb-1" />
+                        <span className="text-sm truncate max-w-[70px]">
+                          {selections.branch?.name || 'اختر فرع'}
+                        </span>
+                        {!selections.branch && (
+                          <div className="w-1 h-1 bg-red-400 rounded-full mt-1"></div>
+                        )}
+                      </button>
+                    ) : (
+                      <div
+                        className="flex flex-col items-center text-gray-400"
+                        title={selections.branch?.name || 'لا يوجد فرع'}
+                      >
+                        <BuildingOfficeIcon className="h-5 w-5 mb-1" />
+                        <span className="text-sm truncate max-w-[70px]">
+                          {selections.branch?.name || 'لا يوجد فرع'}
+                        </span>
+                      </div>
                     )}
-                  </button>
+                  </div>
                 )}
 
                 {/* Price Type Button */}
@@ -4596,17 +4654,26 @@ function POSPageContent() {
                     <div className="w-1 h-1 bg-red-400 rounded-full absolute -top-1 -right-1"></div>
                   )}
                 </button>
-              ) : (
+              ) : canChangeBranch ? (
                 <button
                   onClick={toggleBranchModal}
                   className="flex items-center gap-2 px-3 py-2 bg-[#2B3544] border border-gray-600 rounded text-gray-300 hover:text-white hover:bg-[#374151] cursor-pointer whitespace-nowrap flex-shrink-0 transition-colors relative"
+                  title="اضغط لتغيير الفرع"
                 >
                   <BuildingOfficeIcon className="h-4 w-4" />
-                  <span className="text-xs">تحويل فرع</span>
+                  <span className="text-xs truncate max-w-[80px]">{selections.branch?.name || 'اختر فرع'}</span>
                   {!selections.branch && (
                     <div className="w-1 h-1 bg-red-400 rounded-full absolute -top-1 -right-1"></div>
                   )}
                 </button>
+              ) : (
+                <div
+                  className="flex items-center gap-2 px-3 py-2 bg-[#2B3544] border border-gray-600 rounded text-gray-400 whitespace-nowrap flex-shrink-0"
+                  title={selections.branch?.name || 'لا يوجد فرع'}
+                >
+                  <BuildingOfficeIcon className="h-4 w-4" />
+                  <span className="text-xs truncate max-w-[80px]">{selections.branch?.name || 'لا يوجد فرع'}</span>
+                </div>
               )}
 
               {/* Price Type Button - Mobile */}
@@ -5382,9 +5449,17 @@ function POSPageContent() {
                                 {/* Product Info */}
                                 <div className="flex-1 min-w-0">
                                   <div className="flex justify-between items-start mb-1">
-                                    <h4 className="font-medium text-white text-sm truncate">
-                                      {item.product.name}
-                                    </h4>
+                                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                                      <h4 className="font-medium text-white text-sm truncate">
+                                        {item.product.name}
+                                      </h4>
+                                      {/* إظهار اسم الفرع فقط لو فيه أكتر من فرع في السلة */}
+                                      {showBranchPerItem && item.branch_name && (
+                                        <span className="text-xs text-blue-300 bg-blue-900/50 px-2 py-0.5 rounded-full flex-shrink-0 border border-blue-500/30">
+                                          {item.branch_name}
+                                        </span>
+                                      )}
+                                    </div>
                                     <div className="flex items-center gap-1 flex-shrink-0">
                                       {/* زر تعديل المنتج - يظهر فقط للمنتجات الجديدة في وضع الشراء */}
                                       {isPurchaseMode && item.product?.isNewProduct && (

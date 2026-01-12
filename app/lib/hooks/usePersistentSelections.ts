@@ -11,7 +11,7 @@ export interface SelectionData {
 
 const STORAGE_KEY = 'pos_selections'
 
-export function usePersistentSelections() {
+export function usePersistentSelections(userProfileBranchId?: string | null) {
   const [selections, setSelections] = useState<SelectionData>({
     record: null,
     customer: null,
@@ -20,6 +20,7 @@ export function usePersistentSelections() {
 
   const [isLoaded, setIsLoaded] = useState(false)
   const [defaultCustomer, setDefaultCustomer] = useState<any>(null)
+  const [defaultBranch, setDefaultBranch] = useState<any>(null)
 
   // Load default customer from database
   // البحث عن العميل الافتراضي بناءً على الاسم "عميل"
@@ -39,6 +40,56 @@ export function usePersistentSelections() {
       return data
     } catch (error) {
       console.error('Error in loadDefaultCustomer:', error)
+      return null
+    }
+  }
+
+  // Load default branch for the user
+  // الأولوية: 1. فرع الموظف من user_profiles 2. الفرع الافتراضي 3. أول فرع نشط
+  const loadDefaultBranch = async (userBranchId?: string | null) => {
+    try {
+      // 1. إذا كان الموظف مرتبط بفرع، جلبه
+      if (userBranchId) {
+        const { data: userBranch, error: userBranchError } = await supabase
+          .from('branches')
+          .select('id, name, address, phone, is_active, is_default')
+          .eq('id', userBranchId)
+          .eq('is_active', true)
+          .single()
+
+        if (!userBranchError && userBranch) {
+          return userBranch
+        }
+      }
+
+      // 2. جلب الفرع الافتراضي
+      const { data: defaultBranchData, error: defaultError } = await supabase
+        .from('branches')
+        .select('id, name, address, phone, is_active, is_default')
+        .eq('is_default', true)
+        .eq('is_active', true)
+        .single()
+
+      if (!defaultError && defaultBranchData) {
+        return defaultBranchData
+      }
+
+      // 3. جلب أول فرع نشط
+      const { data: firstBranch, error: firstError } = await supabase
+        .from('branches')
+        .select('id, name, address, phone, is_active, is_default')
+        .eq('is_active', true)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .single()
+
+      if (!firstError && firstBranch) {
+        return firstBranch
+      }
+
+      return null
+    } catch (error) {
+      console.error('Error in loadDefaultBranch:', error)
       return null
     }
   }
@@ -95,6 +146,17 @@ export function usePersistentSelections() {
           }
         }
 
+        // تحميل الفرع الافتراضي للموظف
+        // الأولوية: 1. فرع الموظف 2. الفرع الافتراضي 3. أول فرع
+        const defaultBranchData = await loadDefaultBranch(userProfileBranchId)
+        if (defaultBranchData) {
+          setDefaultBranch(defaultBranchData)
+          // إذا لم يكن هناك فرع محدد مسبقاً، استخدم الافتراضي
+          if (!loadedSelections.branch) {
+            loadedSelections.branch = defaultBranchData
+          }
+        }
+
         // Refresh record data from database to get latest name
         if (loadedSelections.record && loadedSelections.record.id) {
           const freshRecordData = await refreshRecordData(loadedSelections.record.id)
@@ -106,10 +168,15 @@ export function usePersistentSelections() {
         setSelections(loadedSelections)
       } catch (error) {
         console.error('Error loading selections from localStorage:', error)
-        // Even if there's an error, try to load the default customer
+        // Even if there's an error, try to load the default customer and branch
         const defaultCustomer = await loadDefaultCustomer()
-        if (defaultCustomer) {
-          setSelections(prev => ({ ...prev, customer: defaultCustomer }))
+        const defaultBranchData = await loadDefaultBranch(userProfileBranchId)
+        if (defaultCustomer || defaultBranchData) {
+          setSelections(prev => ({
+            ...prev,
+            customer: defaultCustomer || prev.customer,
+            branch: defaultBranchData || prev.branch
+          }))
         }
       } finally {
         setIsLoaded(true)
@@ -117,7 +184,7 @@ export function usePersistentSelections() {
     }
 
     initializeSelections()
-  }, [])
+  }, [userProfileBranchId])
 
   // Save to localStorage whenever selections change
   useEffect(() => {
@@ -183,6 +250,7 @@ export function usePersistentSelections() {
     isComplete,
     hasRequiredForCart,
     hasRequiredForSale,
-    defaultCustomer // Export default customer for use in new tabs
+    defaultCustomer, // Export default customer for use in new tabs
+    defaultBranch    // Export default branch for POS
   }
 }
