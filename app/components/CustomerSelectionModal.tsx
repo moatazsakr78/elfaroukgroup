@@ -75,48 +75,26 @@ export default function CustomerSelectionModal({
         return;
       }
 
-      // Fetch all sales for balance calculation
-      const { data: salesData } = await supabase
-        .from("sales")
-        .select("customer_id, total_amount");
+      // Fetch customer balances using PostgreSQL function (more efficient and reliable)
+      // This calculates: opening_balance + total_sales + loans - regular_payments
+      const { data: balancesData, error: balancesError } = await supabase
+        .rpc('calculate_customer_balances' as any) as {
+          data: Array<{ customer_id: string; calculated_balance: number }> | null;
+          error: any
+        };
 
-      // Fetch all customer payments for balance calculation (includes notes to identify loans)
-      const { data: paymentsData } = await supabase
-        .from("customer_payments")
-        .select("customer_id, amount, notes");
+      if (balancesError) {
+        console.error("Error fetching customer balances:", balancesError);
+      }
 
-      // Calculate balance for each customer
+      // Merge customers with their calculated balances
       const customersWithBalance = (customersData || []).map((customer) => {
-        const openingBalance = customer.opening_balance || 0;
-
-        // Sum of all sales for this customer
-        const salesBalance = (salesData || [])
-          .filter((sale) => sale.customer_id === customer.id)
-          .reduce((total, sale) => total + (sale.total_amount || 0), 0);
-
-        // Calculate payments with proper handling for loans vs regular payments
-        // السلفة (loan) = adds to balance (customer owes more) - identified by notes starting with "سلفة"
-        // الدفعة (payment) = reduces balance (customer paid their debt)
-        let totalLoans = 0;
-        let totalRegularPayments = 0;
-
-        (paymentsData || [])
-          .filter((p) => p.customer_id === customer.id)
-          .forEach((payment) => {
-            const isLoan = payment.notes?.startsWith('سلفة');
-            if (isLoan) {
-              totalLoans += (payment.amount || 0);
-            } else {
-              totalRegularPayments += (payment.amount || 0);
-            }
-          });
-
-        // Final balance = opening + sales + loans - payments
-        const calculatedBalance = openingBalance + salesBalance + totalLoans - totalRegularPayments;
-
+        const balanceRecord = (balancesData || []).find(
+          (b) => b.customer_id === customer.id
+        );
         return {
           ...customer,
-          calculated_balance: calculatedBalance,
+          calculated_balance: Number(balanceRecord?.calculated_balance) || 0,
         };
       });
 
