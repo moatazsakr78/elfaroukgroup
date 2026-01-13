@@ -124,6 +124,7 @@ import {
 } from "../../lib/invoices/createSalesInvoice";
 import { createPurchaseInvoice } from "../../lib/invoices/createPurchaseInvoice";
 import { createTransferInvoice } from "../../lib/invoices/createTransferInvoice";
+import { getOrCreateSupplierForCustomer } from "../../lib/services/partyLinkingService";
 import {
   MagnifyingGlassIcon,
   Squares2X2Icon,
@@ -249,6 +250,7 @@ function POSPageContent() {
   }>({});
   const posVisibilityLoadedRef = useRef(false);
   const [selectedSupplier, setSelectedSupplier] = useState<any>(null);
+  const [selectedCustomerForPurchase, setSelectedCustomerForPurchase] = useState<any>(null);
   const [selectedWarehouse, setSelectedWarehouse] = useState<any>(null);
 
   // Returns State - simple toggle
@@ -1382,7 +1384,7 @@ function POSPageContent() {
   };
 
   // Handler for party selection when entering purchase mode (from شراء button)
-  const handlePartySelectForPurchase = (party: SelectedParty) => {
+  const handlePartySelectForPurchase = async (party: SelectedParty) => {
     if (party.type === 'supplier') {
       // الشراء من مورد (الحالة العادية)
       const supplier = {
@@ -1394,6 +1396,7 @@ function POSPageContent() {
       // تفعيل وضع الشراء
       setIsPurchaseMode(true);
       setSelectedSupplier(supplier);
+      setSelectedCustomerForPurchase(null);
 
       // إنشاء tab جديد باسم المورد
       const tabName = supplier.name;
@@ -1404,9 +1407,10 @@ function POSPageContent() {
         priceType: 'cost_price',
         isPurchaseMode: true,
         selectedSupplier: supplier,
+        selectedCustomerForPurchase: null,
       });
     } else {
-      // الشراء من عميل (حالة خاصة - مثلاً شراء مرتجعات من العميل)
+      // الشراء من عميل - إنشاء/جلب المورد المرتبط تلقائياً
       const customer = {
         id: party.id,
         name: party.name,
@@ -1415,20 +1419,40 @@ function POSPageContent() {
         default_record_id: party.default_record_id,
         default_price_type: party.default_price_type,
       };
-      // تفعيل وضع الشراء مع العميل
-      setIsPurchaseMode(true);
-      setSelectedSupplier(null); // لا يوجد مورد
 
-      // إنشاء tab جديد باسم العميل
-      const tabName = `شراء - ${customer.name}`;
-      addTab(tabName, {
-        customer: customer,
-        branch: globalSelections.branch,
-        record: globalSelections.record,
-        priceType: 'cost_price',
-        isPurchaseMode: true,
-        selectedSupplier: null,
-      });
+      // إنشاء/جلب المورد المرتبط بالعميل
+      const linkResult = await getOrCreateSupplierForCustomer(party.id);
+
+      if (linkResult.success && linkResult.id) {
+        // جلب بيانات المورد المرتبط
+        const linkedSupplier = {
+          id: linkResult.id,
+          name: customer.name, // نفس اسم العميل
+          phone: customer.phone,
+          isLinkedToCustomer: true,
+        };
+
+        // تفعيل وضع الشراء مع المورد المرتبط
+        setIsPurchaseMode(true);
+        setSelectedSupplier(linkedSupplier);
+        setSelectedCustomerForPurchase(customer);
+
+        // إنشاء tab جديد باسم العميل
+        const tabName = `شراء - ${customer.name}`;
+        addTab(tabName, {
+          customer: customer,
+          branch: globalSelections.branch,
+          record: globalSelections.record,
+          priceType: 'cost_price',
+          isPurchaseMode: true,
+          selectedSupplier: linkedSupplier,
+          selectedCustomerForPurchase: customer,
+        });
+      } else {
+        // فشل في إنشاء المورد المرتبط
+        alert(`فشل في ربط العميل بمورد: ${linkResult.error || 'خطأ غير معروف'}`);
+        return;
+      }
     }
     setIsPartyModalOpen(false);
     setIsPartyModalForPurchase(false);
@@ -1567,6 +1591,9 @@ function POSPageContent() {
     if (activePOSTab.selectedSupplier !== undefined) {
       setSelectedSupplier(activePOSTab.selectedSupplier);
     }
+    if (activePOSTab.selectedCustomerForPurchase !== undefined) {
+      setSelectedCustomerForPurchase(activePOSTab.selectedCustomerForPurchase);
+    }
     if (activePOSTab.selectedWarehouse !== undefined) {
       setSelectedWarehouse(activePOSTab.selectedWarehouse);
     }
@@ -1606,6 +1633,7 @@ function POSPageContent() {
       activePOSTab.isEditMode !== isEditMode ||
       JSON.stringify(activePOSTab.editInvoiceData) !== JSON.stringify(editInvoiceData) ||
       JSON.stringify(activePOSTab.selectedSupplier) !== JSON.stringify(selectedSupplier) ||
+      JSON.stringify(activePOSTab.selectedCustomerForPurchase) !== JSON.stringify(selectedCustomerForPurchase) ||
       JSON.stringify(activePOSTab.selectedWarehouse) !== JSON.stringify(selectedWarehouse) ||
       JSON.stringify(activePOSTab.transferFromLocation) !== JSON.stringify(transferFromLocation) ||
       JSON.stringify(activePOSTab.transferToLocation) !== JSON.stringify(transferToLocation);
@@ -1618,12 +1646,13 @@ function POSPageContent() {
         isEditMode,
         editInvoiceData,
         selectedSupplier,
+        selectedCustomerForPurchase,
         selectedWarehouse,
         transferFromLocation,
         transferToLocation,
       });
     }
-  }, [isPurchaseMode, isTransferMode, isReturnMode, isEditMode, editInvoiceData, selectedSupplier, selectedWarehouse, transferFromLocation, transferToLocation, isLoadingTabs, activePOSTab, updateActiveTabMode]);
+  }, [isPurchaseMode, isTransferMode, isReturnMode, isEditMode, editInvoiceData, selectedSupplier, selectedCustomerForPurchase, selectedWarehouse, transferFromLocation, transferToLocation, isLoadingTabs, activePOSTab, updateActiveTabMode]);
 
   // OPTIMIZED: Memoized product filtering to prevent unnecessary re-renders
   // Returns Set of matching product IDs for O(1) lookup
@@ -2751,6 +2780,7 @@ function POSPageContent() {
   const exitPurchaseMode = () => {
     setIsPurchaseMode(false);
     setIsReturnMode(false); // Also exit return mode
+    setSelectedCustomerForPurchase(null); // Reset customer for purchase
     clearSelections();
     clearCart();
   };
@@ -2760,6 +2790,7 @@ function POSPageContent() {
     // تفعيل وضع الشراء
     setIsPurchaseMode(true);
     setSelectedSupplier(supplier);
+    setSelectedCustomerForPurchase(null); // Reset customer when selecting supplier directly
 
     // إنشاء tab جديد باسم المورد
     const tabName = supplier.name;
@@ -2780,6 +2811,7 @@ function POSPageContent() {
   // Handler لتغيير المورد في وضع الشراء (بدون فتح tab جديد)
   const handleSupplierChange = (supplier: any) => {
     setSelectedSupplier(supplier);
+    setSelectedCustomerForPurchase(null); // Reset customer when changing to supplier
     setIsSupplierModalOpen(false);
     setIsSupplierModalForNewPurchase(false);
   };
@@ -2789,6 +2821,7 @@ function POSPageContent() {
     // Clear existing modes and cart when starting transfer mode
     setIsPurchaseMode(false);
     setIsReturnMode(false);
+    setSelectedCustomerForPurchase(null); // Reset customer for purchase
     clearCart();
 
     // Reset transfer locations

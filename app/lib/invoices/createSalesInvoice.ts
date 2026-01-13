@@ -1,6 +1,7 @@
 'use client'
 
 import { supabase } from '../supabase/client'
+import { getOrCreateCustomerForSupplier } from '../services/partyLinkingService'
 
 export interface CartItem {
   id: string
@@ -80,9 +81,18 @@ export async function createSalesInvoice({
   let effectiveSupplierId: string | null = null
 
   if (partyType === 'supplier' && supplierId) {
-    // البيع لمورد - استخدام العميل الافتراضي + تسجيل المورد
-    customerId = DEFAULT_CUSTOMER_ID
-    effectiveSupplierId = supplierId
+    // البيع لمورد - إنشاء/ربط عميل للمورد تلقائياً
+    const linkResult = await getOrCreateCustomerForSupplier(supplierId)
+    if (linkResult.success && linkResult.id) {
+      customerId = linkResult.id
+      effectiveSupplierId = supplierId
+      console.log('Auto-linked customer for supplier:', { supplierId, linkedCustomerId: linkResult.id, isNew: linkResult.isNew })
+    } else {
+      // Fallback to default customer if linking fails
+      console.warn('Failed to link customer for supplier, using default:', linkResult.error)
+      customerId = DEFAULT_CUSTOMER_ID
+      effectiveSupplierId = supplierId
+    }
   } else {
     // البيع العادي لعميل
     customerId = (selections.customer && selections.customer.id) ? selections.customer.id : DEFAULT_CUSTOMER_ID

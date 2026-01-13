@@ -8,6 +8,7 @@ import ConfirmDeleteModal from './ConfirmDeleteModal'
 import SimpleDateFilterModal, { DateFilter } from './SimpleDateFilterModal'
 import AddPaymentModal from './AddPaymentModal'
 import { useSystemCurrency, useFormatPrice } from '@/lib/hooks/useCurrency'
+import { calculateCustomerBalanceWithLinked } from '@/app/lib/services/partyLinkingService'
 
 interface CustomerDetailsModalProps {
   isOpen: boolean
@@ -319,86 +320,37 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
   }
 
   // Fetch customer balance - independent of date filter
+  // يشمل المشتريات من المورد المرتبط (إن وجد)
   const fetchCustomerBalance = async () => {
     if (!customer?.id) return
 
     try {
-      // Get customer's opening balance
-      const { data: customerData, error: customerError } = await supabase
-        .from('customers')
-        .select('opening_balance')
-        .eq('id', customer.id)
-        .single()
-
-      if (customerError) {
-        console.error('Error fetching customer opening balance:', customerError)
-      }
-
-      const openingBalance = customerData?.opening_balance || 0
-
-      // Get all sales for this customer (without date filter)
-      const { data: allSales, error: salesError } = await supabase
-        .from('sales')
-        .select('total_amount, invoice_type')
-        .eq('customer_id', customer.id)
-
-      if (salesError) {
-        console.error('Error fetching customer sales:', salesError)
-        return
-      }
-
-      // Get all payments for this customer (without date filter)
-      // Include notes to determine if it's a loan or regular payment
-      const { data: allPayments, error: paymentsError } = await supabase
-        .from('customer_payments')
-        .select('amount, notes')
-        .eq('customer_id', customer.id)
-
-      if (paymentsError) {
-        console.error('Error fetching customer payments:', paymentsError)
-        return
-      }
-
-      // Calculate sales balance: Just sum all amounts
-      // Sale Returns are already stored as negative values in the database
-      const salesBalance = (allSales || []).reduce((total, sale) => {
-        return total + (sale.total_amount || 0)
-      }, 0)
-
-      // Calculate payments with proper handling for loans vs regular payments
-      // السلفة (loan/advance) = adds to balance (customer owes more)
-      // الدفعة (payment) = reduces balance (customer paid their debt)
-      let totalRegularPayments = 0
-      let totalLoans = 0
-
-      ;(allPayments || []).forEach(payment => {
-        const isLoan = payment.notes?.startsWith('سلفة')
-        if (isLoan) {
-          // سلفة: يضاف للرصيد (العميل مدين أكثر)
-          totalLoans += (payment.amount || 0)
-        } else {
-          // دفعة: يخصم من الرصيد (العميل دفع جزء من دينه)
-          totalRegularPayments += (payment.amount || 0)
-        }
-      })
-
-      // Final balance = Opening Balance + Sales Balance + Loans - Regular Payments
-      const finalBalance = openingBalance + salesBalance + totalLoans - totalRegularPayments
-
-      setCustomerBalance(finalBalance)
+      const { balance } = await calculateCustomerBalanceWithLinked(customer.id)
+      setCustomerBalance(balance)
     } catch (error) {
       console.error('Error calculating customer balance:', error)
     }
   }
 
   // Fetch sales from Supabase for the specific customer
+  // يشمل فواتير الشراء من المورد المرتبط (إن وجد)
   const fetchSales = async () => {
     if (!customer?.id) return
 
     try {
       setIsLoadingSales(true)
 
-      let query = supabase
+      // 1. Get linked_supplier_id
+      const { data: customerData } = await supabase
+        .from('customers')
+        .select('linked_supplier_id')
+        .eq('id', customer.id)
+        .single()
+
+      const linkedSupplierId = customerData?.linked_supplier_id
+
+      // 2. Fetch sales for this customer
+      let salesQuery = supabase
         .from('sales')
         .select(`
           id,
@@ -426,24 +378,80 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
         .eq('customer_id', customer.id)
 
       // Apply date filter
-      query = applyDateFilter(query)
+      salesQuery = applyDateFilter(salesQuery)
 
-      const { data, error } = await query
+      const { data: salesData, error: salesError } = await salesQuery
         .order('created_at', { ascending: false })
-        .limit(20)
 
-      if (error) {
-        console.error('Error fetching sales:', error)
+      if (salesError) {
+        console.error('Error fetching sales:', salesError)
         return
       }
 
-      const salesData = data || []
-      setSales(salesData)
-      setAllSales(salesData) // Store for client-side filtering
+      // 3. Fetch purchase invoices from linked supplier (if any)
+      let linkedPurchases: any[] = []
+      if (linkedSupplierId) {
+        let purchaseQuery = supabase
+          .from('purchase_invoices')
+          .select(`
+            id,
+            invoice_number,
+            supplier_id,
+            total_amount,
+            notes,
+            created_at,
+            time,
+            invoice_type,
+            record_id,
+            created_by,
+            supplier:suppliers(
+              name,
+              phone
+            ),
+            record:records(
+              name
+            ),
+            creator:user_profiles(
+              full_name
+            )
+          `)
+          .eq('supplier_id', linkedSupplierId)
 
-      // Batch load all sale items for client-side search
-      if (salesData.length > 0) {
-        const saleIds = salesData.map(s => s.id)
+        // Apply date filter
+        purchaseQuery = applyDateFilter(purchaseQuery)
+
+        const { data: purchasesData, error: purchasesError } = await purchaseQuery
+          .order('created_at', { ascending: false })
+
+        if (!purchasesError && purchasesData) {
+          // Map purchase invoices to match sales structure with flag
+          linkedPurchases = purchasesData.map(p => ({
+            ...p,
+            isFromLinkedSupplier: true,
+            // Map supplier fields to customer-like fields for consistency
+            customer: p.supplier,
+            cashier: p.creator,
+            cashier_id: p.created_by,
+            // Translate invoice type to Arabic with linked indicator
+            invoice_type: p.invoice_type === 'Purchase Invoice' ? 'فاتورة شراء' : 'مرتجع شراء',
+            // Use payment method if available, otherwise null
+            payment_method: null
+          }))
+        }
+      }
+
+      // 4. Merge and sort by date
+      const allInvoices = [...(salesData || []).map(s => ({ ...s, isFromLinkedSupplier: false })), ...linkedPurchases]
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .slice(0, 50) // Increased limit since we have 2 sources
+
+      setSales(allInvoices)
+      setAllSales(allInvoices) // Store for client-side filtering
+
+      // Batch load all sale items for client-side search (only for actual sales)
+      const actualSales = allInvoices.filter(s => !s.isFromLinkedSupplier)
+      if (actualSales.length > 0) {
+        const saleIds = actualSales.map(s => s.id)
         const { data: itemsData } = await supabase
           .from('sale_items')
           .select(`
@@ -461,16 +469,82 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
         setSaleItemsCache(cache)
       }
 
-      // Auto-select first sale if available
-      if (salesData.length > 0) {
+      // Also load purchase invoice items for linked purchases
+      const linkedPurchaseInvoices = allInvoices.filter(s => s.isFromLinkedSupplier)
+      if (linkedPurchaseInvoices.length > 0) {
+        const purchaseIds = linkedPurchaseInvoices.map(p => p.id)
+        const { data: purchaseItemsData } = await supabase
+          .from('purchase_invoice_items')
+          .select(`
+            id, invoice_id, quantity, unit_price, discount, notes,
+            product:products(id, name, barcode, category:categories(name))
+          `)
+          .in('invoice_id', purchaseIds)
+
+        // Add to cache with invoice_id as key (using sale_id format for consistency)
+        const cache = { ...saleItemsCache }
+        purchaseItemsData?.forEach(item => {
+          if (!cache[item.invoice_id]) cache[item.invoice_id] = []
+          cache[item.invoice_id].push({ ...item, sale_id: item.invoice_id })
+        })
+        setSaleItemsCache(cache)
+      }
+
+      // Auto-select first invoice if available
+      if (allInvoices.length > 0) {
         setSelectedTransaction(0)
-        fetchSaleItems(salesData[0].id)
+        const firstInvoice = allInvoices[0]
+        if (firstInvoice.isFromLinkedSupplier) {
+          fetchPurchaseInvoiceItems(firstInvoice.id)
+        } else {
+          fetchSaleItems(firstInvoice.id)
+        }
       }
 
     } catch (error) {
       console.error('Error fetching sales:', error)
     } finally {
       setIsLoadingSales(false)
+    }
+  }
+
+  // Fetch purchase invoice items for linked supplier purchases
+  const fetchPurchaseInvoiceItems = async (invoiceId: string) => {
+    try {
+      setIsLoadingItems(true)
+
+      const { data, error } = await supabase
+        .from('purchase_invoice_items')
+        .select(`
+          id,
+          quantity,
+          unit_price,
+          cost_price,
+          discount,
+          notes,
+          product:products(
+            id,
+            name,
+            barcode,
+            main_image_url,
+            category:categories(name)
+          )
+        `)
+        .eq('invoice_id', invoiceId)
+        .order('created_at', { ascending: true })
+
+      if (error) {
+        console.error('Error fetching purchase invoice items:', error)
+        setSaleItems([])
+        return
+      }
+
+      setSaleItems(data || [])
+    } catch (error) {
+      console.error('Error fetching purchase invoice items:', error)
+      setSaleItems([])
+    } finally {
+      setIsLoadingItems(false)
     }
   }
 
@@ -685,10 +759,10 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
     try {
       setIsLoadingStatements(true)
 
-      // Get customer's opening balance and created_at date
+      // Get customer's opening balance, created_at date, and linked supplier
       const { data: customerData, error: customerError } = await supabase
         .from('customers')
-        .select('opening_balance, created_at')
+        .select('opening_balance, created_at, linked_supplier_id')
         .eq('id', customer.id)
         .single()
 
@@ -698,6 +772,7 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
 
       const openingBalance = customerData?.opening_balance || 0
       const customerCreatedAt = customerData?.created_at ? new Date(customerData.created_at) : new Date()
+      const linkedSupplierId = customerData?.linked_supplier_id
 
       // Get all sales for this customer
       const { data: salesData, error: salesError } = await supabase
@@ -767,6 +842,23 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
               saleTransactionsMap.set(tx.sale_id, tx)
             }
           }
+        }
+      }
+
+      // Fetch purchases from linked supplier (if any)
+      let linkedPurchasesData: any[] = []
+      if (linkedSupplierId) {
+        const { data: purchasesData, error: purchasesError } = await supabase
+          .from('purchase_invoices')
+          .select(`
+            id, invoice_number, total_amount, invoice_type, created_at,
+            supplier:suppliers(name)
+          `)
+          .eq('supplier_id', linkedSupplierId)
+          .order('created_at', { ascending: true })
+
+        if (!purchasesError && purchasesData) {
+          linkedPurchasesData = purchasesData
         }
       }
 
@@ -845,6 +937,33 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
               employee_name: employeeName
             })
           }
+        }
+      })
+
+      // Add linked supplier purchases (reduces customer balance - like a payment)
+      linkedPurchasesData?.forEach(purchase => {
+        if (purchase.created_at) {
+          const purchaseDate = new Date(purchase.created_at)
+          const isReturn = purchase.invoice_type === 'Purchase Return'
+          const typeName = isReturn ? 'مرتجع شراء (مورد مرتبط)' : 'فاتورة شراء (مورد مرتبط)'
+
+          statements.push({
+            id: `linked-purchase-${purchase.id}`,
+            purchaseId: purchase.id,
+            date: purchaseDate,
+            description: `${typeName} - ${purchase.invoice_number}`,
+            type: typeName,
+            // Purchase reduces customer balance (like a payment), return increases it
+            amount: isReturn ? Math.abs(purchase.total_amount) : -Math.abs(purchase.total_amount),
+            invoiceValue: 0, // Not an invoice value for customer
+            paidAmount: isReturn ? 0 : Math.abs(purchase.total_amount), // Shows as "paid" since it reduces balance
+            balance: 0, // Will be calculated
+            isNegative: false,
+            isFromLinkedSupplier: true,
+            linkedSupplierName: (purchase as any).supplier?.name || null,
+            safe_name: null,
+            employee_name: null
+          })
         }
       })
 
@@ -942,7 +1061,12 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
       setSales(allSales) // Restore all loaded sales
       if (allSales.length > 0) {
         setSelectedTransaction(0)
-        fetchSaleItems(allSales[0].id)
+        const firstInvoice = allSales[0]
+        if (firstInvoice.isFromLinkedSupplier) {
+          fetchPurchaseInvoiceItems(firstInvoice.id)
+        } else {
+          fetchSaleItems(firstInvoice.id)
+        }
       }
       return
     }
@@ -979,7 +1103,12 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
     // Select first invoice automatically
     if (matchingSales.length > 0) {
       setSelectedTransaction(0)
-      fetchSaleItems(matchingSales[0].id)
+      const firstInvoice = matchingSales[0]
+      if (firstInvoice.isFromLinkedSupplier) {
+        fetchPurchaseInvoiceItems(firstInvoice.id)
+      } else {
+        fetchSaleItems(firstInvoice.id)
+      }
     } else {
       setSaleItems([])
     }
@@ -1959,7 +2088,27 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
           (payload: any) => {
             console.log('Sale items real-time update:', payload)
             if (sales.length > 0 && selectedTransaction < sales.length) {
-              fetchSaleItems(sales[selectedTransaction].id)
+              const selectedInvoice = sales[selectedTransaction]
+              if (selectedInvoice && !selectedInvoice.isFromLinkedSupplier) {
+                fetchSaleItems(selectedInvoice.id)
+              }
+            }
+          }
+        )
+        .subscribe()
+
+      // Set up real-time subscription for purchase_invoice_items (for linked purchases)
+      const purchaseItemsChannel = supabase
+        .channel('modal_purchase_items_changes')
+        .on('postgres_changes',
+          { event: '*', schema: 'elfaroukgroup', table: 'purchase_invoice_items' },
+          (payload: any) => {
+            console.log('Purchase invoice items real-time update:', payload)
+            if (sales.length > 0 && selectedTransaction < sales.length) {
+              const selectedInvoice = sales[selectedTransaction]
+              if (selectedInvoice && selectedInvoice.isFromLinkedSupplier) {
+                fetchPurchaseInvoiceItems(selectedInvoice.id)
+              }
             }
           }
         )
@@ -1982,6 +2131,7 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
       return () => {
         supabase.removeChannel(salesChannel)
         supabase.removeChannel(saleItemsChannel)
+        supabase.removeChannel(purchaseItemsChannel)
         supabase.removeChannel(paymentsChannel)
       }
     }
@@ -1994,10 +2144,16 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
     }
   }, [isOpen, customer?.id])
 
-  // Fetch sale items when selected transaction changes
+  // Fetch items when selected transaction changes
+  // يتعامل مع كل من فواتير البيع وفواتير الشراء المرتبطة
   useEffect(() => {
     if (sales.length > 0 && selectedTransaction < sales.length) {
-      fetchSaleItems(sales[selectedTransaction].id)
+      const selectedInvoice = sales[selectedTransaction]
+      if (selectedInvoice.isFromLinkedSupplier) {
+        fetchPurchaseInvoiceItems(selectedInvoice.id)
+      } else {
+        fetchSaleItems(selectedInvoice.id)
+      }
     }
   }, [selectedTransaction, sales])
 
@@ -2287,13 +2443,19 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
       render: (value: string) => (
         <span className={`px-2 py-1 rounded text-xs font-medium ${
           value === 'فاتورة بيع'
-            ? 'bg-green-600/20 text-green-400 border border-green-600'
+            ? 'bg-amber-600/20 text-amber-400 border border-amber-600' // Yellow - increases balance
             : value === 'دفعة'
-            ? 'bg-blue-600/20 text-blue-400 border border-blue-600'
+            ? 'bg-gray-600/20 text-gray-400 border border-gray-600' // Gray - decreases balance
             : value === 'مرتجع بيع'
-            ? 'bg-orange-600/20 text-orange-400 border border-orange-600'
+            ? 'bg-gray-600/20 text-gray-400 border border-gray-600' // Gray - decreases balance
             : value === 'سلفة'
-            ? 'bg-purple-600/20 text-purple-400 border border-purple-600'
+            ? 'bg-amber-600/20 text-amber-400 border border-amber-600' // Yellow - increases balance
+            : value === 'رصيد افتتاحي'
+            ? 'bg-amber-600/20 text-amber-400 border border-amber-600' // Yellow - increases balance
+            : value.includes('فاتورة شراء')
+            ? 'bg-gray-600/20 text-gray-400 border border-gray-600' // Gray - decreases balance (linked supplier purchase)
+            : value.includes('مرتجع شراء')
+            ? 'bg-amber-600/20 text-amber-400 border border-amber-600' // Yellow - increases balance (linked supplier return)
             : 'bg-gray-600/20 text-gray-400 border border-gray-600'
         }`}>
           {value}
@@ -2316,19 +2478,19 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
       header: 'المبلغ المدفوع',
       accessor: 'paidAmount',
       width: 130,
-      render: (value: number, item: any) => (
-        <span className={`font-medium ${
-          item.type === 'مرتجع بيع'
-            ? 'text-red-400'
-            : item.type === 'دفعة'
-            ? 'text-green-400'
-            : item.type === 'سلفة'
-            ? 'text-purple-400'
-            : 'text-blue-400'
-        }`}>
-          {item.type === 'مرتجع بيع' ? '-' : item.type === 'دفعة' ? '-' : item.type === 'سلفة' ? '+' : '+'}{formatPrice(value, 'system')}
-        </span>
-      )
+      render: (value: number, item: any) => {
+        // Determine color and sign based on whether it increases or decreases balance
+        const isDebit = item.type === 'فاتورة بيع' || item.type === 'سلفة' || item.type === 'رصيد افتتاحي' || item.type.includes('مرتجع شراء')
+        const isCredit = item.type === 'دفعة' || item.type === 'مرتجع بيع' || item.type.includes('فاتورة شراء')
+
+        return (
+          <span className={`font-medium ${
+            isDebit ? 'text-amber-400' : isCredit ? 'text-gray-400' : 'text-gray-300'
+          }`}>
+            {isDebit ? '+' : '-'}{formatPrice(value, 'system')}
+          </span>
+        )
+      }
     },
     {
       id: 'balance',
@@ -2391,28 +2553,42 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
         return <span className="text-blue-400 font-mono">{timeOnly}</span>
       }
     },
-    { 
-      id: 'invoice_type', 
-      header: 'نوع الفاتورة', 
-      accessor: 'invoice_type', 
-      width: 120,
-      render: (value: string) => {
+    {
+      id: 'invoice_type',
+      header: 'نوع الفاتورة',
+      accessor: 'invoice_type',
+      width: 140,
+      render: (value: string, item: any) => {
+        const isLinkedPurchase = item.isFromLinkedSupplier
+
         const getInvoiceTypeText = (invoiceType: string) => {
+          // Handle linked purchase invoices (already in Arabic)
+          if (isLinkedPurchase) {
+            return invoiceType || 'غير محدد'
+          }
+          // Handle regular sales
           switch (invoiceType) {
             case 'Sale Invoice': return 'فاتورة بيع'
             case 'Sale Return': return 'مرتجع بيع'
             default: return invoiceType || 'غير محدد'
           }
         }
-        
+
         const getInvoiceTypeColor = (invoiceType: string) => {
+          // Linked purchase invoices have blue color
+          if (isLinkedPurchase) {
+            return invoiceType.includes('مرتجع')
+              ? 'bg-orange-900 text-orange-300'  // Purchase return
+              : 'bg-blue-900 text-blue-300'      // Purchase invoice
+          }
+          // Regular sales
           switch (invoiceType) {
             case 'Sale Invoice': return 'bg-green-900 text-green-300'
             case 'Sale Return': return 'bg-red-900 text-red-300'
             default: return 'bg-gray-900 text-gray-300'
           }
         }
-        
+
         return (
           <span className={`px-2 py-1 rounded text-xs font-medium ${getInvoiceTypeColor(value)}`}>
             {getInvoiceTypeText(value)}

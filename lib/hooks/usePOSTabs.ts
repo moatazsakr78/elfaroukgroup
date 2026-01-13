@@ -19,6 +19,7 @@ export interface POSTab {
   isTransferMode?: boolean;
   isReturnMode?: boolean;
   selectedSupplier?: any;
+  selectedCustomerForPurchase?: any;
   selectedWarehouse?: any;
   transferFromLocation?: any;
   transferToLocation?: any;
@@ -36,6 +37,7 @@ interface InheritedSelections {
   priceType?: string;
   isPurchaseMode?: boolean;
   selectedSupplier?: any;
+  selectedCustomerForPurchase?: any;
 }
 
 interface EditModeOptions {
@@ -174,6 +176,7 @@ export function usePOSTabs(): UsePOSTabsReturn {
           },
           isPurchaseMode: inheritedSelections?.isPurchaseMode || false,
           selectedSupplier: inheritedSelections?.selectedSupplier || null,
+          selectedCustomerForPurchase: inheritedSelections?.selectedCustomerForPurchase || null,
         },
       ];
       // Instant save

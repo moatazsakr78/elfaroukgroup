@@ -15,7 +15,6 @@ import SupplierDetailsModal from '../../components/SupplierDetailsModal'
 import ColumnsControlModal from '../../components/ColumnsControlModal'
 import SuppliersGridView from '../../components/SuppliersGridView'
 import MergeSuppliersModal from '../../components/MergeSuppliersModal'
-import ConvertPartyModal from '../../components/ConvertPartyModal'
 import { useSupplierGroups, SupplierGroup } from '../../lib/hooks/useSupplierGroups'
 import { useSuppliers, Supplier, DEFAULT_SUPPLIER_ID } from '../../lib/hooks/useSuppliers'
 import {
@@ -38,8 +37,7 @@ import {
   FolderIcon,
   FolderOpenIcon,
   UserPlusIcon,
-  ArrowsRightLeftIcon,
-  UserIcon
+  ArrowsRightLeftIcon
 } from '@heroicons/react/24/outline'
 import { ranks } from '@/app/lib/data/ranks'
 import Image from 'next/image'
@@ -254,7 +252,6 @@ export default function SuppliersPage() {
   const [isGroupsHidden, setIsGroupsHidden] = useState(true)
   const [showColumnsModal, setShowColumnsModal] = useState(false)
   const [isMergeModalOpen, setIsMergeModalOpen] = useState(false)
-  const [isConvertModalOpen, setIsConvertModalOpen] = useState(false)
   const [visibleColumns, setVisibleColumns] = useState<{[key: string]: boolean}>({})
   const suppliersVisibilityLoadedRef = useRef(false)
   const [supplierBalances, setSupplierBalances] = useState<{[key: string]: number}>({})
@@ -845,20 +842,6 @@ export default function SuppliersPage() {
               <span className="text-sm">دمج الموردين</span>
             </button>
 
-            <button
-              onClick={() => setIsConvertModalOpen(true)}
-              disabled={!selectedSupplier || isDefaultSupplier(selectedSupplier?.id)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer whitespace-nowrap transition-colors ${
-                selectedSupplier && !isDefaultSupplier(selectedSupplier?.id)
-                  ? 'text-blue-300 hover:text-blue-200 hover:bg-blue-500/20'
-                  : 'text-gray-500 cursor-not-allowed'
-              }`}
-              title={!selectedSupplier ? 'اختر مورد أولاً' : isDefaultSupplier(selectedSupplier?.id) ? 'لا يمكن تحويل المورد الافتراضي' : 'تحويل المورد المحدد لعميل'}
-            >
-              <UserIcon className="h-4 w-4" />
-              <span className="text-sm">تحويل لعميل</span>
-            </button>
-
             {viewMode === 'table' && (
               <button
                 onClick={() => setShowColumnsModal(true)}
@@ -1175,19 +1158,6 @@ export default function SuppliersPage() {
           setSelectedSupplier(null)
         }}
         preSelectedSupplier={selectedSupplier}
-      />
-
-      {/* Convert Supplier to Customer Modal */}
-      <ConvertPartyModal
-        isOpen={isConvertModalOpen}
-        onClose={() => setIsConvertModalOpen(false)}
-        onConversionComplete={() => {
-          // Refresh is handled automatically by real-time hook
-          setSelectedSupplier(null)
-          setIsConvertModalOpen(false)
-        }}
-        party={selectedSupplier}
-        conversionType="supplier-to-customer"
       />
     </div>
   )
