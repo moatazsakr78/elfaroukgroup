@@ -177,6 +177,3 @@ temp/
 
 # Sensitive API credentials
 money-check.json
-
-# Client-specific config (DO NOT commit)
-client.config.ts
