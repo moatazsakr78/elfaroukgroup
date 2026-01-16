@@ -129,12 +129,15 @@ export async function POST() {
           .eq('phone_number', phoneNumber)
           .single();
 
-        // Skip if already has recent profile picture (less than 24 hours)
+        // Skip if already has recent profile picture
+        // - 24 hours cooldown if profile picture exists
+        // - 1 hour cooldown if profile picture is null (to retry more frequently)
         if (existing?.last_picture_fetch) {
           const lastFetch = new Date(existing.last_picture_fetch);
           const hoursDiff = (Date.now() - lastFetch.getTime()) / (1000 * 60 * 60);
-          if (hoursDiff < 24 && existing.profile_picture_url) {
-            console.log('⏭️ Skipping (recent):', phoneNumber);
+          const cooldownHours = existing.profile_picture_url ? 24 : 1;
+          if (hoursDiff < cooldownHours) {
+            console.log(`⏭️ Skipping (cooldown ${cooldownHours}h):`, phoneNumber);
             results.synced++;
             if (existing.profile_picture_url) results.withPicture++;
             continue;

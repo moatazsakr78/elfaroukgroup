@@ -41,7 +41,12 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: true });
 
     if (phoneNumber) {
-      query = query.eq('from_number', phoneNumber);
+      // تنظيف الرقم قبل البحث - إزالة كل شيء ما عدا الأرقام وتحويل 0 لـ 20
+      let cleanedPhone = phoneNumber.replace(/[^\d]/g, '');
+      if (cleanedPhone.startsWith('0')) {
+        cleanedPhone = '20' + cleanedPhone.substring(1);
+      }
+      query = query.eq('from_number', cleanedPhone);
     }
 
     const { data: rawData, error } = await query;

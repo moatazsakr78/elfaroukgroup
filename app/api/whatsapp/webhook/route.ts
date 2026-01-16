@@ -182,6 +182,24 @@ export async function POST(request: NextRequest) {
               .then(contact => {
                 if (contact?.profile_picture_url) {
                   console.log('📷 Contact profile picture synced:', contact.profile_picture_url);
+
+                  // Broadcast profile picture update to all clients
+                  supabaseForBroadcast
+                    .channel('whatsapp_global')
+                    .send({
+                      type: 'broadcast',
+                      event: 'profile_picture_updated',
+                      payload: {
+                        phone_number: message.from,
+                        profile_picture_url: contact.profile_picture_url
+                      }
+                    })
+                    .then(() => {
+                      console.log('📡 Profile picture broadcast sent');
+                    })
+                    .catch((err) => {
+                      console.error('❌ Profile picture broadcast failed:', err);
+                    });
                 }
               })
               .catch(err => console.error('❌ Error syncing contact:', err));

@@ -79,6 +79,21 @@ interface WhatsAppContact {
 
 type AttachmentType = 'image' | 'video' | 'document' | 'location' | null
 
+// ============================================
+// دالة موحدة لتنظيف أرقام الهواتف
+// تستخدم في جميع أنحاء الملف للمقارنة الصحيحة
+// ============================================
+const cleanPhoneNumber = (phone: string): string => {
+  if (!phone) return ''
+  // إزالة كل شيء ما عدا الأرقام
+  let cleaned = phone.replace(/[^\d]/g, '')
+  // تحويل 0 في البداية لـ 20 (كود مصر)
+  if (cleaned.startsWith('0')) {
+    cleaned = '20' + cleaned.substring(1)
+  }
+  return cleaned
+}
+
 // MessageStatusIcon Component - عرض حالة الرسالة
 function MessageStatusIcon({ status }: { status?: MessageStatus }) {
   if (!status) {
@@ -277,6 +292,7 @@ export default function WhatsAppPage() {
   const [contacts, setContacts] = useState<WhatsAppContact[]>([])
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null)
   const selectedConversationRef = useRef<string | null>(null)
+  const contactsRef = useRef<WhatsAppContact[]>([])
   const [newMessage, setNewMessage] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isSending, setIsSending] = useState(false)
@@ -323,6 +339,11 @@ export default function WhatsAppPage() {
   useEffect(() => {
     selectedConversationRef.current = selectedConversation
   }, [selectedConversation])
+
+  // Keep contactsRef in sync with contacts
+  useEffect(() => {
+    contactsRef.current = contacts
+  }, [contacts])
 
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen)
@@ -375,10 +396,11 @@ export default function WhatsAppPage() {
 
       setContacts(contactsData || [])
 
-      // Merge profile pictures into conversations
+      // Merge profile pictures into conversations (باستخدام الأرقام المنظفة)
       const conversationsWithPictures = (messagesData.conversations || []).map((conv: Conversation) => {
+        const cleanedConvPhone = cleanPhoneNumber(conv.phoneNumber)
         const contact = (contactsData || []).find(
-          (c: WhatsAppContact) => c.phone_number === conv.phoneNumber
+          (c: WhatsAppContact) => cleanPhoneNumber(c.phone_number) === cleanedConvPhone
         )
         return {
           ...conv,
@@ -393,6 +415,12 @@ export default function WhatsAppPage() {
       setIsLoading(false)
     }
   }, [])
+
+  // Ref for fetchConversations to use in Realtime subscription callback
+  const fetchConversationsRef = useRef(fetchConversations)
+  useEffect(() => {
+    fetchConversationsRef.current = fetchConversations
+  }, [fetchConversations])
 
   // Fetch messages for a specific conversation (lazy loading)
   const fetchConversationMessages = useCallback(async (phoneNumber: string) => {
@@ -455,7 +483,7 @@ export default function WhatsAppPage() {
     }
   }, [])
 
-  // Initial fetch and polling
+  // Initial fetch
   useEffect(() => {
     // Clear any accumulated channels on page load to prevent ChannelRateLimitReached
     const supabase = getSupabase()
@@ -464,13 +492,18 @@ export default function WhatsAppPage() {
     fetchConversations()
     checkConnectionStatus()
 
-    // Poll for new conversations every 30 seconds (reduced frequency for better performance)
-    const interval = setInterval(fetchConversations, 30000)
+    // Smart fallback polling كل 30 ثانية
+    // هذا يضمن تحديث القائمة حتى لو فشل الـ Realtime
+    const conversationPollInterval = setInterval(() => {
+      console.log('🔄 Fallback: Refreshing conversations list...')
+      fetchConversations()
+    }, 30000) // كل 30 ثانية
+
     // Check connection status every 30 seconds
     const statusInterval = setInterval(checkConnectionStatus, 30000)
 
     return () => {
-      clearInterval(interval)
+      clearInterval(conversationPollInterval)
       clearInterval(statusInterval)
     }
   }, [fetchConversations, checkConnectionStatus])
@@ -496,8 +529,22 @@ export default function WhatsAppPage() {
           console.log('📩 Realtime: New message received', payload)
           const newMsg = payload.new as Message
 
+          // تنظيف رقم الهاتف للمقارنة الصحيحة
+          const cleanedFromNumber = cleanPhoneNumber(newMsg.from_number)
+          const cleanedSelectedNumber = selectedConversationRef.current
+            ? cleanPhoneNumber(selectedConversationRef.current)
+            : null
+
+          console.log('📩 postgres_changes phone comparison:', {
+            incoming: newMsg.from_number,
+            incomingCleaned: cleanedFromNumber,
+            selected: selectedConversationRef.current,
+            selectedCleaned: cleanedSelectedNumber,
+            match: cleanedSelectedNumber === cleanedFromNumber
+          })
+
           // Update messages if it's for the currently selected conversation
-          if (selectedConversationRef.current === newMsg.from_number) {
+          if (cleanedSelectedNumber && cleanedSelectedNumber === cleanedFromNumber) {
             setMessages(prev => {
               const exists = prev.some(m => m.message_id === newMsg.message_id)
               if (exists) return prev
@@ -505,33 +552,41 @@ export default function WhatsAppPage() {
             })
           }
 
-          // Always update conversations list for any new message
-          setConversations(prev => {
-            const updated = [...prev]
-            const convIndex = updated.findIndex(c => c.phoneNumber === newMsg.from_number)
-            if (convIndex >= 0) {
-              updated[convIndex] = {
-                ...updated[convIndex],
-                lastMessage: newMsg.message_text,
-                lastMessageTime: newMsg.created_at,
-                lastSender: newMsg.message_type === 'outgoing' ? 'me' : 'customer',
-                unreadCount: newMsg.message_type === 'incoming' && selectedConversationRef.current !== newMsg.from_number
-                  ? updated[convIndex].unreadCount + 1
-                  : updated[convIndex].unreadCount
+          // Update conversations list for INCOMING messages only
+          // (outgoing messages are already handled by optimistic update in handleSendMessage)
+          if (newMsg.message_type === 'incoming') {
+            setConversations(prev => {
+              const updated = [...prev]
+              const convIndex = updated.findIndex(c => cleanPhoneNumber(c.phoneNumber) === cleanedFromNumber)
+              if (convIndex >= 0) {
+                const isConversationOpen = cleanedSelectedNumber === cleanedFromNumber
+                updated[convIndex] = {
+                  ...updated[convIndex],
+                  lastMessage: newMsg.message_text,
+                  lastMessageTime: newMsg.created_at,
+                  lastSender: 'customer',
+                  unreadCount: !isConversationOpen
+                    ? updated[convIndex].unreadCount + 1
+                    : updated[convIndex].unreadCount
+                }
+                // Move to top
+                const [conv] = updated.splice(convIndex, 1)
+                updated.unshift(conv)
               }
-              // Move to top
-              const [conv] = updated.splice(convIndex, 1)
-              updated.unshift(conv)
-            }
-            return updated
-          })
+              return updated
+            })
+          }
         }
       )
       .on('broadcast', { event: 'new_message' }, (payload) => {
         // Handle cross-device sync for outgoing messages
         console.log('📡 Broadcast: Outgoing message sync', payload)
         const newMsg = payload.payload as Message
-        if (selectedConversationRef.current === newMsg.from_number) {
+        const cleanedMsgNumber = cleanPhoneNumber(newMsg.from_number)
+        const cleanedSelectedNumber = selectedConversationRef.current
+          ? cleanPhoneNumber(selectedConversationRef.current)
+          : null
+        if (cleanedSelectedNumber && cleanedSelectedNumber === cleanedMsgNumber) {
           setMessages(prev => {
             const exists = prev.some(m => m.message_id === newMsg.message_id)
             if (exists) return prev
@@ -546,22 +601,7 @@ export default function WhatsAppPage() {
         console.log('📩 Broadcast: Incoming message received!', payload)
         const newMsg = payload.payload as Message
 
-        // ============================================
-        // تنظيف رقم الهاتف للمقارنة الصحيحة
-        // المشكلة: الـ Webhook يبعث الرقم بتنسيق مختلف عن الـ Frontend
-        // مثال: "+201234567890" vs "201234567890"
-        // ============================================
-        const cleanPhoneNumber = (phone: string): string => {
-          if (!phone) return ''
-          // إزالة كل شيء ما عدا الأرقام
-          let cleaned = phone.replace(/[^\d]/g, '')
-          // تحويل 0 في البداية لـ 20 (كود مصر)
-          if (cleaned.startsWith('0')) {
-            cleaned = '20' + cleaned.substring(1)
-          }
-          return cleaned
-        }
-
+        // استخدام الدالة المشتركة لتنظيف أرقام الهواتف
         const incomingNumber = cleanPhoneNumber(newMsg.from_number)
         const selectedNumber = selectedConversationRef.current
           ? cleanPhoneNumber(selectedConversationRef.current)
@@ -606,22 +646,67 @@ export default function WhatsAppPage() {
             const [conv] = updated.splice(convIndex, 1)
             updated.unshift(conv)
           } else {
-            // محادثة جديدة - إضافتها
+            // محادثة جديدة - إضافتها باستخدام الرقم المنظف للاتساق
+            // البحث عن صورة البروفايل من الـ contacts
+            const contact = contactsRef.current.find(
+              c => cleanPhoneNumber(c.phone_number) === incomingNumber
+            )
             updated.unshift({
-              phoneNumber: newMsg.from_number,
+              phoneNumber: incomingNumber,
               customerName: newMsg.customer_name,
               lastMessage: newMsg.message_text,
               lastMessageTime: newMsg.created_at,
               lastSender: 'customer',
               unreadCount: 1,
-              profilePictureUrl: undefined
+              profilePictureUrl: contact?.profile_picture_url || undefined
             })
           }
           return updated
         })
       })
-      .subscribe((status) => {
+      .on('broadcast', { event: 'profile_picture_updated' }, (payload) => {
+        // ============================================
+        // Handle profile picture updates from webhook
+        // ============================================
+        console.log('📷 Broadcast: Profile picture updated', payload)
+        const { phone_number, profile_picture_url } = payload.payload as {
+          phone_number: string
+          profile_picture_url: string | null
+        }
+
+        if (!phone_number || !profile_picture_url) return
+
+        // استخدام الدالة المشتركة لتنظيف أرقام الهواتف
+        const cleanedNumber = cleanPhoneNumber(phone_number)
+
+        // Update the conversation's profile picture
+        setConversations(prev => prev.map(conv => {
+          if (cleanPhoneNumber(conv.phoneNumber) === cleanedNumber) {
+            return { ...conv, profilePictureUrl: profile_picture_url }
+          }
+          return conv
+        }))
+
+        // Update contacts state
+        setContacts(prev => prev.map(contact => {
+          if (cleanPhoneNumber(contact.phone_number) === cleanedNumber) {
+            return { ...contact, profile_picture_url }
+          }
+          return contact
+        }))
+      })
+      .subscribe((status, err) => {
         console.log('📡 Global Realtime subscription status:', status)
+
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          console.error('❌ Realtime connection failed:', err)
+          // Fetch conversations immediately as fallback
+          fetchConversationsRef.current()
+        }
+
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ Realtime connected successfully')
+        }
       })
 
     return () => {
@@ -631,16 +716,17 @@ export default function WhatsAppPage() {
   }, []) // Empty deps - channel created ONCE on mount
 
   // ============================================
-  // Fallback Polling: تحديث الرسائل كل 5 ثواني
-  // كشبكة أمان في حالة فشل الـ broadcast
+  // Fallback Polling: تحديث الرسائل فقط كل 5 ثواني
+  // لا نستدعي fetchConversations() هنا - نترك الـ optimistic update
   // ============================================
   useEffect(() => {
-    if (!selectedConversation) return
-
-    // Polling كل 5 ثواني للمحادثة المفتوحة
     const pollInterval = setInterval(() => {
       console.log('🔄 Fallback polling for messages...')
-      fetchConversationMessages(selectedConversation)
+      // لا نستدعي fetchConversations() لأن الـ optimistic update كافي
+      // والاستدعاء المتكرر يكتب فوق ترتيب المحادثات المحدث
+      if (selectedConversation) {
+        fetchConversationMessages(selectedConversation)
+      }
     }, 5000)
 
     return () => {
@@ -672,7 +758,7 @@ export default function WhatsAppPage() {
 
   // Filter messages for selected conversation
   const conversationMessages = messages.filter(
-    msg => msg.from_number === selectedConversation
+    msg => cleanPhoneNumber(msg.from_number) === cleanPhoneNumber(selectedConversation || '')
   )
 
   // Filter conversations by search
@@ -962,7 +1048,8 @@ export default function WhatsAppPage() {
     // ========================
     setConversations(prev => {
       const updated = [...prev]
-      const convIndex = updated.findIndex(c => c.phoneNumber === selectedConversation)
+      const cleanedSelectedPhone = cleanPhoneNumber(selectedConversation)
+      const convIndex = updated.findIndex(c => cleanPhoneNumber(c.phoneNumber) === cleanedSelectedPhone)
       if (convIndex >= 0) {
         updated[convIndex] = {
           ...updated[convIndex],
@@ -1197,9 +1284,10 @@ export default function WhatsAppPage() {
     return date.toLocaleDateString('ar-EG')
   }
 
-  // Get profile picture for a contact
+  // Get profile picture for a contact (باستخدام الأرقام المنظفة)
   const getContactProfilePicture = (phoneNumber: string) => {
-    const contact = conversations.find(c => c.phoneNumber === phoneNumber)
+    const cleanedPhone = cleanPhoneNumber(phoneNumber)
+    const contact = conversations.find(c => cleanPhoneNumber(c.phoneNumber) === cleanedPhone)
     return contact?.profilePictureUrl || null
   }
 
@@ -1402,7 +1490,7 @@ export default function WhatsAppPage() {
                     key={conv.phoneNumber}
                     onClick={() => handleSelectConversation(conv.phoneNumber, conv.unreadCount)}
                     className={`p-3 border-b border-gray-600/50 cursor-pointer transition-colors ${
-                      selectedConversation === conv.phoneNumber
+                      selectedConversation && cleanPhoneNumber(selectedConversation) === cleanPhoneNumber(conv.phoneNumber)
                         ? 'bg-green-600/20 border-r-2 border-r-green-500'
                         : 'hover:bg-gray-600/20'
                     }`}
@@ -1469,7 +1557,9 @@ export default function WhatsAppPage() {
                 {/* Chat Header */}
                 <div className="bg-[#374151] px-4 py-3 border-b border-gray-600 mt-12 md:mt-0">
                   {(() => {
-                    const selectedContact = conversations.find(c => c.phoneNumber === selectedConversation)
+                    const selectedContact = conversations.find(c =>
+                      cleanPhoneNumber(c.phoneNumber) === cleanPhoneNumber(selectedConversation || '')
+                    )
                     return (
                       <div className="flex items-center gap-3">
                         {/* زر الرجوع - يظهر فقط على الموبايل */}
