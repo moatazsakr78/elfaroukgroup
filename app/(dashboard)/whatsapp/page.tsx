@@ -492,18 +492,13 @@ export default function WhatsAppPage() {
     fetchConversations()
     checkConnectionStatus()
 
-    // Smart fallback polling كل 10 ثواني
-    // هذا يضمن تحديث القائمة حتى لو فشل الـ Realtime
-    const conversationPollInterval = setInterval(() => {
-      console.log('🔄 Fallback: Refreshing conversations list...')
-      fetchConversations()
-    }, 10000) // كل 10 ثواني بدلاً من 30
+    // ✅ تم إزالة polling المحادثات - الـ Realtime كافي لتحديث قائمة المحادثات
+    // الـ Realtime يتعامل مع: postgres_changes, broadcast: incoming_message, broadcast: new_message
 
     // Check connection status every 30 seconds
     const statusInterval = setInterval(checkConnectionStatus, 30000)
 
     return () => {
-      clearInterval(conversationPollInterval)
       clearInterval(statusInterval)
     }
   }, [fetchConversations, checkConnectionStatus])
@@ -732,18 +727,19 @@ export default function WhatsAppPage() {
   }, []) // Empty deps - channel created ONCE on mount
 
   // ============================================
-  // Fallback Polling: تحديث الرسائل فقط كل 5 ثواني
-  // لا نستدعي fetchConversations() هنا - نترك الـ optimistic update
+  // Fallback Polling: تحديث الرسائل كل 30 ثانية فقط
+  // الـ Realtime يتعامل مع التحديثات الفورية
+  // هذا fallback فقط في حالة فشل الـ Realtime
   // ============================================
   useEffect(() => {
     const pollInterval = setInterval(() => {
-      console.log('🔄 Fallback polling for messages...')
       // لا نستدعي fetchConversations() لأن الـ optimistic update كافي
       // والاستدعاء المتكرر يكتب فوق ترتيب المحادثات المحدث
       if (selectedConversation) {
+        console.log('🔄 Fallback polling for messages (every 30s)...')
         fetchConversationMessages(selectedConversation)
       }
-    }, 5000)
+    }, 30000) // ✅ كل 30 ثانية بدلاً من 5 ثواني - fallback فقط
 
     return () => {
       clearInterval(pollInterval)
