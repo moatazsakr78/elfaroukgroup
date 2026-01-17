@@ -116,7 +116,22 @@ export function useOfflineSales() {
       }
     } catch (error: any) {
       // If online mode fails due to network error, try offline
-      if (!navigator.onLine || error.message?.includes('network') || error.message?.includes('fetch')) {
+      // توسيع الشروط لتشمل جميع أخطاء الشبكة والاتصال
+      const isNetworkError = (
+        !navigator.onLine ||
+        error.message?.includes('network') ||
+        error.message?.includes('fetch') ||
+        error.message?.includes('فشل في توليد') ||
+        error.message?.includes('Failed to fetch') ||
+        error.message?.includes('ERR_NAME_NOT_RESOLVED') ||
+        error.message?.includes('RPC') ||
+        error.message?.includes('timeout') ||
+        error.message?.includes('ENOTFOUND') ||
+        error.message?.includes('ECONNREFUSED') ||
+        error.message?.includes('خطأ في إنشاء الفاتورة')
+      )
+
+      if (isNetworkError) {
         console.log('Online mode failed, falling back to offline...')
 
         try {

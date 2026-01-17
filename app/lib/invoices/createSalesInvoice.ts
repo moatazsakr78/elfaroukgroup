@@ -584,6 +584,84 @@ export async function createSalesInvoice({
     }
 
   } catch (error: any) {
+    // تحقق إذا كان الخطأ بسبب مشكلة في الاتصال - حاول الوضع الـ offline
+    const isNetworkError = (
+      !navigator.onLine ||
+      error.message?.includes('network') ||
+      error.message?.includes('fetch') ||
+      error.message?.includes('فشل في توليد') ||
+      error.message?.includes('Failed to fetch') ||
+      error.message?.includes('ERR_NAME_NOT_RESOLVED') ||
+      error.message?.includes('RPC') ||
+      error.message?.includes('timeout') ||
+      error.message?.includes('ENOTFOUND') ||
+      error.message?.includes('ECONNREFUSED')
+    )
+
+    if (isNetworkError) {
+      console.log('Network error detected in createSalesInvoice, falling back to offline mode...')
+
+      try {
+        // Convert to offline format
+        const offlineCartItems: OfflineCartItem[] = cartItems.map(item => ({
+          product: {
+            id: item.product.id,
+            name: item.product.name,
+            cost_price: item.product.cost_price || 0
+          },
+          quantity: item.quantity,
+          price: item.price,
+          total: item.total,
+          branch_id: item.branch_id || selections.branch?.id || '',
+          branch_name: item.branch_name,
+          selectedColors: item.selectedColors
+        }))
+
+        const offlineSelections: OfflineInvoiceSelections = {
+          customer: selections.customer ? {
+            id: selections.customer.id,
+            name: selections.customer.name
+          } : null,
+          branch: {
+            id: selections.branch.id,
+            name: selections.branch.name
+          },
+          record: selections.record ? {
+            id: selections.record.id,
+            name: selections.record.name
+          } : null
+        }
+
+        const offlineResult = await createOfflineSalesInvoice({
+          cartItems: offlineCartItems,
+          selections: offlineSelections,
+          paymentMethod: paymentMethod,
+          notes: notes,
+          isReturn: isReturn,
+          paymentSplitData: paymentSplitData?.map(p => ({
+            id: p.id,
+            amount: p.amount,
+            paymentMethodId: p.paymentMethodId
+          })),
+          creditAmount: creditAmount,
+          userId: userId,
+          userName: userName
+        })
+
+        return {
+          success: offlineResult.success,
+          invoiceId: offlineResult.localId,
+          invoiceNumber: offlineResult.tempInvoiceNumber,
+          totalAmount: offlineResult.totalAmount,
+          message: offlineResult.message + ' (فشل الاتصال)',
+          isOffline: true
+        }
+      } catch (offlineError: any) {
+        console.error('Offline fallback also failed:', offlineError)
+        throw new Error(offlineError.message || 'فشل في حفظ الفاتورة محلياً')
+      }
+    }
+
     throw new Error(error.message || 'حدث خطأ أثناء إنشاء الفاتورة')
   }
 }
