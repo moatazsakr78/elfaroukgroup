@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Script from 'next/script'
 import './globals.css'
 import TopHeader from './components/layout/TopHeader'
+import ServiceWorkerRegister from './components/ServiceWorkerRegister'
 import { CurrencyProvider } from '@/lib/hooks/useCurrency'
 import { SystemSettingsProvider } from '@/lib/hooks/useSystemSettings'
 import { CartProvider } from '@/lib/contexts/CartContext'
@@ -61,6 +62,7 @@ export default function RootLayout({
                 <UserProfileProvider>
                   <PermissionsProvider>
                     <CartProvider>
+                      <ServiceWorkerRegister />
                       <TopHeader />
                       {children}
                     </CartProvider>
