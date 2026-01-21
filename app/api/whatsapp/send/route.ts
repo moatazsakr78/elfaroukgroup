@@ -204,6 +204,39 @@ export async function POST(request: NextRequest) {
 
       if (dbError) {
         console.error('Database insert error:', dbError.message);
+      } else {
+        // Broadcast to connected clients
+        const supabaseForBroadcast = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+        );
+
+        const messageData = {
+          id: generatedMessageId,
+          message_id: generatedMessageId,
+          msg_id: result.msgId || null,
+          from_number: cleanNumber,
+          customer_name: 'الفاروق جروب',
+          message_text: messageText,
+          message_type: 'outgoing',
+          media_type: mediaType,
+          media_url: mediaUrl || null,
+          is_read: true,
+          created_at: new Date().toISOString(),
+          quoted_message_id: quotedMessageId || null,
+          quoted_message_text: quotedMessageText || null,
+          quoted_message_sender: quotedMessageSender || null,
+        };
+
+        supabaseForBroadcast
+          .channel('whatsapp_global')
+          .send({
+            type: 'broadcast',
+            event: 'new_message',
+            payload: messageData
+          })
+          .then(() => console.log('📡 Broadcast sent for outgoing message'))
+          .catch((err) => console.error('❌ Broadcast failed:', err));
       }
 
       return NextResponse.json({
