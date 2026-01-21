@@ -27,6 +27,9 @@ import EditInvoiceModal from '../../components/EditInvoiceModal'
 import { useFormatPrice } from '@/lib/hooks/useCurrency'
 import { useOfflineStatus } from '../../lib/hooks/useOfflineStatus'
 import { useOfflineData } from '../../lib/hooks/useOfflineData'
+import { useInfiniteTransactions, CashDrawerTransaction } from '../../lib/hooks/useInfiniteTransactions'
+import { useScrollDetection } from '../../lib/hooks/useScrollDetection'
+import { getDateRangeFromFilter, getDateFilterLabel } from '../../lib/utils/dateFilters'
 import { getAllPendingSales } from '../../lib/offline/db'
 import type { PendingSale } from '../../lib/offline/types'
 
@@ -41,20 +44,7 @@ interface Safe {
   updated_at: string | null
 }
 
-interface CashDrawerTransaction {
-  id: string
-  drawer_id: string | null
-  record_id: string | null
-  transaction_type: string | null
-  amount: number | null
-  balance_after: number | null
-  sale_id: string | null
-  notes: string | null
-  performed_by: string | null
-  created_at: string | null
-  safe_name?: string
-  customer_name?: string
-}
+// CashDrawerTransaction is now imported from useInfiniteTransactions hook
 
 interface PaymentMethod {
   id: string
@@ -92,9 +82,7 @@ export default function SafesPage() {
   const [totalBalance, setTotalBalance] = useState(0)
   const [safesSearchTerm, setSafesSearchTerm] = useState('')
 
-  // Records Tab State
-  const [transactions, setTransactions] = useState<CashDrawerTransaction[]>([])
-  const [isLoadingTransactions, setIsLoadingTransactions] = useState(false)
+  // Records Tab State - Filter configurations
   const [transactionFilters, setTransactionFilters] = useState<{
     safeId: string
     transactionType: TransactionType
@@ -107,15 +95,39 @@ export default function SafesPage() {
   const [showDateFilterModal, setShowDateFilterModal] = useState(false)
   const [transactionSearchTerm, setTransactionSearchTerm] = useState('')
 
+  // Use infinite scroll hook for transactions
+  const {
+    transactions,
+    isLoading: isLoadingTransactions,
+    isLoadingMore: isLoadingMoreTransactions,
+    hasMore: hasMoreTransactions,
+    loadMore: loadMoreTransactions,
+    refresh: refreshTransactions
+  } = useInfiniteTransactions({
+    recordId: transactionFilters.safeId,
+    transactionType: transactionFilters.transactionType,
+    dateFilter: transactionFilters.dateFilter,
+    enabled: activeTab === 'records',
+    pageSize: 200,
+    safes: safes
+  })
+
+  // Scroll detection for infinite scroll
+  const { sentinelRef: transactionSentinelRef } = useScrollDetection({
+    onLoadMore: loadMoreTransactions,
+    enabled: hasMoreTransactions && !isLoadingMoreTransactions && activeTab === 'records',
+    isLoading: isLoadingMoreTransactions
+  })
+
+  // Offline transactions state (used when in offline mode)
+  const [offlineTransactions, setOfflineTransactions] = useState<CashDrawerTransaction[]>([])
+
   // Payment Methods Tab State
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
   const [isAddPaymentMethodModalOpen, setIsAddPaymentMethodModalOpen] = useState(false)
   const [isEditPaymentMethodModalOpen, setIsEditPaymentMethodModalOpen] = useState(false)
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null)
   const [paymentMethodSearchTerm, setPaymentMethodSearchTerm] = useState('')
-
-  // Track if transactions have been loaded
-  const [hasLoadedTransactions, setHasLoadedTransactions] = useState(false)
 
   // Context Menu State
   const [contextMenu, setContextMenu] = useState<{
@@ -243,147 +255,8 @@ export default function SafesPage() {
   }
 
   // ==================== Records Tab Functions ====================
-  const getDateRangeFromFilter = (filter: DateFilter): { startDate: Date | null, endDate: Date | null } => {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-
-    switch (filter.type) {
-      case 'today':
-        return { startDate: today, endDate: new Date() }
-      case 'current_week': {
-        const weekStart = new Date(today)
-        weekStart.setDate(today.getDate() - today.getDay())
-        return { startDate: weekStart, endDate: new Date() }
-      }
-      case 'last_week': {
-        const lastWeekStart = new Date(today)
-        lastWeekStart.setDate(today.getDate() - today.getDay() - 7)
-        const lastWeekEnd = new Date(lastWeekStart)
-        lastWeekEnd.setDate(lastWeekStart.getDate() + 6)
-        lastWeekEnd.setHours(23, 59, 59, 999)
-        return { startDate: lastWeekStart, endDate: lastWeekEnd }
-      }
-      case 'current_month': {
-        const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
-        return { startDate: monthStart, endDate: new Date() }
-      }
-      case 'last_month': {
-        const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1)
-        const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0)
-        lastMonthEnd.setHours(23, 59, 59, 999)
-        return { startDate: lastMonthStart, endDate: lastMonthEnd }
-      }
-      case 'custom':
-        return { startDate: filter.startDate || null, endDate: filter.endDate || null }
-      case 'all':
-      default:
-        return { startDate: null, endDate: null }
-    }
-  }
-
-  const getDateFilterLabel = (filter: DateFilter): string => {
-    switch (filter.type) {
-      case 'today': return 'اليوم'
-      case 'current_week': return 'هذا الأسبوع'
-      case 'current_month': return 'هذا الشهر'
-      case 'last_week': return 'الأسبوع الماضي'
-      case 'last_month': return 'الشهر الماضي'
-      case 'custom': return 'فترة مخصصة'
-      case 'all': return 'جميع الفترات'
-      default: return 'تصفية التاريخ'
-    }
-  }
-
-  const fetchTransactions = useCallback(async (currentFilters: typeof transactionFilters, currentSafes: Safe[]) => {
-    setIsLoadingTransactions(true)
-    try {
-      let query = supabase
-        .from('cash_drawer_transactions')
-        .select('*')
-        .order('created_at', { ascending: false })
-
-      // Apply safe filter
-      // Note: 'no_safe' maps to sales without a safe (record_id is null)
-      // Also support old NO_SAFE_RECORD_ID for backward compatibility
-      const NO_SAFE_RECORD_ID = '00000000-0000-0000-0000-000000000000'
-      if (currentFilters.safeId === 'no_safe') {
-        // Support both null (new) and NO_SAFE_RECORD_ID (old data) for backward compatibility
-        query = query.or(`record_id.is.null,record_id.eq.${NO_SAFE_RECORD_ID}`)
-      } else if (currentFilters.safeId !== 'all') {
-        query = query.eq('record_id', currentFilters.safeId)
-      }
-
-      // Apply transaction type filter
-      if (currentFilters.transactionType !== 'all') {
-        if (currentFilters.transactionType === 'transfer') {
-          // Filter both transfer_in and transfer_out
-          query = query.in('transaction_type', ['transfer_in', 'transfer_out'])
-        } else {
-          query = query.eq('transaction_type', currentFilters.transactionType)
-        }
-      }
-
-      // Apply date filter
-      const { startDate, endDate } = getDateRangeFromFilter(currentFilters.dateFilter)
-      if (startDate) {
-        query = query.gte('created_at', startDate.toISOString())
-      }
-      if (endDate) {
-        query = query.lte('created_at', endDate.toISOString())
-      }
-
-      const { data, error } = await query
-
-      if (error) throw error
-
-      // Get unique sale_ids to fetch customer names
-      const saleIds = (data?.filter(tx => tx.sale_id).map(tx => tx.sale_id) || []).filter((id): id is string => id !== null)
-
-      // Fetch customer names for these sales
-      let customerMap: Record<string, string> = {}
-      if (saleIds.length > 0) {
-        const { data: salesData } = await supabase
-          .from('sales')
-          .select('id, customers:customer_id(name)')
-          .in('id', saleIds)
-
-        if (salesData) {
-          salesData.forEach((sale: any) => {
-            if (sale.customers?.name) {
-              customerMap[sale.id] = sale.customers.name
-            }
-          })
-        }
-      }
-
-      // Map safe names and customer names to transactions
-      const transactionsWithNames = data?.map((tx: any) => {
-        // Get customer name from customerMap
-        const customerName = tx.sale_id ? (customerMap[tx.sale_id] || null) : null
-
-        // Check if this is a "لا يوجد" record (null or old NO_SAFE_RECORD_ID)
-        if (tx.record_id === null || tx.record_id === NO_SAFE_RECORD_ID) {
-          return {
-            ...tx,
-            safe_name: 'لا يوجد',
-            customer_name: customerName
-          }
-        }
-        const safe = currentSafes.find(s => s.id === tx.record_id)
-        return {
-          ...tx,
-          safe_name: safe?.name || 'غير معروف',
-          customer_name: customerName
-        }
-      }) || []
-
-      setTransactions(transactionsWithNames)
-    } catch (error) {
-      console.error('Error fetching transactions:', error)
-    } finally {
-      setIsLoadingTransactions(false)
-    }
-  }, [])
+  // getDateRangeFromFilter and getDateFilterLabel are now imported from @/lib/utils/dateFilters
+  // fetchTransactions is now replaced by useInfiniteTransactions hook
 
   const getTransactionTypeBadge = (type: string | null) => {
     const styles: Record<string, { bg: string, text: string, label: string }> = {
@@ -512,7 +385,7 @@ export default function SafesPage() {
 
   const handleInvoiceUpdated = () => {
     // إعادة تحميل السجلات بعد التعديل
-    fetchTransactions(transactionFilters, safes)
+    refreshTransactions()
     fetchSafes() // لتحديث الأرصدة
   }
 
@@ -561,9 +434,10 @@ export default function SafesPage() {
     customer_name: sale.customer_name
   }))
 
-  // Always combine pending sales with transactions (shows pending at top)
+  // Use hook transactions when online, offline transactions when offline
   // MOVED HERE - must be defined before filteredTransactions
-  const allTransactions = [...pendingSalesAsTransactions, ...transactions]
+  const activeTransactions = isUsingOfflineData ? offlineTransactions : transactions
+  const allTransactions = [...pendingSalesAsTransactions, ...activeTransactions]
 
   // Use allTransactions for filtering (includes pending sales when offline)
   const filteredTransactions = allTransactions.filter(tx =>
@@ -612,21 +486,10 @@ export default function SafesPage() {
     }
   }, [fetchSafes, fetchPaymentMethods])
 
-  // Fetch transactions when tab becomes active for the first time
-  useEffect(() => {
-    if (activeTab === 'records' && safes.length > 0 && !hasLoadedTransactions) {
-      fetchTransactions(transactionFilters, safes)
-      setHasLoadedTransactions(true)
-    }
-  }, [activeTab, safes.length, hasLoadedTransactions, fetchTransactions, transactionFilters, safes])
-
-  // Fetch transactions when filters change (only if already on records tab)
-  useEffect(() => {
-    if (activeTab === 'records' && safes.length > 0 && hasLoadedTransactions) {
-      fetchTransactions(transactionFilters, safes)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transactionFilters])
+  // Transaction fetching and filter handling is now managed by useInfiniteTransactions hook
+  // The hook automatically:
+  // - Fetches when tab becomes active (enabled: activeTab === 'records')
+  // - Re-fetches when filters change (reactively based on transactionFilters)
 
   // ==================== Offline Support Effects ====================
   // Load pending sales from IndexedDB
@@ -678,7 +541,7 @@ export default function SafesPage() {
       }
       // Use offline data for transactions
       if (offlineData.cashDrawerTransactions.length > 0) {
-        const offlineTransactions: CashDrawerTransaction[] = offlineData.cashDrawerTransactions.map(t => ({
+        const mappedOfflineTransactions: CashDrawerTransaction[] = offlineData.cashDrawerTransactions.map(t => ({
           id: t.id,
           drawer_id: t.drawer_id,
           record_id: t.record_id,
@@ -692,8 +555,7 @@ export default function SafesPage() {
           safe_name: t.record_name,
           customer_name: t.customer_name
         }))
-        setTransactions(offlineTransactions)
-        setHasLoadedTransactions(true)
+        setOfflineTransactions(mappedOfflineTransactions)
       }
     } else if (isOnline) {
       setIsUsingOfflineData(false)
@@ -1006,70 +868,90 @@ export default function SafesPage() {
               </div>
             )}
 
-            <div className="bg-pos-darker rounded-lg overflow-hidden border border-gray-700">
+            <div className="bg-pos-darker rounded-lg border border-gray-700 max-h-[calc(100vh-280px)] overflow-auto">
               {isLoadingTransactions && !isUsingOfflineData ? (
                 <div className="p-8 text-center text-gray-400">
-                  جاري تحميل السجلات...
+                  <div className="flex items-center justify-center gap-2">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
+                    جاري تحميل السجلات...
+                  </div>
                 </div>
               ) : (
-                <table className="w-full text-sm text-right">
-                  <thead className="bg-gray-700 text-gray-300">
-                    <tr>
-                      <th className="p-3 text-right font-medium">#</th>
-                      <th className="p-3 text-right font-medium">نوع العملية</th>
-                      <th className="p-3 text-right font-medium">الخزنة</th>
-                      <th className="p-3 text-right font-medium">المبلغ</th>
-                      <th className="p-3 text-right font-medium">الرصيد بعد</th>
-                      <th className="p-3 text-right font-medium">ملاحظات</th>
-                      <th className="p-3 text-right font-medium">اسم العميل</th>
-                      <th className="p-3 text-right font-medium">بواسطة</th>
-                      <th className="p-3 text-right font-medium">التاريخ</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-pos-darker divide-y divide-gray-700">
-                    {filteredTransactions.length > 0 ? (
-                      filteredTransactions.map((tx, index) => {
-                        const isPending = tx.id.startsWith('pending_')
-                        return (
-                          <tr
-                            key={tx.id}
-                            className={`hover:bg-gray-700 transition-colors cursor-pointer ${isPending ? 'bg-yellow-900/20' : ''}`}
-                            onContextMenu={(e) => !isPending && handleContextMenu(e, tx)}
-                          >
-                            <td className="p-3 text-white font-medium">{index + 1}</td>
-                            <td className="p-3">
-                              <div className="flex items-center gap-2">
-                                {getTransactionTypeBadge(tx.transaction_type)}
-                                {isPending && (
-                                  <span className="px-2 py-0.5 rounded-full text-xs bg-yellow-900 text-yellow-300 border border-yellow-600">
-                                    معلق
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                            <td className="p-3 text-white">{tx.safe_name}</td>
-                            <td className="p-3">{formatAmount(tx.amount)}</td>
-                            <td className="p-3 text-gray-300">
-                              {isPending ? <span className="text-yellow-400">-</span> : formatPrice(tx.balance_after || 0)}
-                            </td>
-                            <td className="p-3 text-gray-400 max-w-[200px] truncate" title={tx.notes || ''}>
-                              {tx.notes || '-'}
-                            </td>
-                            <td className="p-3 text-gray-400">{tx.customer_name || '-'}</td>
-                            <td className="p-3 text-gray-400">{tx.performed_by || '-'}</td>
-                            <td className="p-3 text-gray-400">{formatDateTime(tx.created_at)}</td>
-                          </tr>
-                        )
-                      })
-                    ) : (
+                <>
+                  <table className="w-full text-sm text-right">
+                    <thead className="bg-gray-700 text-gray-300 sticky top-0 z-10">
                       <tr>
-                        <td colSpan={9} className="p-8 text-center text-gray-400">
-                          {isUsingOfflineData ? 'لا توجد سجلات محفوظة للعرض في وضع عدم الاتصال' : 'لا توجد سجلات متاحة'}
-                        </td>
+                        <th className="p-3 text-right font-medium">#</th>
+                        <th className="p-3 text-right font-medium">نوع العملية</th>
+                        <th className="p-3 text-right font-medium">الخزنة</th>
+                        <th className="p-3 text-right font-medium">المبلغ</th>
+                        <th className="p-3 text-right font-medium">الرصيد بعد</th>
+                        <th className="p-3 text-right font-medium">ملاحظات</th>
+                        <th className="p-3 text-right font-medium">اسم العميل</th>
+                        <th className="p-3 text-right font-medium">بواسطة</th>
+                        <th className="p-3 text-right font-medium">التاريخ</th>
                       </tr>
-                    )}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="bg-pos-darker divide-y divide-gray-700">
+                      {filteredTransactions.length > 0 ? (
+                        filteredTransactions.map((tx, index) => {
+                          const isPending = tx.id.startsWith('pending_')
+                          return (
+                            <tr
+                              key={tx.id}
+                              className={`hover:bg-gray-700 transition-colors cursor-pointer ${isPending ? 'bg-yellow-900/20' : ''}`}
+                              onContextMenu={(e) => !isPending && handleContextMenu(e, tx)}
+                            >
+                              <td className="p-3 text-white font-medium">{index + 1}</td>
+                              <td className="p-3">
+                                <div className="flex items-center gap-2">
+                                  {getTransactionTypeBadge(tx.transaction_type)}
+                                  {isPending && (
+                                    <span className="px-2 py-0.5 rounded-full text-xs bg-yellow-900 text-yellow-300 border border-yellow-600">
+                                      معلق
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="p-3 text-white">{tx.safe_name}</td>
+                              <td className="p-3">{formatAmount(tx.amount)}</td>
+                              <td className="p-3 text-gray-300">
+                                {isPending ? <span className="text-yellow-400">-</span> : formatPrice(tx.balance_after || 0)}
+                              </td>
+                              <td className="p-3 text-gray-400 max-w-[200px] truncate" title={tx.notes || ''}>
+                                {tx.notes || '-'}
+                              </td>
+                              <td className="p-3 text-gray-400">{tx.customer_name || '-'}</td>
+                              <td className="p-3 text-gray-400">{tx.performed_by || '-'}</td>
+                              <td className="p-3 text-gray-400">{formatDateTime(tx.created_at)}</td>
+                            </tr>
+                          )
+                        })
+                      ) : (
+                        <tr>
+                          <td colSpan={9} className="p-8 text-center text-gray-400">
+                            {isUsingOfflineData ? 'لا توجد سجلات محفوظة للعرض في وضع عدم الاتصال' : 'لا توجد سجلات متاحة'}
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                  {/* Sentinel element for infinite scroll */}
+                  <div ref={transactionSentinelRef} className="h-4" />
+                  {/* Loading more indicator */}
+                  {isLoadingMoreTransactions && (
+                    <div className="flex items-center justify-center py-4 border-t border-gray-700">
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500 mr-2"></div>
+                      <span className="text-gray-400 text-sm">جاري تحميل المزيد...</span>
+                    </div>
+                  )}
+                  {/* No more data indicator */}
+                  {!hasMoreTransactions && filteredTransactions.length > 0 && (
+                    <div className="text-center py-3 text-gray-500 text-sm border-t border-gray-700">
+                      تم عرض جميع السجلات ({filteredTransactions.length} سجل)
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>

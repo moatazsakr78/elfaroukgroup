@@ -10,6 +10,9 @@ import ContextMenu, { createEditContextMenuItems } from './ContextMenu'
 import EditInvoiceModal from './EditInvoiceModal'
 import { useFormatPrice } from '@/lib/hooks/useCurrency'
 import { useAuth } from '@/lib/useAuth'
+import { useInfiniteStatements, type StatementItem } from '../lib/hooks/useInfiniteStatements'
+import { useInfiniteTransactions } from '../lib/hooks/useInfiniteTransactions'
+import { useScrollDetection } from '../lib/hooks/useScrollDetection'
 
 interface SafeDetailsModalProps {
   isOpen: boolean
@@ -73,9 +76,30 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
   const [isWithdrawing, setIsWithdrawing] = useState(false)
   const [withdrawNotes, setWithdrawNotes] = useState('')
 
-  // Account statement state
-  const [accountStatementData, setAccountStatementData] = useState<any[]>([])
-  const [isLoadingStatement, setIsLoadingStatement] = useState(false)
+  // Account statement - using infinite scroll hook
+  // The old state-based approach is replaced with the hook
+  // const [accountStatementData, setAccountStatementData] = useState<any[]>([])
+  // const [isLoadingStatement, setIsLoadingStatement] = useState(false)
+  const {
+    statements: accountStatementData,
+    isLoading: isLoadingStatement,
+    isLoadingMore: isLoadingMoreStatements,
+    hasMore: hasMoreStatements,
+    loadMore: loadMoreStatements,
+    refresh: refreshStatements
+  } = useInfiniteStatements({
+    recordId: safe?.id,
+    dateFilter,
+    enabled: isOpen && activeTab === 'statement' && !isLoadingPreferences,
+    pageSize: 200
+  })
+
+  // Scroll detection for infinite scroll
+  const { sentinelRef: statementSentinelRef } = useScrollDetection({
+    onLoadMore: loadMoreStatements,
+    enabled: hasMoreStatements && !isLoadingMoreStatements && activeTab === 'statement',
+    isLoading: isLoadingMoreStatements
+  })
 
   // Statement invoice details state
   const [showStatementInvoiceDetails, setShowStatementInvoiceDetails] = useState(false)
@@ -87,9 +111,28 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
   // Get list of invoice statements for navigation (only invoices, not payments)
   const invoiceStatements = accountStatementData.filter(s => s.type === 'فاتورة بيع' || s.type === 'مرتجع بيع')
 
-  // Transfers state (deposits and withdrawals from cash_drawer_transactions)
-  const [transfers, setTransfers] = useState<any[]>([])
-  const [isLoadingTransfers, setIsLoadingTransfers] = useState(false)
+  // Transfers state - using infinite scroll hook (deposits and withdrawals from cash_drawer_transactions)
+  const {
+    transactions: transfers,
+    isLoading: isLoadingTransfers,
+    isLoadingMore: isLoadingMoreTransfers,
+    hasMore: hasMoreTransfers,
+    loadMore: loadMoreTransfers,
+    refresh: refreshTransfers
+  } = useInfiniteTransactions({
+    recordId: safe?.id,
+    dateFilter,
+    enabled: isOpen && activeTab === 'payments' && !isLoadingPreferences,
+    pageSize: 200,
+    excludeSales: true // Only get non-sale transactions (transfers, deposits, withdrawals)
+  })
+
+  // Scroll detection for transfers infinite scroll
+  const { sentinelRef: transfersSentinelRef } = useScrollDetection({
+    onLoadMore: loadMoreTransfers,
+    enabled: hasMoreTransfers && !isLoadingMoreTransfers && activeTab === 'payments',
+    isLoading: isLoadingMoreTransfers
+  })
 
   // Paid amounts mapped by sale_id or purchase_invoice_id
   const [paidAmounts, setPaidAmounts] = useState<Record<string, number>>({})
@@ -393,259 +436,10 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
     }
   }
 
-  // Fetch transfers (deposits and withdrawals - not sales)
-  const fetchTransfers = async () => {
-    if (!safe?.id) return
-
-    try {
-      setIsLoadingTransfers(true)
-
-      // Get all non-sale transactions (deposits, withdrawals, adjustments)
-      let query = supabase
-        .from('cash_drawer_transactions')
-        .select('id, amount, transaction_type, notes, created_at, balance_after, performed_by')
-        .eq('record_id', safe.id)
-        .is('sale_id', null) // Only get non-sale transactions
-
-      // Apply date filter
-      query = applyDateFilter(query)
-
-      const { data, error } = await query
-        .order('created_at', { ascending: false })
-
-      if (error) {
-        console.error('Error fetching transfers:', error)
-        setTransfers([])
-        return
-      }
-
-      // Format the data for display
-      const formattedTransfers = (data || []).map((tx, index) => {
-        const createdDate = tx.created_at ? new Date(tx.created_at) : new Date()
-        return {
-          id: index + 1,
-          dbId: tx.id,
-          date: createdDate.toLocaleDateString('en-GB'),
-          time: createdDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
-          amount: tx.amount,
-          type: tx.transaction_type,
-          notes: tx.notes || '-',
-          balance_after: tx.balance_after,
-          employee_name: tx.performed_by || null
-        }
-      })
-
-      setTransfers(formattedTransfers)
-    } catch (error) {
-      console.error('Error fetching transfers:', error)
-      setTransfers([])
-    } finally {
-      setIsLoadingTransfers(false)
-    }
-  }
-
-  // Fetch account statement data from database
-  const fetchAccountStatement = async () => {
-    if (!safe?.id) return
-
-    try {
-      setIsLoadingStatement(true)
-      const statements: any[] = []
-
-      // 1. Get record info including initial_balance
-      const { data: recordData, error: recordError } = await (supabase as any)
-        .from('records')
-        .select('initial_balance, created_at')
-        .eq('id', safe.id)
-        .single()
-
-      // 2. Get all cash drawer transactions - this is the PRIMARY source of truth for balance
-      // The balance_after field contains the accurate running balance after each transaction
-      const { data: transactionsData, error: transactionsError } = await supabase
-        .from('cash_drawer_transactions')
-        .select('id, sale_id, amount, balance_after, transaction_type, notes, created_at, performed_by')
-        .eq('record_id', safe.id)
-        .order('created_at', { ascending: true })
-
-      // 3. Get sales data for invoice details
-      const { data: salesData, error: salesError } = await supabase
-        .from('sales')
-        .select(`
-          id, invoice_number, total_amount, invoice_type, created_at, time, notes,
-          cashier:user_profiles(full_name)
-        `)
-        .eq('record_id', safe.id)
-
-      // Create a map of sale_id to sale data for quick lookup
-      const salesMap = new Map()
-      if (salesData) {
-        for (const sale of salesData) {
-          salesMap.set(sale.id, sale)
-        }
-      }
-
-      // Add initial balance if exists and there are no transactions before it
-      if (!recordError && recordData) {
-        const initialBalance = parseFloat(String(recordData.initial_balance || 0)) || 0
-        if (initialBalance > 0) {
-          const createdDate = recordData.created_at ? new Date(recordData.created_at) : new Date()
-          statements.push({
-            id: 'initial',
-            date: createdDate.toLocaleDateString('en-GB'),
-            time: createdDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
-            description: 'الرصيد الأولي',
-            type: 'رصيد أولي',
-            paidAmount: initialBalance,
-            invoiceValue: 0,
-            balance: initialBalance, // Initial balance is the starting point
-            created_at: recordData.created_at || new Date().toISOString(),
-            isPositive: true
-          })
-        }
-      }
-
-      // Process all cash drawer transactions - using balance_after directly from database
-      if (transactionsData) {
-        for (const tx of transactionsData) {
-          const amount = parseFloat(String(tx.amount || 0)) || 0
-          const balanceAfter = parseFloat(String(tx.balance_after || 0)) || 0
-
-          let typeName = 'دفعة'
-          let description = tx.notes || typeName
-          let invoiceValue = 0
-          const isPositive = amount >= 0
-
-          // Check if this transaction is linked to a sale
-          if (tx.sale_id && salesMap.has(tx.sale_id)) {
-            const sale = salesMap.get(tx.sale_id)
-            invoiceValue = parseFloat(String(sale.total_amount || 0)) || 0
-
-            // Determine type based on sale invoice_type
-            if (sale.invoice_type === 'Sale Return') {
-              typeName = 'مرتجع بيع'
-            } else {
-              typeName = 'فاتورة بيع'
-            }
-
-            // Check if this is a payment only (دفعة) - payment without goods
-            if (sale.notes && sale.notes.includes('دفعة')) {
-              typeName = 'دفعة'
-            }
-
-            description = `${typeName} - ${sale.invoice_number}`
-          } else {
-            // Non-sale transaction (withdrawal, deposit, adjustment, transfer)
-            if (tx.transaction_type === 'withdrawal') {
-              typeName = 'سحب'
-            } else if (tx.transaction_type === 'adjustment') {
-              typeName = 'تسوية'
-            } else if (tx.transaction_type === 'deposit') {
-              typeName = 'إيداع'
-            } else if (tx.transaction_type === 'return') {
-              typeName = 'مرتجع بيع'
-            } else if (tx.transaction_type === 'transfer_out') {
-              typeName = 'تحويل'
-            } else if (tx.transaction_type === 'transfer_in') {
-              typeName = 'تحويل'
-            }
-            description = tx.notes || typeName
-          }
-
-          const createdDate = tx.created_at ? new Date(tx.created_at) : new Date()
-
-          // Get employee name from sale if available, otherwise from transaction
-          const saleData = tx.sale_id ? salesMap.get(tx.sale_id) : null
-          const employeeName = saleData?.cashier?.full_name || tx.performed_by || null
-
-          statements.push({
-            id: tx.id,
-            sale_id: tx.sale_id || null, // Important for editing invoices
-            date: createdDate.toLocaleDateString('en-GB'),
-            time: createdDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
-            description: description,
-            type: typeName,
-            paidAmount: Math.abs(amount),
-            invoiceValue: Math.abs(invoiceValue),
-            balance: balanceAfter, // Use balance_after directly from database - this is the accurate balance
-            created_at: tx.created_at || new Date().toISOString(),
-            isPositive: isPositive,
-            employee_name: employeeName
-          })
-        }
-      }
-
-      // Sort by created_at descending (newest first) for display
-      const sortedDesc = [...statements].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-
-      // Apply date filter to final statements
-      const getDateRange = () => {
-        const now = new Date()
-        switch (dateFilter.type) {
-          case 'today':
-            const startOfDay = new Date(now)
-            startOfDay.setHours(0, 0, 0, 0)
-            const endOfDay = new Date(now)
-            endOfDay.setHours(23, 59, 59, 999)
-            return { start: startOfDay, end: endOfDay }
-          case 'current_week':
-            const dayOfWeek = now.getDay()
-            const daysToSaturday = dayOfWeek === 6 ? 0 : dayOfWeek + 1
-            const startOfWeek = new Date(now)
-            startOfWeek.setDate(now.getDate() - daysToSaturday)
-            startOfWeek.setHours(0, 0, 0, 0)
-            return { start: startOfWeek, end: now }
-          case 'last_week':
-            const lastWeekStart = new Date(now)
-            lastWeekStart.setDate(now.getDate() - 7 - (now.getDay() === 6 ? 0 : now.getDay() + 1))
-            lastWeekStart.setHours(0, 0, 0, 0)
-            const lastWeekEnd = new Date(lastWeekStart)
-            lastWeekEnd.setDate(lastWeekStart.getDate() + 6)
-            lastWeekEnd.setHours(23, 59, 59, 999)
-            return { start: lastWeekStart, end: lastWeekEnd }
-          case 'current_month':
-            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-            return { start: startOfMonth, end: now }
-          case 'last_month':
-            const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-            const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999)
-            return { start: lastMonthStart, end: lastMonthEnd }
-          case 'custom':
-            return {
-              start: dateFilter.startDate ? new Date(dateFilter.startDate) : null,
-              end: dateFilter.endDate ? new Date(dateFilter.endDate) : null
-            }
-          case 'all':
-          default:
-            return { start: null, end: null }
-        }
-      }
-
-      const dateRange = getDateRange()
-      let filteredStatements = sortedDesc
-
-      if (dateRange.start || dateRange.end) {
-        filteredStatements = sortedDesc.filter(stmt => {
-          const stmtDate = new Date(stmt.created_at)
-          if (dateRange.start && stmtDate < dateRange.start) return false
-          if (dateRange.end && stmtDate > dateRange.end) return false
-          return true
-        })
-      }
-
-      // Add index to filtered statements
-      const finalStatements = filteredStatements.map((stmt, index) => ({
-        ...stmt,
-        index: index + 1
-      }))
-
-      setAccountStatementData(finalStatements)
-    } catch (error) {
-      console.error('Error fetching account statement:', error)
-      setAccountStatementData([])
-    } finally {
-      setIsLoadingStatement(false)
-    }
-  }
+  // Old fetchTransfers and fetchAccountStatement functions - replaced by infinite scroll hooks
+  // This function had a critical issue: it fetched ALL transactions from oldest to newest
+  // which caused "today" filter to show no data when there were 12,000+ records
+  // The new hook uses cursor-based pagination with server-side date filtering
 
   // Fetch statement invoice items for selected invoice
   const fetchStatementInvoiceItems = async (saleId: string) => {
@@ -1360,8 +1154,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
       fetchSales()
       fetchPurchaseInvoices()
       fetchCashDrawerBalance()
-      fetchAccountStatement()
-      fetchTransfers()
+      // Account statement and transfers are now handled by infinite scroll hooks
 
       // Set up real-time subscription for sales
       const salesChannel = supabase
@@ -1434,8 +1227,8 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
           { event: '*', schema: 'public', table: 'cash_drawer_transactions' },
           (payload: any) => {
             console.log('Cash drawer transactions real-time update:', payload)
-            fetchTransfers()
-            fetchAccountStatement() // Also update account statement
+            refreshTransfers() // Refresh transfers via infinite scroll hook
+            refreshStatements() // Also update account statement
           }
         )
         .subscribe()
@@ -1617,7 +1410,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
 
   const handleInvoiceUpdated = () => {
     // إعادة تحميل البيانات بعد التعديل
-    fetchAccountStatement()
+    refreshStatements()
     fetchCashDrawerBalance()
   }
 
@@ -1916,8 +1709,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
 
   if (!safe) return null
 
-  // Transfers data - now uses real data from state
-  // transfers state is populated by fetchTransfers()
+  // Transfers data - now uses infinite scroll hook (useInfiniteTransactions)
 
   // Sample invoices data
   const transactions = [
@@ -2333,33 +2125,41 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
       accessor: '#',
       width: 50,
       render: (value: any, item: any, index: number) => (
-        <span className="text-gray-400">{item.id}</span>
+        <span className="text-gray-400">{index + 1}</span>
       )
     },
     {
       id: 'date',
       header: 'التاريخ',
-      accessor: 'date',
+      accessor: 'created_at',
       width: 120,
-      render: (value: string) => <span className="text-white">{value}</span>
+      render: (value: string) => {
+        const date = value ? new Date(value) : new Date()
+        return <span className="text-white">{date.toLocaleDateString('en-GB')}</span>
+      }
     },
     {
       id: 'time',
       header: '⏰ الساعة',
-      accessor: 'time',
+      accessor: 'created_at',
       width: 100,
-      render: (value: string) => <span className="text-blue-400">{value}</span>
+      render: (value: string) => {
+        const date = value ? new Date(value) : new Date()
+        return <span className="text-blue-400">{date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
+      }
     },
     {
       id: 'type',
       header: 'نوع العملية',
-      accessor: 'type',
+      accessor: 'transaction_type',
       width: 120,
       render: (value: string) => {
         const typeMap: { [key: string]: { text: string; color: string; bg: string } } = {
           'deposit': { text: 'إيداع', color: 'text-green-400', bg: 'bg-green-600/20 border-green-600' },
           'withdrawal': { text: 'سحب', color: 'text-red-400', bg: 'bg-red-600/20 border-red-600' },
           'adjustment': { text: 'تسوية', color: 'text-yellow-400', bg: 'bg-yellow-600/20 border-yellow-600' },
+          'transfer_in': { text: 'تحويل وارد', color: 'text-green-400', bg: 'bg-green-600/20 border-green-600' },
+          'transfer_out': { text: 'تحويل صادر', color: 'text-orange-400', bg: 'bg-orange-600/20 border-orange-600' },
           'transfer': { text: 'تحويل', color: 'text-blue-400', bg: 'bg-blue-600/20 border-blue-600' }
         }
         const typeInfo = typeMap[value] || { text: value || '-', color: 'text-gray-400', bg: 'bg-gray-600/20 border-gray-600' }
@@ -2376,10 +2176,11 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
       accessor: 'amount',
       width: 140,
       render: (value: number) => {
-        const isPositive = value >= 0
+        const amount = value || 0
+        const isPositive = amount >= 0
         return (
           <span className={`font-medium ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
-            {isPositive ? '+' : ''}{formatPrice(value, 'system')}
+            {isPositive ? '+' : ''}{formatPrice(amount, 'system')}
           </span>
         )
       }
@@ -2389,12 +2190,12 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
       header: 'البيان',
       accessor: 'notes',
       width: 250,
-      render: (value: string) => <span className="text-gray-400">{value}</span>
+      render: (value: string) => <span className="text-gray-400">{value || '-'}</span>
     },
     {
       id: 'employee_name',
       header: 'الموظف',
-      accessor: 'employee_name',
+      accessor: 'performed_by',
       width: 120,
       render: (value: string) => <span className="text-yellow-400">{value || '-'}</span>
     }
@@ -3045,15 +2846,8 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
                       </div>
                     ) : (
                       <>
-                        {/* Account Statement Header */}
-                        <div className="bg-[#2B3544] border-b border-gray-600 p-4">
-                          <div className="flex items-center justify-end">
-                            <div className="text-white text-lg font-medium">كشف حساب الخزنة</div>
-                          </div>
-                        </div>
-
-                        {/* Account Statement Table */}
-                        <div className="flex-1">
+                        {/* Account Statement Table with Infinite Scroll */}
+                        <div className="flex-1 flex flex-col overflow-hidden">
                           {isLoadingStatement ? (
                             <div className="flex items-center justify-center h-full">
                               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mr-3"></div>
@@ -3066,13 +2860,24 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
                               <p className="text-gray-500 text-sm">سيتم عرض العمليات هنا عند إجرائها</p>
                             </div>
                           ) : (
-                            <ResizableTable
-                              className="h-full w-full"
-                              columns={statementColumns}
-                              data={accountStatementData}
-                              onRowDoubleClick={handleStatementRowDoubleClick}
-                              onRowContextMenu={handleStatementContextMenu}
-                            />
+                            <div className="flex-1 overflow-auto scrollbar-hide">
+                              <ResizableTable
+                                className="h-full w-full"
+                                columns={statementColumns}
+                                data={accountStatementData}
+                                onRowDoubleClick={handleStatementRowDoubleClick}
+                                onRowContextMenu={handleStatementContextMenu}
+                              />
+                              {/* Sentinel element for infinite scroll */}
+                              <div ref={statementSentinelRef} className="h-4" />
+                              {/* Loading more indicator */}
+                              {isLoadingMoreStatements && (
+                                <div className="flex items-center justify-center py-4">
+                                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500 mr-2"></div>
+                                  <span className="text-gray-400 text-sm">جاري تحميل المزيد...</span>
+                                </div>
+                              )}
+                            </div>
                           )}
                         </div>
                       </>
@@ -3188,15 +2993,13 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
                           <div className="text-white text-lg font-medium">تحويلات الخزنة</div>
                           <div className="text-gray-400 text-sm mt-1">
                             إجمالي التحويلات: {formatPrice(transfers.reduce((sum, t) => sum + (t.amount || 0), 0), 'system')}
-                            <span className="mx-2">|</span>
-                            عدد العمليات: {transfers.length}
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* Payments Table */}
-                    <div className="flex-1">
+                    {/* Payments Table with Infinite Scroll */}
+                    <div className="flex-1 flex flex-col overflow-hidden">
                       {isLoadingTransfers ? (
                         <div className="flex items-center justify-center h-full">
                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mr-3"></div>
@@ -3209,11 +3012,22 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
                           <p className="text-gray-500 text-sm">الإيداعات والسحوبات ستظهر هنا</p>
                         </div>
                       ) : (
-                        <ResizableTable
-                          className="h-full w-full"
-                          columns={paymentsColumns}
-                          data={transfers}
-                        />
+                        <div className="flex-1 overflow-auto scrollbar-hide">
+                          <ResizableTable
+                            className="h-full w-full"
+                            columns={paymentsColumns}
+                            data={transfers}
+                          />
+                          {/* Sentinel element for infinite scroll */}
+                          <div ref={transfersSentinelRef} className="h-4" />
+                          {/* Loading more indicator */}
+                          {isLoadingMoreTransfers && (
+                            <div className="flex items-center justify-center py-4">
+                              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500 mr-2"></div>
+                              <span className="text-gray-400 text-sm">جاري تحميل المزيد...</span>
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>

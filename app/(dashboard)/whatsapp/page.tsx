@@ -576,7 +576,7 @@ export default function WhatsAppPage() {
       if (selectedConversationRef.current) {
         syncMessagesInBackground(selectedConversationRef.current)
       }
-    }, 15000) // Every 15 seconds
+    }, 5000) // Every 5 seconds - faster sync for outgoing message status updates
 
     return () => {
       clearInterval(syncInterval)
@@ -627,46 +627,45 @@ export default function WhatsAppPage() {
             })
           }
 
-          // Update conversations list for INCOMING messages only
-          // (outgoing messages are already handled by optimistic update in handleSendMessage)
-          if (newMsg.message_type === 'incoming') {
-            setConversations(prev => {
-              const updated = [...prev]
-              const convIndex = updated.findIndex(c => cleanPhoneNumber(c.phoneNumber) === cleanedFromNumber)
-              if (convIndex >= 0) {
-                // محادثة موجودة - تحديثها
-                const isConversationOpen = cleanedSelectedNumber === cleanedFromNumber
-                updated[convIndex] = {
-                  ...updated[convIndex],
-                  lastMessage: newMsg.message_text,
-                  lastMessageTime: newMsg.created_at,
-                  lastSender: 'customer',
-                  unreadCount: !isConversationOpen
-                    ? updated[convIndex].unreadCount + 1
-                    : updated[convIndex].unreadCount
-                }
-                // Move to top
-                const [conv] = updated.splice(convIndex, 1)
-                updated.unshift(conv)
-              } else {
-                // ✨ محادثة جديدة - إضافتها فوراً
-                // البحث عن صورة البروفايل من الـ contacts
-                const contact = contactsRef.current.find(
-                  c => cleanPhoneNumber(c.phone_number) === cleanedFromNumber
-                )
-                updated.unshift({
-                  phoneNumber: cleanedFromNumber,
-                  customerName: newMsg.customer_name || cleanedFromNumber,
-                  lastMessage: newMsg.message_text,
-                  lastMessageTime: newMsg.created_at,
-                  lastSender: 'customer',
-                  unreadCount: 1,
-                  profilePictureUrl: contact?.profile_picture_url || undefined
-                })
+          // Update conversations list for ALL messages (incoming + outgoing)
+          // This ensures the conversation list is always up-to-date
+          const isIncoming = newMsg.message_type === 'incoming'
+          setConversations(prev => {
+            const updated = [...prev]
+            const convIndex = updated.findIndex(c => cleanPhoneNumber(c.phoneNumber) === cleanedFromNumber)
+            if (convIndex >= 0) {
+              // محادثة موجودة - تحديثها
+              const isConversationOpen = cleanedSelectedNumber === cleanedFromNumber
+              updated[convIndex] = {
+                ...updated[convIndex],
+                lastMessage: newMsg.message_text,
+                lastMessageTime: newMsg.created_at,
+                lastSender: isIncoming ? 'customer' : 'me',
+                unreadCount: (isIncoming && !isConversationOpen)
+                  ? updated[convIndex].unreadCount + 1
+                  : updated[convIndex].unreadCount
               }
-              return updated
-            })
-          }
+              // Move to top
+              const [conv] = updated.splice(convIndex, 1)
+              updated.unshift(conv)
+            } else if (isIncoming) {
+              // ✨ محادثة جديدة - إضافتها فوراً (للرسائل الواردة فقط)
+              // البحث عن صورة البروفايل من الـ contacts
+              const contact = contactsRef.current.find(
+                c => cleanPhoneNumber(c.phone_number) === cleanedFromNumber
+              )
+              updated.unshift({
+                phoneNumber: cleanedFromNumber,
+                customerName: newMsg.customer_name || cleanedFromNumber,
+                lastMessage: newMsg.message_text,
+                lastMessageTime: newMsg.created_at,
+                lastSender: 'customer',
+                unreadCount: 1,
+                profilePictureUrl: contact?.profile_picture_url || undefined
+              })
+            }
+            return updated
+          })
         }
       )
       .on('broadcast', { event: 'new_message' }, (payload) => {
@@ -1260,6 +1259,11 @@ export default function WhatsAppPage() {
               }
             : msg
         ))
+
+        // ========================
+        // 8.1 تحديث قائمة المحادثات لضمان التزامن
+        // ========================
+        fetchConversations()
 
         // Broadcast to other devices for cross-device sync
         const supabase = getSupabase()

@@ -9,6 +9,9 @@ import SimpleDateFilterModal, { DateFilter } from './SimpleDateFilterModal'
 import AddPaymentModal from './AddPaymentModal'
 import { useFormatPrice } from '@/lib/hooks/useCurrency'
 import { calculateSupplierBalanceWithLinked } from '@/app/lib/services/partyLinkingService'
+import { useInfiniteSupplierPayments } from '../lib/hooks/useInfiniteSupplierPayments'
+import { useInfiniteSupplierStatement } from '../lib/hooks/useInfiniteSupplierStatement'
+import { useScrollDetection } from '../lib/hooks/useScrollDetection'
 
 interface SupplierDetailsModalProps {
   isOpen: boolean
@@ -64,13 +67,50 @@ export default function SupplierDetailsModal({ isOpen, onClose, supplier }: Supp
   // Add Payment Modal state
   const [showAddPaymentModal, setShowAddPaymentModal] = useState(false)
 
-  // Supplier payments state
-  const [supplierPayments, setSupplierPayments] = useState<any[]>([])
-  const [isLoadingPayments, setIsLoadingPayments] = useState(false)
+  // Supplier payments state - using infinite scroll hook
+  const {
+    payments: supplierPayments,
+    isLoading: isLoadingPayments,
+    isLoadingMore: isLoadingMorePayments,
+    hasMore: hasMorePayments,
+    loadMore: loadMorePayments,
+    refresh: refreshPayments
+  } = useInfiniteSupplierPayments({
+    supplierId: supplier?.id,
+    dateFilter,
+    enabled: isOpen && activeTab === 'payments',
+    pageSize: 200
+  })
 
-  // Account statement state
-  const [accountStatements, setAccountStatements] = useState<any[]>([])
-  const [isLoadingStatements, setIsLoadingStatements] = useState(false)
+  // Scroll detection for payments infinite scroll
+  const { sentinelRef: paymentsSentinelRef } = useScrollDetection({
+    onLoadMore: loadMorePayments,
+    enabled: hasMorePayments && !isLoadingMorePayments && activeTab === 'payments',
+    isLoading: isLoadingMorePayments
+  })
+
+  // Account statement state - using infinite scroll hook
+  const {
+    statements: accountStatements,
+    isLoading: isLoadingStatements,
+    isLoadingMore: isLoadingMoreStatements,
+    hasMore: hasMoreStatements,
+    loadMore: loadMoreStatements,
+    refresh: refreshStatements,
+    currentBalance: statementBalance
+  } = useInfiniteSupplierStatement({
+    supplierId: supplier?.id,
+    dateFilter,
+    enabled: isOpen && activeTab === 'statement',
+    pageSize: 200
+  })
+
+  // Scroll detection for statements infinite scroll
+  const { sentinelRef: statementsSentinelRef } = useScrollDetection({
+    onLoadMore: loadMoreStatements,
+    enabled: hasMoreStatements && !isLoadingMoreStatements && activeTab === 'statement',
+    isLoading: isLoadingMoreStatements
+  })
 
   // Statement invoice details state
   const [showStatementInvoiceDetails, setShowStatementInvoiceDetails] = useState(false)
@@ -552,65 +592,7 @@ export default function SupplierDetailsModal({ isOpen, onClose, supplier }: Supp
     }
   }
 
-  // Fetch supplier payments
-  const fetchSupplierPayments = async () => {
-    if (!supplier?.id) return
-
-    try {
-      setIsLoadingPayments(true)
-
-      const { data, error } = await supabase
-        .from('supplier_payments')
-        .select(`
-          id,
-          amount,
-          payment_method,
-          reference_number,
-          notes,
-          payment_date,
-          created_at,
-          created_by,
-          safe_id,
-          creator:user_profiles(full_name)
-        `)
-        .eq('supplier_id', supplier.id)
-        .order('created_at', { ascending: false })
-
-      if (error) {
-        console.error('Error fetching supplier payments:', error)
-        return
-      }
-
-      // Get safe names for payments that have safe_id
-      const safeIds = (data || []).filter(p => p.safe_id).map(p => p.safe_id as string)
-      let safesMap = new Map<string, string>()
-
-      if (safeIds.length > 0) {
-        const { data: safesData } = await supabase
-          .from('records')
-          .select('id, name')
-          .in('id', safeIds)
-
-        if (safesData) {
-          safesData.forEach(safe => safesMap.set(safe.id, safe.name))
-        }
-      }
-
-      // Map payments with safe_name and employee_name
-      const paymentsWithInfo = (data || []).map(payment => ({
-        ...payment,
-        safe_name: payment.safe_id ? safesMap.get(payment.safe_id) || null : null,
-        employee_name: (payment as any).creator?.full_name || null
-      }))
-
-      setSupplierPayments(paymentsWithInfo)
-
-    } catch (error) {
-      console.error('Error fetching supplier payments:', error)
-    } finally {
-      setIsLoadingPayments(false)
-    }
-  }
+  // fetchSupplierPayments - replaced by useInfiniteSupplierPayments hook
 
   // Fetch invoice items for statement invoice
   const fetchStatementInvoiceItems = async (invoiceId: string) => {
@@ -889,10 +871,8 @@ export default function SupplierDetailsModal({ isOpen, onClose, supplier }: Supp
         if (error) throw error
       }
 
-      // Update local state
-      setAccountStatements(prev => prev.map(s =>
-        s.id === statement.id ? { ...s, notes: newNote } : s
-      ))
+      // Refresh statements to show the updated note
+      await refreshStatements()
 
       // Reset editing state
       setEditingNoteId(null)
@@ -902,398 +882,7 @@ export default function SupplierDetailsModal({ isOpen, onClose, supplier }: Supp
     }
   }
 
-  // Fetch account statement
-  const fetchAccountStatement = async () => {
-    console.log('=== fetchAccountStatement DEBUG ===')
-    console.log('supplier object:', supplier)
-    console.log('supplier.id:', supplier?.id)
-
-    if (!supplier?.id) {
-      console.log('No supplier ID, returning early')
-      return
-    }
-
-    try {
-      setIsLoadingStatements(true)
-
-      // Get supplier's opening balance and linked customer
-      const { data: supplierData, error: supplierError } = await supabase
-        .from('suppliers')
-        .select('opening_balance, created_at, linked_customer_id')
-        .eq('id', supplier.id)
-        .single()
-
-      const openingBalance = supplierData?.opening_balance || 0
-      const supplierCreatedAt = supplierData?.created_at
-      const linkedCustomerId = supplierData?.linked_customer_id
-
-      console.log('supplierData from DB:', supplierData)
-      console.log('linkedCustomerId:', linkedCustomerId)
-
-      // Get all purchase invoices for this supplier
-      const { data: invoices, error: invoicesError } = await supabase
-        .from('purchase_invoices')
-        .select(`
-          id, invoice_number, total_amount, invoice_type, created_at, notes, user_notes,
-          record:records(name),
-          creator:user_profiles(full_name)
-        `)
-        .eq('supplier_id', supplier.id)
-        .order('created_at', { ascending: true })
-
-      if (invoicesError) {
-        console.error('Error fetching invoices:', invoicesError)
-        return
-      }
-
-      console.log('purchase invoices:', invoices)
-
-      // Get all payments for this supplier (including purchase_invoice_id for linking)
-      const { data: payments, error: paymentsError } = await supabase
-        .from('supplier_payments')
-        .select(`
-          id, amount, payment_method, notes, user_notes, created_at, safe_id, purchase_invoice_id,
-          creator:user_profiles(full_name)
-        `)
-        .eq('supplier_id', supplier.id)
-        .order('created_at', { ascending: true })
-
-      if (paymentsError) {
-        console.error('Error fetching payments:', paymentsError)
-        return
-      }
-
-      console.log('supplier payments:', payments)
-
-      // Get safe names for payments
-      const paymentSafeIds = (payments || []).filter(p => p.safe_id).map(p => p.safe_id as string)
-      let paymentSafesMap = new Map<string, string>()
-
-      if (paymentSafeIds.length > 0) {
-        const { data: safesData } = await supabase
-          .from('records')
-          .select('id, name')
-          .in('id', paymentSafeIds)
-
-        if (safesData) {
-          safesData.forEach(safe => paymentSafesMap.set(safe.id, safe.name))
-        }
-      }
-
-      // Fetch sales from linked customer (if any)
-      let linkedSalesData: any[] = []
-      let linkedCustomerPaymentsData: any[] = []
-      if (linkedCustomerId) {
-        const { data: salesData, error: salesError } = await supabase
-          .from('sales')
-          .select(`
-            id, invoice_number, total_amount, invoice_type, created_at, user_notes,
-            customer:customers(name)
-          `)
-          .eq('customer_id', linkedCustomerId)
-          .order('created_at', { ascending: true })
-
-        if (!salesError && salesData) {
-          linkedSalesData = salesData
-        }
-
-        // Fetch customer payments from linked customer (including sale_id for linking)
-        const { data: customerPaymentsData, error: customerPaymentsError } = await supabase
-          .from('customer_payments')
-          .select(`
-            id, amount, payment_method, notes, user_notes, created_at, safe_id, sale_id,
-            creator:user_profiles(full_name)
-          `)
-          .eq('customer_id', linkedCustomerId)
-          .order('created_at', { ascending: true })
-
-        if (!customerPaymentsError && customerPaymentsData) {
-          linkedCustomerPaymentsData = customerPaymentsData
-        }
-
-        console.log('linkedSalesData:', linkedSalesData)
-        console.log('linkedCustomerPaymentsData:', linkedCustomerPaymentsData)
-      }
-
-      // Build statements array
-      const statements: any[] = []
-
-      // Create a map of payments linked to invoices
-      const paymentsByInvoice = new Map<string, any>()
-      const standalonePayments: any[] = []
-
-      payments?.forEach((payment) => {
-        if (payment.created_at) {
-          const linkedInvoiceId = (payment as any).purchase_invoice_id
-          if (linkedInvoiceId) {
-            // Payment is linked to an invoice
-            paymentsByInvoice.set(linkedInvoiceId, payment)
-          } else {
-            // Standalone payment (not linked to any invoice)
-            standalonePayments.push(payment)
-          }
-        }
-      })
-
-      // Create a map of customer payments linked to sales
-      const paymentsBySale = new Map<string, any>()
-      const standaloneCustomerPayments: any[] = []
-
-      linkedCustomerPaymentsData?.forEach((payment) => {
-        if (payment.created_at) {
-          const linkedSaleId = (payment as any).sale_id
-          if (linkedSaleId) {
-            // Payment is linked to a sale
-            paymentsBySale.set(linkedSaleId, payment)
-          } else {
-            // Standalone payment (not linked to any sale)
-            standaloneCustomerPayments.push(payment)
-          }
-        }
-      })
-
-      // Add invoices (merged with linked payments if any)
-      invoices?.forEach((invoice) => {
-        if (invoice.created_at) {
-          const isReturn = invoice.invoice_type !== 'Purchase Invoice'
-          const invoiceAmount = Math.abs(invoice.total_amount)
-
-          // Check if there's a linked payment for this invoice
-          const linkedPayment = paymentsByInvoice.get(invoice.id)
-          const hasPaidAmount = linkedPayment && linkedPayment.amount > 0
-          const paidAmount = hasPaidAmount ? Math.abs(linkedPayment.amount) : 0
-
-          // Determine operation type based on whether there's a linked payment
-          let operationType: string
-          if (isReturn) {
-            operationType = hasPaidAmount ? 'مرتجع شراء - دفعة' : 'مرتجع شراء'
-          } else {
-            operationType = hasPaidAmount ? 'فاتورة شراء - دفعة' : 'فاتورة شراء'
-          }
-
-          // For balance calculation: invoice adds to balance, payment subtracts
-          // Net effect = invoiceAmount - paidAmount
-          const netAmount = isReturn
-            ? -invoiceAmount + paidAmount  // Return: -invoice + payment
-            : invoiceAmount - paidAmount   // Purchase: +invoice - payment
-
-          statements.push({
-            id: statements.length + 1,
-            date: new Date(invoice.created_at),
-            description: `فاتورة ${invoice.invoice_number}`,
-            type: operationType,
-            amount: netAmount,
-            invoiceValue: invoiceAmount,
-            paidAmount: paidAmount,
-            invoiceId: invoice.id,
-            paymentId: linkedPayment?.id || null,
-            safe_name: (invoice as any).record?.name || null,
-            employee_name: (invoice as any).creator?.full_name || null,
-            notes: (invoice as any).notes || null,
-            user_notes: (invoice as any).user_notes || null
-          })
-        }
-      })
-
-      // Add standalone payments (not linked to any invoice)
-      standalonePayments.forEach((payment) => {
-        // التحقق إذا كانت سلفة من خلال الملاحظات
-        const isLoan = payment.notes?.startsWith('سلفة')
-
-        // Get safe name from map and employee name from joined data
-        const safeName = payment.safe_id ? paymentSafesMap.get(payment.safe_id) || null : null
-        const employeeName = (payment as any).creator?.full_name || null
-        const paymentAmount = Math.abs(payment.amount)
-
-        if (isLoan) {
-          // السلفة من المورد تزيد الرصيد المستحق له
-          statements.push({
-            id: statements.length + 1,
-            date: new Date(payment.created_at),
-            description: payment.notes,
-            type: 'سلفة',
-            amount: paymentAmount, // Positive because it increases the balance
-            invoiceValue: 0,
-            paidAmount: paymentAmount,
-            paymentId: payment.id,
-            safe_name: safeName,
-            employee_name: employeeName,
-            notes: payment.notes || null
-          })
-        } else {
-          // الدفعة للمورد تنقص الرصيد المستحق له
-          statements.push({
-            id: statements.length + 1,
-            date: new Date(payment.created_at),
-            description: payment.notes || 'دفعة',
-            type: 'دفعة',
-            amount: -paymentAmount, // Negative because it reduces the balance
-            invoiceValue: 0,
-            paidAmount: paymentAmount,
-            paymentId: payment.id,
-            safe_name: safeName,
-            employee_name: employeeName,
-            notes: payment.notes || null
-          })
-        }
-      })
-
-      // Add linked customer sales (merged with linked payments if any)
-      linkedSalesData?.forEach(sale => {
-        if (sale.created_at) {
-          const saleDate = new Date(sale.created_at)
-          const isReturn = sale.invoice_type === 'Sale Return'
-          const saleAmount = Math.abs(sale.total_amount)
-
-          // Check if there's a linked payment for this sale
-          const linkedPayment = paymentsBySale.get(sale.id)
-          const hasPaidAmount = linkedPayment && linkedPayment.amount > 0
-          const paidAmount = hasPaidAmount ? Math.abs(linkedPayment.amount) : 0
-
-          // Determine operation type based on whether there's a linked payment
-          let typeName: string
-          if (isReturn) {
-            typeName = hasPaidAmount ? 'مرتجع بيع - دفعة' : 'مرتجع بيع'
-          } else {
-            typeName = hasPaidAmount ? 'فاتورة بيع - دفعة' : 'فاتورة بيع'
-          }
-
-          // For balance calculation:
-          // Sale reduces supplier balance, payment increases it
-          // Net effect = -saleAmount + paidAmount
-          const netAmount = isReturn
-            ? saleAmount - paidAmount   // Return: +sale - payment
-            : -saleAmount + paidAmount  // Sale: -sale + payment
-
-          // Get safe name for linked payment
-          const safeName = linkedPayment?.safe_id ? paymentSafesMap.get(linkedPayment.safe_id) || null : null
-          const employeeName = linkedPayment?.creator?.full_name || null
-
-          statements.push({
-            id: statements.length + 1,
-            date: saleDate,
-            description: `${typeName} - ${sale.invoice_number}`,
-            type: typeName,
-            amount: netAmount,
-            invoiceValue: saleAmount,
-            paidAmount: paidAmount,
-            saleId: sale.id,
-            customerPaymentId: linkedPayment?.id || null,
-            isFromLinkedCustomer: true,
-            linkedCustomerName: (sale as any).customer?.name || null,
-            safe_name: safeName,
-            employee_name: employeeName,
-            notes: null
-          })
-        }
-      })
-
-      // Add standalone linked customer payments (not linked to any sale)
-      standaloneCustomerPayments.forEach(payment => {
-        if (payment.created_at) {
-          const isLoan = payment.notes?.startsWith('سلفة')
-          const safeName = payment.safe_id ? paymentSafesMap.get(payment.safe_id) || null : null
-          const employeeName = (payment as any).creator?.full_name || null
-          const paymentAmount = Math.abs(payment.amount)
-
-          if (isLoan) {
-            // Customer loan (سلفة) - we gave them money, increases what they owe us
-            // This decreases what we owe to supplier (negative amount)
-            statements.push({
-              id: statements.length + 1,
-              date: new Date(payment.created_at),
-              description: payment.notes,
-              type: 'سلفة',
-              amount: -paymentAmount, // Negative - decreases supplier balance
-              invoiceValue: 0,
-              paidAmount: paymentAmount,
-              customerPaymentId: payment.id,
-              isFromLinkedCustomer: true,
-              safe_name: safeName,
-              employee_name: employeeName,
-              notes: payment.notes || null
-            })
-          } else {
-            // Customer payment (دفعة) - they paid us, reduces what they owe us
-            // This increases what we owe to supplier (positive amount)
-            statements.push({
-              id: statements.length + 1,
-              date: new Date(payment.created_at),
-              description: payment.notes || 'دفعة',
-              type: 'دفعة',
-              amount: paymentAmount, // Positive - increases supplier balance
-              invoiceValue: 0,
-              paidAmount: paymentAmount,
-              customerPaymentId: payment.id,
-              isFromLinkedCustomer: true,
-              safe_name: safeName,
-              employee_name: employeeName,
-              notes: payment.notes || null
-            })
-          }
-        }
-      })
-
-      console.log('statements BEFORE sort:', statements)
-      console.log('statements count:', statements.length)
-
-      // Sort by date
-      statements.sort((a, b) => a.date.getTime() - b.date.getTime())
-
-      // Add opening balance entry if it's not zero
-      if (openingBalance !== 0) {
-        statements.unshift({
-          id: 0,
-          date: supplierCreatedAt ? new Date(supplierCreatedAt) : new Date(statements[0]?.date || Date.now()),
-          description: 'رصيد افتتاحي',
-          type: 'رصيد أولي',
-          amount: openingBalance,
-          invoiceValue: Math.abs(openingBalance),
-          paidAmount: 0,
-          safe_name: null,
-          employee_name: null
-        })
-      }
-
-      // Calculate running balance starting from opening balance
-      let runningBalance = 0
-      const statementsWithBalance = statements.map((statement, index) => {
-        runningBalance += statement.amount
-
-        return {
-          ...statement,
-          balance: runningBalance,
-          displayDate: statement.date.toLocaleDateString('en-GB'),
-          displayTime: statement.date.toLocaleTimeString('en-US', {
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: true
-          }),
-          displayAmount: statement.amount >= 0
-            ? `+${formatPrice(statement.amount)}`
-            : formatPrice(statement.amount),
-          displayBalance: formatPrice(runningBalance),
-          id: index + 1 // Reassign IDs to be sequential
-        }
-      })
-
-      console.log('statementsWithBalance FINAL:', statementsWithBalance)
-      console.log('statementsWithBalance count:', statementsWithBalance.length)
-      console.log('=== END fetchAccountStatement DEBUG ===')
-
-      // Reverse for display (newest first), keeping correct balance
-      const reversedStatements = [...statementsWithBalance].reverse().map((stmt, index) => ({
-        ...stmt,
-        id: index + 1
-      }))
-      setAccountStatements(reversedStatements)
-
-    } catch (error) {
-      console.error('Error fetching account statement:', error)
-    } finally {
-      setIsLoadingStatements(false)
-    }
-  }
+  // fetchAccountStatement - replaced by useInfiniteSupplierStatement hook
 
   // Fetch purchase invoice items for selected invoice
   const fetchPurchaseInvoiceItems = async (invoiceId: string) => {
@@ -1408,8 +997,7 @@ export default function SupplierDetailsModal({ isOpen, onClose, supplier }: Supp
   useEffect(() => {
     if (isOpen && supplier?.id) {
       fetchPurchaseInvoices()
-      fetchSupplierPayments()
-      fetchAccountStatement()
+      // Payments and statements are now handled by infinite scroll hooks
 
       // Set up real-time subscription for purchase_invoices
       const invoicesChannel = supabase
@@ -1420,7 +1008,7 @@ export default function SupplierDetailsModal({ isOpen, onClose, supplier }: Supp
             console.log('Purchase invoices real-time update:', payload)
             fetchPurchaseInvoices()
             fetchSupplierBalance() // Also update balance on invoice changes
-            fetchAccountStatement() // Update account statement on invoice changes
+            refreshStatements() // Update account statement via infinite scroll hook
           }
         )
         .subscribe()
@@ -1466,9 +1054,9 @@ export default function SupplierDetailsModal({ isOpen, onClose, supplier }: Supp
           { event: '*', schema: 'elfaroukgroup', table: 'supplier_payments' },
           (payload: any) => {
             console.log('Supplier payments real-time update:', payload)
-            fetchSupplierPayments()
+            refreshPayments() // Refresh via infinite scroll hook
             fetchSupplierBalance() // Also update balance on payment changes
-            fetchAccountStatement() // Update account statement on payment changes
+            refreshStatements() // Update account statement via infinite scroll hook
           }
         )
         .subscribe()
@@ -3227,7 +2815,7 @@ export default function SupplierDetailsModal({ isOpen, onClose, supplier }: Supp
                         </div>
                       </div>
                     ) : (
-                      <>
+                      <div className="flex-1 overflow-auto scrollbar-hide">
                         {isLoadingStatements ? (
                           <div className="flex items-center justify-center h-full">
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mr-3"></div>
@@ -3238,18 +2826,27 @@ export default function SupplierDetailsModal({ isOpen, onClose, supplier }: Supp
                             <span className="text-gray-400">لا توجد عمليات في كشف الحساب</span>
                           </div>
                         ) : (
-                          <ResizableTable
-                            className="h-full w-full"
-                            columns={statementColumns}
-                            data={accountStatements.map((item, index, arr) => ({
-                              ...item,
-                              isFirstRow: index === 0
-                            }))}
-                            onRowDoubleClick={handleStatementRowDoubleClick}
-                            reportType="SUPPLIER_STATEMENT_REPORT"
-                          />
+                          <>
+                            <ResizableTable
+                              className="h-full w-full"
+                              columns={statementColumns}
+                              data={accountStatements.map((item, index, arr) => ({
+                                ...item,
+                                isFirstRow: index === 0
+                              }))}
+                              onRowDoubleClick={handleStatementRowDoubleClick}
+                              reportType="SUPPLIER_STATEMENT_REPORT"
+                            />
+                            <div ref={statementsSentinelRef} className="h-4" />
+                            {isLoadingMoreStatements && (
+                              <div className="flex items-center justify-center py-4">
+                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500 mr-2"></div>
+                                <span className="text-gray-400 text-sm">جاري تحميل المزيد...</span>
+                              </div>
+                            )}
+                          </>
                         )}
-                      </>
+                      </div>
                     )}
                   </div>
                 )}
@@ -3470,7 +3067,7 @@ export default function SupplierDetailsModal({ isOpen, onClose, supplier }: Supp
                     </div>
 
                     {/* Payments Table */}
-                    <div className="flex-1">
+                    <div className="flex-1 overflow-auto scrollbar-hide">
                       {isLoadingPayments ? (
                         <div className="flex items-center justify-center h-full">
                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mr-3"></div>
@@ -3481,12 +3078,21 @@ export default function SupplierDetailsModal({ isOpen, onClose, supplier }: Supp
                           <span className="text-gray-400">لا توجد دفعات مسجلة</span>
                         </div>
                       ) : (
-                        <ResizableTable
-                          className="h-full w-full"
-                          columns={paymentsColumns}
-                          data={supplierPayments}
-                          reportType="SUPPLIER_PAYMENTS_REPORT"
-                        />
+                        <>
+                          <ResizableTable
+                            className="h-full w-full"
+                            columns={paymentsColumns}
+                            data={supplierPayments}
+                            reportType="SUPPLIER_PAYMENTS_REPORT"
+                          />
+                          <div ref={paymentsSentinelRef} className="h-4" />
+                          {isLoadingMorePayments && (
+                            <div className="flex items-center justify-center py-4">
+                              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500 mr-2"></div>
+                              <span className="text-gray-400 text-sm">جاري تحميل المزيد...</span>
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -3528,8 +3134,9 @@ export default function SupplierDetailsModal({ isOpen, onClose, supplier }: Supp
         entityName={supplier.name}
         currentBalance={supplierBalance}
         onPaymentAdded={() => {
-          fetchSupplierPayments()
+          refreshPayments()
           fetchSupplierBalance()
+          refreshStatements()
         }}
       />
 
