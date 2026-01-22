@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useDebounce } from "../../lib/hooks/useDebounce";
 
 // Local storage key for POS column visibility
 const POS_COLUMN_VISIBILITY_KEY = 'pos-column-visibility-v2';
@@ -114,8 +115,7 @@ import DiscountModal from "../../components/DiscountModal";
 import PostponedInvoicesModal from "../../components/PostponedInvoicesModal";
 import CashDrawerModal from "../../components/CashDrawerModal";
 import ProductGridSkeleton from "../../components/ui/ProductGridSkeleton";
-import { useProductsAdmin } from "../../../lib/hooks/useProductsAdmin";
-import { Product } from "../../lib/hooks/useProductsOptimized";
+import { useProducts, Product } from "../../lib/hooks/useProductsOptimized";
 import { usePersistentSelections } from "../../lib/hooks/usePersistentSelections";
 import { usePOSTabs } from "@/lib/hooks/usePOSTabs";
 import {
@@ -174,6 +174,7 @@ function POSPageContent() {
   const canChangeBranch = isAdmin || hasPermission('pos.change_branch');
 
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 400); // 400ms delay for smoother typing on slower devices
   const searchInputRef = useRef<HTMLInputElement>(null);
   const cartContainerRef = useRef<HTMLDivElement>(null);
 
@@ -538,8 +539,8 @@ function POSPageContent() {
     return category?.name || null;
   }, [selectedCategoryId, categories]);
 
-  // ✨ OPTIMIZED: Use super-optimized admin hook for better performance
-  const { products, branches, isLoading, error, fetchProducts } = useProductsAdmin();
+  // ✨ OPTIMIZED: Use useProductsOptimized for inventory data + better performance
+  const { products, branches, isLoading, error, fetchProducts } = useProducts();
 
   // Device Detection for Tablet View
   const [isTabletDevice, setIsTabletDevice] = useState(false);
@@ -1672,62 +1673,107 @@ function POSPageContent() {
     }
   }, [isPurchaseMode, isTransferMode, isReturnMode, isEditMode, editInvoiceData, selectedSupplier, selectedCustomerForPurchase, selectedWarehouse, transferFromLocation, transferToLocation, isLoadingTabs, activePOSTab, updateActiveTabMode]);
 
-  // OPTIMIZED: Memoized product filtering to prevent unnecessary re-renders
+  // OPTIMIZED: Pre-built search index for O(1) lookups instead of O(n) filtering
+  // Index structure: Map<string, Set<string>> where key is search term and value is Set of product IDs
+  const searchIndex = useMemo(() => {
+    const nameIndex = new Map<string, Set<string>>();
+    const codeIndex = new Map<string, Set<string>>();
+    const barcodeIndex = new Map<string, Set<string>>();
+
+    // Helper to add term prefixes to index (enables prefix matching)
+    const addToIndex = (index: Map<string, Set<string>>, term: string, productId: string) => {
+      if (!term) return;
+      const normalized = term.toLowerCase();
+      // Add full term and all prefixes for fast prefix matching
+      for (let i = 1; i <= normalized.length; i++) {
+        const prefix = normalized.slice(0, i);
+        if (!index.has(prefix)) index.set(prefix, new Set());
+        index.get(prefix)!.add(productId);
+      }
+    };
+
+    products.forEach((product) => {
+      // Index name words (each word separately for partial matching)
+      const nameWords = product.name.toLowerCase().split(/\s+/);
+      nameWords.forEach(word => {
+        addToIndex(nameIndex, word, product.id);
+      });
+      // Also index full name for exact substring matching
+      addToIndex(nameIndex, product.name, product.id);
+
+      // Index product code
+      if (product.product_code) {
+        addToIndex(codeIndex, product.product_code, product.id);
+      }
+
+      // Index barcode
+      if (product.barcode) {
+        addToIndex(barcodeIndex, product.barcode, product.id);
+      }
+    });
+
+    return { nameIndex, codeIndex, barcodeIndex };
+  }, [products]);
+
+  // OPTIMIZED: Memoized product filtering using search index
   // Returns Set of matching product IDs for O(1) lookup
-  // Now includes both search query AND category filter
-  // 🔍 Updated to support different search modes: all, name, code, barcode
   const filteredProductIds = useMemo(() => {
-    const hasSearchFilter = !!searchQuery;
+    const hasSearchFilter = !!debouncedSearchQuery;
     const hasCategoryFilter = selectedCategoryId !== null && categoryFilterIds.size > 0;
 
     // No filters - show all
     if (!hasSearchFilter && !hasCategoryFilter) return null;
 
-    const query = searchQuery.toLowerCase();
-    const matchingIds = new Set<string>();
+    let matchingIds: Set<string>;
 
-    products.forEach((product) => {
-      // Check search filter based on search mode
-      let matchesSearch = false;
+    if (!hasSearchFilter) {
+      // Only category filter - use all product IDs
+      matchingIds = new Set(products.map(p => p.id));
+    } else {
+      const query = debouncedSearchQuery.toLowerCase();
+      matchingIds = new Set<string>();
 
-      if (!hasSearchFilter) {
-        matchesSearch = true;
-      } else {
-        switch (searchMode) {
-          case 'all':
-            // البحث في الاسم والكود والباركود
-            matchesSearch = !!(
-              product.name.toLowerCase().includes(query) ||
-              (product.product_code && product.product_code.toLowerCase().includes(query)) ||
-              (product.barcode && product.barcode.toLowerCase().includes(query))
-            );
-            break;
-          case 'name':
-            // البحث بالاسم فقط
-            matchesSearch = product.name.toLowerCase().includes(query);
-            break;
-          case 'code':
-            // البحث بالكود فقط
-            matchesSearch = !!(product.product_code && product.product_code.toLowerCase().includes(query));
-            break;
-          case 'barcode':
-            // البحث بالباركود فقط
-            matchesSearch = !!(product.barcode && product.barcode.toLowerCase().includes(query));
-            break;
+      // Use search index for fast lookup based on search mode
+      const getMatchesFromIndex = (index: Map<string, Set<string>>) => {
+        return index.get(query) || new Set<string>();
+      };
+
+      switch (searchMode) {
+        case 'all':
+          // Combine matches from all indexes
+          const nameMatches = getMatchesFromIndex(searchIndex.nameIndex);
+          const codeMatches = getMatchesFromIndex(searchIndex.codeIndex);
+          const barcodeMatches = getMatchesFromIndex(searchIndex.barcodeIndex);
+          nameMatches.forEach(id => matchingIds.add(id));
+          codeMatches.forEach(id => matchingIds.add(id));
+          barcodeMatches.forEach(id => matchingIds.add(id));
+          break;
+        case 'name':
+          getMatchesFromIndex(searchIndex.nameIndex).forEach(id => matchingIds.add(id));
+          break;
+        case 'code':
+          getMatchesFromIndex(searchIndex.codeIndex).forEach(id => matchingIds.add(id));
+          break;
+        case 'barcode':
+          getMatchesFromIndex(searchIndex.barcodeIndex).forEach(id => matchingIds.add(id));
+          break;
+      }
+    }
+
+    // Apply category filter
+    if (hasCategoryFilter) {
+      const categoryFilteredIds = new Set<string>();
+      matchingIds.forEach(id => {
+        const product = products.find(p => p.id === id);
+        if (product?.category_id && categoryFilterIds.has(product.category_id)) {
+          categoryFilteredIds.add(id);
         }
-      }
+      });
+      return categoryFilteredIds;
+    }
 
-      // Check category filter
-      const matchesCategory = !hasCategoryFilter || (
-        product.category_id && categoryFilterIds.has(product.category_id)
-      );
-
-      if (matchesSearch && matchesCategory) {
-        matchingIds.add(product.id);
-      }
-    });
     return matchingIds;
-  }, [products, searchQuery, searchMode, selectedCategoryId, categoryFilterIds]);
+  }, [products, debouncedSearchQuery, searchMode, selectedCategoryId, categoryFilterIds, searchIndex]);
 
   // Helper function to check if product matches search
   const isProductVisible = useCallback((productId: string) => {
@@ -1736,32 +1782,59 @@ function POSPageContent() {
 
   // For backward compatibility - filtered products array (used for count display etc.)
   const filteredProducts = useMemo(() => {
-    const hasSearchFilter = !!searchQuery;
+    const hasSearchFilter = !!debouncedSearchQuery;
     const hasCategoryFilter = selectedCategoryId !== null && categoryFilterIds.size > 0;
 
     if (!hasSearchFilter && !hasCategoryFilter) return products;
     return products.filter((p) => filteredProductIds?.has(p.id));
-  }, [products, searchQuery, selectedCategoryId, categoryFilterIds, filteredProductIds]);
+  }, [products, debouncedSearchQuery, selectedCategoryId, categoryFilterIds, filteredProductIds]);
 
   // OPTIMIZED: Memoized refresh handler
   const handleRefresh = useCallback(() => {
     fetchProducts();
   }, [fetchProducts]);
 
-  // OPTIMIZED: Preload product images in background for faster rendering
+  // OPTIMIZED: Preload product images progressively - first 50 immediately, rest in batches
   useEffect(() => {
     if (isLoading || products.length === 0) {
       return;
     }
 
-    // Extract all image URLs from products
-    const imageUrls = products.map(p => p.main_image_url).filter(Boolean);
+    // Only preload first 50 images initially for faster initial render
+    const INITIAL_PRELOAD_COUNT = 50;
+    const BATCH_SIZE = 30;
+    const BATCH_DELAY = 1000; // 1 second between batches
 
-    // Preload in background without blocking UI
-    preloadImagesInBackground(imageUrls, () => {
-      const stats = getPreloadStats();
-      console.log(`POS: Preloaded ${stats.preloaded} images in background`);
+    const allImageUrls = products.map(p => p.main_image_url).filter(Boolean) as string[];
+
+    // Preload first batch immediately (visible viewport)
+    const initialImages = allImageUrls.slice(0, INITIAL_PRELOAD_COUNT);
+    preloadImagesInBackground(initialImages, () => {
+      console.log(`POS: Preloaded initial ${initialImages.length} images`);
     });
+
+    // Preload remaining images in batches to avoid blocking UI
+    const remainingImages = allImageUrls.slice(INITIAL_PRELOAD_COUNT);
+    if (remainingImages.length > 0) {
+      let batchIndex = 0;
+      const preloadNextBatch = () => {
+        const start = batchIndex * BATCH_SIZE;
+        const batch = remainingImages.slice(start, start + BATCH_SIZE);
+        if (batch.length > 0) {
+          preloadImagesInBackground(batch, () => {
+            batchIndex++;
+            if (batchIndex * BATCH_SIZE < remainingImages.length) {
+              setTimeout(preloadNextBatch, BATCH_DELAY);
+            } else {
+              const stats = getPreloadStats();
+              console.log(`POS: Finished preloading all ${stats.preloaded} images`);
+            }
+          });
+        }
+      };
+      // Start batch preloading after initial load settles
+      setTimeout(preloadNextBatch, 2000);
+    }
   }, [products, isLoading]);
 
   // Close tab context menu when clicking outside
