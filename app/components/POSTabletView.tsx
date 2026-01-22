@@ -7,8 +7,8 @@ import TopHeader from './layout/TopHeader'
 import PaymentSplit from './PaymentSplit'
 import ResizableTable from './tables/ResizableTable'
 import ColorSelectionModal from './ColorSelectionModal'
+import POSSearchInput, { POSSearchInputRef } from './pos/POSSearchInput'
 import {
-  MagnifyingGlassIcon,
   Squares2X2Icon,
   ListBulletIcon,
   PlusIcon,
@@ -25,6 +25,8 @@ import {
 } from '@heroicons/react/24/outline'
 import { useFormatPrice } from '@/lib/hooks/useCurrency'
 
+type SearchMode = 'all' | 'name' | 'code' | 'barcode';
+
 interface POSTabletViewProps {
   // Products
   products: any[]
@@ -33,8 +35,9 @@ interface POSTabletViewProps {
   error: string | null
 
   // Search
-  searchQuery: string
-  setSearchQuery: (query: string) => void
+  onSearchChange: (query: string) => void
+  searchMode: SearchMode
+  onSearchModeChange: (mode: SearchMode) => void
 
   // View Mode
   viewMode: 'table' | 'grid'
@@ -116,8 +119,9 @@ export default function POSTabletView({
   filteredProducts,
   isLoading,
   error,
-  searchQuery,
-  setSearchQuery,
+  onSearchChange,
+  searchMode,
+  onSearchModeChange,
   viewMode,
   setViewMode,
   cartItems,
@@ -493,16 +497,13 @@ export default function POSTabletView({
         <div className="bg-[#374151] border-b border-gray-600 px-4 py-3 flex-shrink-0">
           <div className="flex items-center gap-3">
             {/* Search Bar */}
-            <div className="relative flex-1">
-              <MagnifyingGlassIcon className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="اسم المنتج..."
-                className="w-full pl-4 pr-10 py-2 bg-[#2B3544] border border-gray-600 rounded-md text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#5DADE2] focus:border-transparent text-sm"
-              />
-            </div>
+            <POSSearchInput
+              onSearch={onSearchChange}
+              searchMode={searchMode}
+              onSearchModeChange={onSearchModeChange}
+              className="flex-1"
+              isMobile={true}
+            />
 
             {/* Product Count */}
             <span className="text-xs text-gray-400 whitespace-nowrap">
