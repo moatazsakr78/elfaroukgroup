@@ -704,10 +704,65 @@ export default function ColorSelectionModal({
             )}
 
             {colors.length === 0 && !isPurchaseMode && (
-              <div className="text-center py-4">
-                <p className="text-gray-400">
-                  لا توجد ألوان متاحة لهذا المنتج
-                </p>
+              <div className="block md:hidden py-4">
+                {/* Numeric Keypad for Mobile */}
+                <div className="grid grid-cols-3 gap-2 max-w-[240px] mx-auto">
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
+                    <button
+                      key={num}
+                      onClick={() => {
+                        const currentStr = manualQuantity.toString();
+                        // If quantity is 1 (default), replace it with the pressed number
+                        const newValue = currentStr === '1' && manualQuantity === 1
+                          ? num
+                          : parseInt(currentStr + num);
+                        if (newValue <= 9999) {
+                          setManualQuantity(newValue);
+                        }
+                      }}
+                      className="h-12 bg-[#374151] hover:bg-[#4B5563] active:bg-[#4B5563] text-white text-xl font-medium rounded-lg transition-colors border border-gray-600"
+                    >
+                      {num}
+                    </button>
+                  ))}
+                  {/* Clear Button */}
+                  <button
+                    onClick={() => setManualQuantity(1)}
+                    className="h-12 bg-red-600/20 hover:bg-red-600/30 active:bg-red-600/30 text-red-400 text-lg font-medium rounded-lg transition-colors border border-red-600/50"
+                  >
+                    C
+                  </button>
+                  {/* Zero Button */}
+                  <button
+                    onClick={() => {
+                      const currentStr = manualQuantity.toString();
+                      // Don't allow leading zero or adding zero when quantity is 1
+                      if (currentStr !== '0' && manualQuantity !== 1) {
+                        const newValue = parseInt(currentStr + '0');
+                        if (newValue <= 9999) {
+                          setManualQuantity(newValue);
+                        }
+                      }
+                    }}
+                    className="h-12 bg-[#374151] hover:bg-[#4B5563] active:bg-[#4B5563] text-white text-xl font-medium rounded-lg transition-colors border border-gray-600"
+                  >
+                    0
+                  </button>
+                  {/* Backspace Button */}
+                  <button
+                    onClick={() => {
+                      const currentStr = manualQuantity.toString();
+                      if (currentStr.length > 1) {
+                        setManualQuantity(parseInt(currentStr.slice(0, -1)));
+                      } else {
+                        setManualQuantity(1);
+                      }
+                    }}
+                    className="h-12 bg-orange-600/20 hover:bg-orange-600/30 active:bg-orange-600/30 text-orange-400 text-lg font-medium rounded-lg transition-colors border border-orange-600/50"
+                  >
+                    ⌫
+                  </button>
+                </div>
               </div>
             )}
 
@@ -740,11 +795,12 @@ export default function ColorSelectionModal({
                   {!validationInfo.isValid
                     ? 'غير متاح للإضافة'
                     : isTransferMode
-                      ? `إضافة للنقل (${totalQuantity}) [Enter]`
+                      ? `إضافة للنقل (${totalQuantity})`
                       : isPurchaseMode
-                        ? `إضافة للشراء (${totalQuantity}) [Enter]`
-                        : `إضافة للسلة (${totalQuantity}) [Enter]`
+                        ? `إضافة للشراء (${totalQuantity})`
+                        : `إضافة للسلة (${totalQuantity})`
                   }
+                  <span className="hidden md:inline"> [Enter]</span>
                 </span>
               </button>
             </div>

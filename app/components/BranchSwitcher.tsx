@@ -80,7 +80,7 @@ export default function BranchSwitcher() {
 
       {/* Dropdown menu */}
       {isOpen && (
-        <div className="absolute left-0 mt-1 w-56 bg-[#2B3544] border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden">
+        <div className="absolute right-0 mt-1 w-56 bg-[#2B3544] border border-gray-600 rounded-lg shadow-lg z-50 overflow-hidden">
           <div className="py-1 max-h-64 overflow-y-auto">
             {userBranches.map((branch) => (
               <button
