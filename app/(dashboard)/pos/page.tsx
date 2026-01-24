@@ -305,6 +305,7 @@ function POSPageContent() {
   const [showNewTabCustomerModal, setShowNewTabCustomerModal] = useState(false);
   const [isPartyModalForNewTab, setIsPartyModalForNewTab] = useState(false);
   const [isPartyModalForPurchase, setIsPartyModalForPurchase] = useState(false);
+  const [showMobileDetailsModal, setShowMobileDetailsModal] = useState(false);
 
   // Payment Split States
   const [paymentSplitData, setPaymentSplitData] = useState<any[]>([]);
@@ -4910,18 +4911,6 @@ function POSPageContent() {
           {/* Action Buttons Bar - Mobile Version (shown only on mobile) */}
           <div className="block md:hidden bg-[#374151] border-b border-gray-600 px-2 py-2 w-full mt-12">
             <div className="flex items-center justify-start gap-1 overflow-x-auto scrollbar-hide">
-              {/* Selection Buttons */}
-              <button
-                onClick={toggleRecordsModal}
-                className="flex items-center gap-2 px-3 py-2 bg-[#2B3544] border border-gray-600 rounded text-gray-300 hover:text-white hover:bg-[#374151] cursor-pointer whitespace-nowrap flex-shrink-0 transition-colors relative"
-              >
-                <BanknotesIcon className="h-4 w-4" />
-                <span className="text-xs">الخزنة</span>
-                {!selections.record && (
-                  <div className="w-1 h-1 bg-red-400 rounded-full absolute -top-1 -right-1"></div>
-                )}
-              </button>
-
               {/* Warehouse Button - Purchase Mode Only (Mobile) */}
               {isPurchaseMode && (
                 <button
@@ -4936,25 +4925,7 @@ function POSPageContent() {
                 </button>
               )}
 
-              {/* Price Type Button - Mobile */}
-              {!isPurchaseMode && !isTransferMode && (
-                <button
-                  onClick={() => setIsPriceTypeModalOpen(true)}
-                  className={`flex items-center gap-2 px-3 py-2 border border-gray-600 rounded cursor-pointer whitespace-nowrap flex-shrink-0 transition-colors relative ${
-                    selectedPriceType !== "price"
-                      ? "bg-blue-600 text-white hover:bg-blue-700 border-blue-500"
-                      : "bg-[#2B3544] text-gray-300 hover:text-white hover:bg-[#374151]"
-                  }`}
-                >
-                  <CurrencyDollarIcon className="h-4 w-4" />
-                  <span className="text-xs">السعر</span>
-                  {selectedPriceType !== "price" && (
-                    <div className="w-1 h-1 bg-blue-300 rounded-full absolute -top-1 -right-1"></div>
-                  )}
-                </button>
-              )}
-
-              {/* Other Action Buttons */}
+              {/* Action Buttons */}
               {/* زر الأعمدة مخفي مؤقتاً لتوفير المساحة
               <button
                 onClick={() => setShowColumnsModal(true)}
@@ -5091,6 +5062,89 @@ function POSPageContent() {
                   <span className="text-xs">شراء</span>
                 </button>
               )}
+            </div>
+          </div>
+
+          {/* POS Tabs Bar - Mobile Version */}
+          <div className="block md:hidden bg-[#2B3544] border-b border-gray-600 px-2 py-2">
+            <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
+              {/* POS Tabs */}
+              <div className="flex items-center flex-shrink-0">
+                {posTabs.map((tab) => (
+                  <div
+                    key={tab.id}
+                    className={`flex items-center border-l border-gray-600 first:border-l-0 ${
+                      tab.active
+                        ? tab.isPurchaseMode
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-[#F97316] text-white'
+                        : 'text-gray-300 hover:text-white hover:bg-[#4B5563]'
+                    }`}
+                  >
+                    <button
+                      onClick={() => switchTab(tab.id)}
+                      className="px-3 py-1.5 text-xs font-medium flex items-center gap-1 transition-colors whitespace-nowrap"
+                    >
+                      <span>{tab.title}</span>
+                    </button>
+                    {tab.id !== 'main' && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCloseTab(tab.id);
+                        }}
+                        className="p-1 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                      >
+                        <XMarkIcon className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+
+                {/* Add New Tab Button */}
+                <button
+                  onClick={() => {
+                    setIsPartyModalForNewTab(true);
+                    setIsPartyModalOpen(true);
+                  }}
+                  className="px-2 py-1.5 text-green-400 hover:text-green-300 hover:bg-green-500/10 transition-colors flex items-center border-l border-gray-600"
+                >
+                  <PlusIcon className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* زرار الخزنة */}
+              <button
+                onClick={toggleRecordsModal}
+                className="flex items-center gap-1 px-2 py-1.5 bg-[#374151] border border-gray-600 rounded text-gray-300 hover:text-white hover:bg-[#4B5563] text-xs whitespace-nowrap flex-shrink-0"
+              >
+                <BanknotesIcon className="h-3.5 w-3.5" />
+                <span>{selections.record?.name || 'الخزنة'}</span>
+              </button>
+
+              {/* زرار السعر */}
+              {!isPurchaseMode && !isTransferMode && (
+                <button
+                  onClick={() => setIsPriceTypeModalOpen(true)}
+                  className={`flex items-center gap-1 px-2 py-1.5 border border-gray-600 rounded text-xs whitespace-nowrap flex-shrink-0 ${
+                    selectedPriceType !== "price"
+                      ? "bg-blue-600 text-white border-blue-500"
+                      : "bg-[#374151] text-gray-300 hover:text-white hover:bg-[#4B5563]"
+                  }`}
+                >
+                  <CurrencyDollarIcon className="h-3.5 w-3.5" />
+                  <span>{getPriceTypeName(selectedPriceType)}</span>
+                </button>
+              )}
+
+              {/* زرار عرض التفاصيل */}
+              <button
+                onClick={() => setShowMobileDetailsModal(true)}
+                className="flex items-center gap-1 px-2 py-1.5 bg-[#374151] border border-gray-600 rounded text-gray-300 hover:text-white hover:bg-[#4B5563] text-xs whitespace-nowrap flex-shrink-0"
+              >
+                <EyeIcon className="h-3.5 w-3.5" />
+                <span>عرض</span>
+              </button>
             </div>
           </div>
 
@@ -5498,82 +5552,6 @@ function POSPageContent() {
                   <ListBulletIcon className="h-4 w-4" />
                 </button>
               </div>
-
-              {/* 4. Party Selection (Customer/Supplier) */}
-              <button
-                onClick={() => setIsPartyModalOpen(true)}
-                className="flex items-center gap-2 flex-shrink-0 px-3 py-1.5 bg-[#2B3544] rounded-lg border border-gray-600 hover:bg-[#374151] transition-colors group"
-                title={selectedPartyType === 'customer' ? 'اختيار عميل أو مورد' : 'اختيار مورد أو عميل'}
-              >
-                {selectedPartyType === 'customer' ? (
-                  <>
-                    <UserIcon className="h-4 w-4 text-blue-400" />
-                    <span className="text-xs text-white">
-                      {selections.customer?.name || "اختر عميل"}
-                    </span>
-                    <span className="text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded">
-                      عميل
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <TruckIcon className="h-4 w-4 text-amber-400" />
-                    <span className="text-xs text-white">
-                      {selectedSupplierForSale?.name || "اختر مورد"}
-                    </span>
-                    <span className="text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded">
-                      مورد
-                    </span>
-                  </>
-                )}
-                <ArrowsRightLeftIcon className="h-3 w-3 text-gray-500 group-hover:text-gray-300 transition-colors" />
-              </button>
-
-              {/* 5. Branch Info */}
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <span className="text-xs text-gray-400">الفرع:</span>
-                <span className="text-xs text-white bg-[#2B3544] px-2 py-1 rounded border border-gray-600">
-                  {selections.branch?.name || "غير محدد"}
-                </span>
-              </div>
-
-              {/* 6. Record Info */}
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <span className="text-xs text-gray-400">الخزنة:</span>
-                <span className="text-xs text-white bg-[#2B3544] px-2 py-1 rounded border border-gray-600">
-                  {selections.record?.name || "غير محدد"}
-                </span>
-              </div>
-
-              {/* 7. Price Type Info - Mobile */}
-              {!isPurchaseMode && !isTransferMode && (
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className="text-xs text-gray-400">السعر:</span>
-                  <span className={`text-xs px-2 py-1 rounded border ${
-                    selectedPriceType !== "price"
-                      ? "text-blue-400 bg-blue-600/20 border-blue-500"
-                      : "text-white bg-[#2B3544] border-gray-600"
-                  }`}>
-                    {getPriceTypeName(selectedPriceType)}
-                  </span>
-                </div>
-              )}
-
-              {/* 8. Clear All Button */}
-              {(selections.customer ||
-                selections.branch ||
-                selections.record) && (
-                <button
-                  onClick={() => {
-                    // Clear all selections manually
-                    // Note: This would need to be integrated with the proper selection management system
-                    console.log('Clear all selections clicked');
-                  }}
-                  className="text-xs text-red-400 hover:text-red-300 hover:bg-red-400/10 px-3 py-2 rounded-md transition-colors bg-[#2B3544] border border-gray-600 flex-shrink-0"
-                >
-                  مسح الكل
-                </button>
-              )}
             </div>
           </div>
 
@@ -7513,6 +7491,62 @@ function POSPageContent() {
               >
                 موافق
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Details Modal */}
+      {showMobileDetailsModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 md:hidden">
+          <div className="bg-[#2B3544] rounded-lg w-full max-w-sm border border-gray-600">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-600">
+              <h3 className="text-white font-medium">تفاصيل الفاتورة</h3>
+              <button
+                onClick={() => setShowMobileDetailsModal(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              {/* العميل/المورد */}
+              <div className="flex items-center justify-between">
+                <span className="text-gray-400 text-sm">
+                  {isPurchaseMode ? 'المورد' : 'العميل'}:
+                </span>
+                <span className="text-white text-sm font-medium">
+                  {isPurchaseMode
+                    ? selectedSupplier?.name || 'غير محدد'
+                    : selections.customer?.name || 'غير محدد'
+                  }
+                </span>
+              </div>
+              {/* الفرع */}
+              <div className="flex items-center justify-between">
+                <span className="text-gray-400 text-sm">الفرع:</span>
+                <span className="text-white text-sm font-medium">
+                  {selections.branch?.name || 'غير محدد'}
+                </span>
+              </div>
+              {/* الخزنة */}
+              <div className="flex items-center justify-between">
+                <span className="text-gray-400 text-sm">الخزنة:</span>
+                <span className="text-white text-sm font-medium">
+                  {selections.record?.name || 'غير محدد'}
+                </span>
+              </div>
+              {/* السعر */}
+              {!isPurchaseMode && !isTransferMode && (
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-400 text-sm">نوع السعر:</span>
+                  <span className={`text-sm font-medium ${
+                    selectedPriceType !== "price" ? "text-blue-400" : "text-white"
+                  }`}>
+                    {getPriceTypeName(selectedPriceType)}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         </div>
