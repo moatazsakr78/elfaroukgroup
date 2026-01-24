@@ -5559,11 +5559,11 @@ function POSPageContent() {
           <div className="flex-1 relative overflow-hidden">
             {/* Show cart on mobile when isCartOpen is true */}
             {isCartOpen && (
-              <div className="block md:hidden h-full">
+              <div className="md:hidden fixed inset-0 z-50">
                 {/* Mobile Cart View */}
                 <div className="h-full bg-[#374151] border-t-2 border-gray-500 flex flex-col">
                   {/* Cart Items Area - Full Height */}
-                  <div className="flex-1 border-t-2 border-gray-500 overflow-hidden">
+                  <div className="flex-1 border-t-2 border-gray-500 flex flex-col min-h-0">
                     {cartItems.length === 0 ? (
                       <div className="flex flex-col justify-center items-center h-full p-8">
                         <ShoppingCartIcon className="h-24 w-24 text-gray-500 mb-8" />
@@ -5577,7 +5577,7 @@ function POSPageContent() {
                         </div>
                       </div>
                     ) : (
-                      <div className="h-full flex flex-col">
+                      <div className="flex-1 flex flex-col min-h-0">
                         {/* Cart Header */}
                         <div className="p-4 border-b border-gray-600 flex-shrink-0">
                           <div className="flex justify-between items-center">
@@ -5659,7 +5659,8 @@ function POSPageContent() {
                         {/* Cart Items */}
                         <div
                           ref={cartContainerRef}
-                          className="flex-1 overflow-y-auto scrollbar-hide p-4 space-y-3 min-h-0"
+                          className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0"
+                          style={{ WebkitOverflowScrolling: 'touch' }}
                         >
                           {cartItems.map((item) => (
                             <div
