@@ -344,7 +344,8 @@
       "Bash(git -C \"C:\\\\Users\\\\pc\\\\Desktop\\\\elfaroukgroup\" diff lib/hooks/useProductsAdmin.ts)",
       "Bash(git -C \"C:\\\\Users\\\\pc\\\\Desktop\\\\elfaroukgroup\" diff .claude/settings.local.json)",
       "Bash(start http://localhost:3001/whatsapp)",
-      "Bash(start:*)"
+      "Bash(start:*)",
+      "Bash(du -sh:*)"
     ],
     "deny": [],
     "additionalDirectories": [

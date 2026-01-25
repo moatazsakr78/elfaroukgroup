@@ -1736,6 +1736,11 @@ function POSPageContent() {
     return { nameIndex, codeIndex, barcodeIndex };
   }, [products]);
 
+  // ✨ PERFORMANCE FIX: Product lookup map for O(1) access instead of O(n) find()
+  const productMap = useMemo(() =>
+    new Map(products.map(p => [p.id, p])),
+  [products]);
+
   // OPTIMIZED: Memoized product filtering using search index
   // Returns Set of matching product IDs for O(1) lookup
   const filteredProductIds = useMemo(() => {
@@ -1781,11 +1786,11 @@ function POSPageContent() {
       }
     }
 
-    // Apply category filter
+    // Apply category filter - using productMap for O(1) lookup instead of O(n) find()
     if (hasCategoryFilter) {
       const categoryFilteredIds = new Set<string>();
       matchingIds.forEach(id => {
-        const product = products.find(p => p.id === id);
+        const product = productMap.get(id); // O(1) instead of products.find() O(n)
         if (product?.category_id && categoryFilterIds.has(product.category_id)) {
           categoryFilteredIds.add(id);
         }
@@ -1794,7 +1799,7 @@ function POSPageContent() {
     }
 
     return matchingIds;
-  }, [products, debouncedSearchQuery, searchMode, selectedCategoryId, categoryFilterIds, searchIndex]);
+  }, [productMap, debouncedSearchQuery, searchMode, selectedCategoryId, categoryFilterIds, searchIndex]);
 
   // Helper function to check if product matches search
   const isProductVisible = useCallback((productId: string) => {
@@ -1831,6 +1836,38 @@ function POSPageContent() {
       }
     }));
   }, [products, branchLookup]);
+
+  // ✨ PERFORMANCE FIX: Pre-filter products to only render visible ones in DOM
+  // Instead of rendering all 1000+ products and hiding with CSS class "hidden"
+  // This reduces DOM nodes from 1000+ to ~12-50 (visible products only)
+  const VISIBLE_PRODUCTS_LIMIT = 50; // Limit initial render for performance
+  const [showAllProducts, setShowAllProducts] = useState(false);
+
+  const visibleProducts = useMemo(() => {
+    let filtered;
+    if (filteredProductIds === null) {
+      filtered = productsWithComputedInventory;
+    } else {
+      filtered = productsWithComputedInventory.filter(p => filteredProductIds.has(p.id));
+    }
+    // When no filter is applied, limit to VISIBLE_PRODUCTS_LIMIT unless user wants all
+    if (filteredProductIds === null && !showAllProducts && filtered.length > VISIBLE_PRODUCTS_LIMIT) {
+      return filtered.slice(0, VISIBLE_PRODUCTS_LIMIT);
+    }
+    return filtered;
+  }, [productsWithComputedInventory, filteredProductIds, showAllProducts]);
+
+  // Reset showAllProducts when filter changes
+  useEffect(() => {
+    if (filteredProductIds !== null) {
+      setShowAllProducts(false);
+    }
+  }, [filteredProductIds]);
+
+  // Check if there are more products to show
+  const hasMoreProducts = filteredProductIds === null &&
+    !showAllProducts &&
+    productsWithComputedInventory.length > VISIBLE_PRODUCTS_LIMIT;
 
   // OPTIMIZED: Memoized refresh handler
   const handleRefresh = useCallback(() => {
@@ -6012,16 +6049,14 @@ function POSPageContent() {
                     <div className="flex-1 overflow-hidden">
                       <div className="h-full overflow-y-auto scrollbar-hide p-4">
                         <div className="grid gap-4 grid-cols-2 md:grid-cols-6">
-                          {/* OPTIMIZED: Use pre-computed inventory data for O(1) access */}
-                          {/* This avoids O(n²) complexity from branches.find() and reduce() on every render */}
-                          {productsWithComputedInventory.map((product, index) => (
+                          {/* ✨ PERFORMANCE FIX: Use visibleProducts instead of productsWithComputedInventory */}
+                          {/* This renders only filtered products (~12-50) instead of all 1000+ products */}
+                          {/* The filtering is done in useMemo, not via CSS hidden class */}
+                          {visibleProducts.map((product, index) => (
                             <div
                               key={product.id}
-                              onClick={() => {
-                                if (!isProductVisible(product.id)) return;
-                                handleProductClick(product);
-                              }}
-                              className={`bg-[#374151] rounded-lg p-3 cursor-pointer transition-all duration-200 border-2 border-transparent hover:border-gray-500 hover:bg-[#434E61] relative group ${!isProductVisible(product.id) ? "hidden" : ""}`}
+                              onClick={() => handleProductClick(product)}
+                              className="bg-[#374151] rounded-lg p-3 cursor-pointer transition-all duration-200 border-2 border-transparent hover:border-gray-500 hover:bg-[#434E61] relative group"
                             >
                               {/* Product Image */}
                               <div className="mb-3 relative">
@@ -6095,6 +6130,18 @@ function POSPageContent() {
                               </div>
                             </div>
                           ))}
+
+                          {/* Load More Button - shown when there are more products to display */}
+                          {hasMoreProducts && (
+                            <div className="col-span-full flex justify-center py-4">
+                              <button
+                                onClick={() => setShowAllProducts(true)}
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg flex items-center gap-2 transition-colors"
+                              >
+                                <span>تحميل كل المنتجات ({productsWithComputedInventory.length - VISIBLE_PRODUCTS_LIMIT} منتج إضافي)</span>
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
