@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
-import { MagnifyingGlassIcon, XMarkIcon, ChevronLeftIcon, ChevronRightIcon, PlusIcon, PencilSquareIcon, TrashIcon, TableCellsIcon, CalendarDaysIcon, PrinterIcon } from '@heroicons/react/24/outline'
+import { MagnifyingGlassIcon, XMarkIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon, ChevronUpIcon, PlusIcon, PencilSquareIcon, TrashIcon, TableCellsIcon, CalendarDaysIcon, PrinterIcon, EllipsisVerticalIcon } from '@heroicons/react/24/outline'
 import ResizableTable from './tables/ResizableTable'
 import { supabase } from '../lib/supabase/client'
 import ConfirmDeleteModal from './ConfirmDeleteModal'
@@ -32,6 +32,18 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
   const [dividerPosition, setDividerPosition] = useState(50) // Percentage
   const [isDragging, setIsDragging] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
+
+  // Device Detection - Mobile and Tablet
+  const [isTabletDevice, setIsTabletDevice] = useState(false)
+  const [isMobileDevice, setIsMobileDevice] = useState(false)
+  const [isMobileInfoExpanded, setIsMobileInfoExpanded] = useState(true)
+
+  // Mobile Transaction Details View
+  const [showMobileTransactionDetails, setShowMobileTransactionDetails] = useState(false)
+  const [mobileSelectedTransaction, setMobileSelectedTransaction] = useState<any>(null)
+  const [mobileTransactionItems, setMobileTransactionItems] = useState<any[]>([])
+  const [isLoadingMobileTransactionItems, setIsLoadingMobileTransactionItems] = useState(false)
+  const [showMobileActions, setShowMobileActions] = useState(false)
 
   // Real-time state for sales and sale items
   const [sales, setSales] = useState<any[]>([])
@@ -213,6 +225,30 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
       }
     }
   }, [isOpen, safe?.id])
+
+  // Device detection for mobile layout
+  useEffect(() => {
+    const checkDevice = () => {
+      const userAgent = navigator.userAgent.toLowerCase()
+      const width = window.innerWidth
+
+      const isMobile = width < 768 || /mobile|android.*mobile|webos|blackberry|opera mini|iemobile/.test(userAgent)
+      const isTablet = !isMobile && (/tablet|ipad|playbook|silk|android(?!.*mobile)/i.test(userAgent) ||
+        (width >= 768 && width <= 1280))
+
+      setIsMobileDevice(isMobile)
+      setIsTabletDevice(isTablet)
+
+      // Auto-hide safe details on tablet for better space
+      if (isTablet) {
+        setShowSafeDetails(false)
+      }
+    }
+
+    checkDevice()
+    window.addEventListener('resize', checkDevice)
+    return () => window.removeEventListener('resize', checkDevice)
+  }, [])
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (viewMode !== 'split' || activeTab !== 'transactions') return
@@ -1500,6 +1536,74 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
     setTransactionToDelete(null)
   }
 
+  // Open mobile transaction details
+  const openMobileTransactionDetails = async (transaction: any) => {
+    setMobileSelectedTransaction(transaction)
+    setShowMobileTransactionDetails(true)
+    setIsLoadingMobileTransactionItems(true)
+
+    try {
+      if (transaction.transactionType === 'sale') {
+        const { data, error } = await supabase
+          .from('sale_items')
+          .select(`
+            id,
+            quantity,
+            unit_price,
+            cost_price,
+            discount,
+            notes,
+            product:products(
+              id,
+              name,
+              barcode,
+              main_image_url,
+              category:categories(name)
+            )
+          `)
+          .eq('sale_id', transaction.id)
+          .order('created_at', { ascending: true })
+
+        if (!error && data) {
+          setMobileTransactionItems(data)
+        }
+      } else if (transaction.transactionType === 'purchase') {
+        const { data, error } = await supabase
+          .from('purchase_invoice_items')
+          .select(`
+            id,
+            quantity,
+            unit_purchase_price,
+            total_price,
+            discount_amount,
+            notes,
+            product:products(
+              id,
+              name,
+              barcode,
+              main_image_url,
+              category:categories(name)
+            )
+          `)
+          .eq('purchase_invoice_id', transaction.id)
+          .order('created_at', { ascending: true })
+
+        if (!error && data) {
+          // Map purchase items to match sale items structure
+          setMobileTransactionItems(data.map(item => ({
+            ...item,
+            unit_price: item.unit_purchase_price,
+            discount: item.discount_amount
+          })))
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching transaction items:', error)
+    } finally {
+      setIsLoadingMobileTransactionItems(false)
+    }
+  }
+
   // Load all safes for transfer selection
   const loadAllSafes = async () => {
     try {
@@ -2318,8 +2422,597 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
       <div className={`fixed inset-0 z-50 transition-opacity duration-300 ${
         isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
       }`}>
+        {/* Mobile Layout - Complete redesign for small screens */}
+        {isMobileDevice ? (
+          <div className="bg-[#2B3544] h-full w-full flex flex-col">
+            {/* Mobile Transaction Details View */}
+            {showMobileTransactionDetails && mobileSelectedTransaction ? (
+              <>
+                {/* Transaction Details Header */}
+                <div className="bg-[#374151] border-b border-gray-600 px-3 py-2 flex items-center gap-3">
+                  <button
+                    onClick={() => {
+                      setShowMobileTransactionDetails(false)
+                      setMobileSelectedTransaction(null)
+                      setMobileTransactionItems([])
+                    }}
+                    className="text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-600/30 transition-colors"
+                  >
+                    <ChevronRightIcon className="h-5 w-5" />
+                  </button>
+                  <div className="flex-1 text-center">
+                    <span className="text-white font-medium">تفاصيل الفاتورة</span>
+                    <span className="text-blue-400 mr-2">#{mobileSelectedTransaction.invoice_number}</span>
+                  </div>
+                  <div className="w-9" />
+                </div>
+
+                {/* Transaction Summary Card */}
+                <div className="bg-[#3B4754] border-b border-gray-600 p-3">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                      mobileSelectedTransaction.transactionType === 'purchase'
+                        ? 'bg-blue-900 text-blue-300'
+                        : mobileSelectedTransaction.invoice_type === 'مرتجع' || mobileSelectedTransaction.invoice_type === 'مرتجع بيع' || mobileSelectedTransaction.invoice_type === 'Sale Return'
+                          ? 'bg-red-900 text-red-300'
+                          : 'bg-green-900 text-green-300'
+                    }`}>
+                      {mobileSelectedTransaction.transactionType === 'purchase'
+                        ? 'فاتورة شراء'
+                        : mobileSelectedTransaction.invoice_type === 'Sale Invoice' ? 'فاتورة بيع' :
+                          mobileSelectedTransaction.invoice_type === 'Sale Return' ? 'مرتجع بيع' :
+                          mobileSelectedTransaction.invoice_type || 'فاتورة بيع'}
+                    </span>
+                    <span className="text-white font-bold text-lg">
+                      {formatPrice(Math.abs(parseFloat(mobileSelectedTransaction.total_amount || mobileSelectedTransaction.amount)))}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="bg-[#2B3544] border-b border-gray-600 px-3 py-2">
+                  <div className="flex items-center justify-between">
+                    <button
+                      onClick={() => setShowMobileActions(!showMobileActions)}
+                      className="flex items-center gap-2 text-gray-400 hover:text-white py-2 px-3 rounded-lg hover:bg-gray-600/30 transition-colors"
+                    >
+                      <EllipsisVerticalIcon className="h-5 w-5" />
+                      <span className="text-sm">الإجراءات</span>
+                      {showMobileActions ? (
+                        <ChevronUpIcon className="h-4 w-4" />
+                      ) : (
+                        <ChevronDownIcon className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
+
+                  {showMobileActions && (
+                    <div className="flex gap-2 mt-2 animate-fadeIn">
+                      <button
+                        onClick={() => handleDeleteTransaction(mobileSelectedTransaction)}
+                        className="flex-1 flex items-center justify-center gap-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg py-2 text-sm font-medium transition-colors"
+                      >
+                        <TrashIcon className="h-4 w-4" />
+                        <span>حذف</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          const items = mobileTransactionItems
+                          printReceipt(mobileSelectedTransaction, items)
+                        }}
+                        className="flex-1 flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2 text-sm font-medium transition-colors"
+                      >
+                        <PrinterIcon className="h-4 w-4" />
+                        <span>طباعة</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Transaction Items */}
+                <div className="flex-1 overflow-y-auto scrollbar-hide p-3">
+                  <div className="text-gray-400 text-xs mb-2 text-center">عناصر الفاتورة ({mobileTransactionItems.length})</div>
+
+                  {isLoadingMobileTransactionItems ? (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                    </div>
+                  ) : mobileTransactionItems.length === 0 ? (
+                    <div className="text-center py-8 text-gray-400">لا توجد عناصر</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {mobileTransactionItems.map((item, idx) => {
+                        const itemTotal = (item.quantity * item.unit_price) - (item.discount || 0)
+                        return (
+                          <div key={item.id || idx} className="bg-[#374151] rounded-lg p-3">
+                            <div className="flex gap-3">
+                              {/* Product Image */}
+                              <div className="w-16 h-16 flex-shrink-0 bg-[#2B3544] rounded-lg overflow-hidden">
+                                {item.product?.main_image_url ? (
+                                  <img
+                                    src={item.product.main_image_url}
+                                    alt={item.product?.name || ''}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center text-gray-500 text-2xl">
+                                    {mobileSelectedTransaction.transactionType === 'purchase' ? '📦' : '🛒'}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Product Details */}
+                              <div className="flex-1 min-w-0">
+                                <div className="text-white font-medium text-sm truncate mb-1">
+                                  {item.product?.name || 'منتج غير معروف'}
+                                </div>
+                                <div className="text-gray-400 text-xs mb-1">
+                                  {item.product?.category?.name || '-'}
+                                </div>
+                                <div className="text-gray-500 text-xs" dir="ltr">
+                                  {item.product?.barcode || '-'}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Item Details Grid */}
+                            <div className="grid grid-cols-2 gap-2 mt-3 text-xs">
+                              <div className="flex justify-between">
+                                <span className="text-gray-400">السعر:</span>
+                                <span className="text-white">{formatPrice(item.unit_price)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-400">الكمية:</span>
+                                <span className="text-white">{Math.abs(item.quantity)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-400">خصم:</span>
+                                <span className="text-orange-400">{formatPrice(item.discount || 0)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-400">الإجمالي:</span>
+                                <span className="text-green-400 font-medium">{formatPrice(Math.abs(itemTotal))}</span>
+                              </div>
+                            </div>
+
+                            {item.notes && (
+                              <div className="mt-2 text-xs text-gray-300 bg-[#2B3544] rounded p-2">
+                                {item.notes}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Mobile Header - Safe Name */}
+                <div className="bg-[#374151] border-b border-gray-600 px-4 py-2.5 flex items-center justify-between">
+                  <button
+                    onClick={onClose}
+                    className="text-gray-400 hover:text-white w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-600/30 transition-colors"
+                  >
+                    <XMarkIcon className="h-5 w-5" />
+                  </button>
+                  <h1 className="text-white font-medium text-base truncate max-w-[60%]">{safe?.name || 'الخزنة'}</h1>
+                  <div className="w-9" />
+                </div>
+
+                {/* Mobile Balance & Safe Info Section */}
+                <div className="bg-[#3B4754] border-b border-gray-600">
+                  {/* Balance Card with Withdraw Button */}
+                  <div className="w-full px-3 py-3 flex items-center gap-2">
+                    {/* Toggle Button */}
+                    <button
+                      onClick={() => setIsMobileInfoExpanded(!isMobileInfoExpanded)}
+                      className="flex items-center"
+                    >
+                      {isMobileInfoExpanded ? (
+                        <ChevronUpIcon className="h-4 w-4 text-gray-400" />
+                      ) : (
+                        <ChevronDownIcon className="h-4 w-4 text-gray-400" />
+                      )}
+                    </button>
+
+                    {/* Balance Card - Clickable to toggle */}
+                    <button
+                      onClick={() => setIsMobileInfoExpanded(!isMobileInfoExpanded)}
+                      className="flex-1 bg-purple-600 rounded-lg px-4 py-2 text-center"
+                    >
+                      <div className="font-bold text-white text-xl">
+                        {formatPrice(safeBalance)}
+                      </div>
+                      <div className="text-purple-200 text-[10px]">
+                        رصيد الخزنة
+                      </div>
+                    </button>
+
+                    {/* Withdraw Button */}
+                    <button
+                      onClick={openWithdrawModal}
+                      className="bg-purple-600 hover:bg-purple-700 text-white rounded-lg px-3 py-2 flex flex-col items-center justify-center transition-colors"
+                    >
+                      <span className="text-base">💰</span>
+                      <span className="text-[10px] font-medium">سحب</span>
+                    </button>
+                  </div>
+
+                  {/* Expandable Content */}
+                  {isMobileInfoExpanded && (
+                    <div className="px-3 pb-3 space-y-3">
+                      {/* Safe Info */}
+                      <div className="bg-[#2B3544] rounded-lg p-3">
+                        <h3 className="text-white font-medium mb-2 text-sm">معلومات الخزنة</h3>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-white">{safe?.name || 'الخزنة الرئيسي'}</span>
+                            <span className="text-gray-400">اسم الخزنة</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-white">جميع الفروع</span>
+                            <span className="text-gray-400">الفرع</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-blue-400">
+                              {dateFilter.type === 'today' && 'اليوم'}
+                              {dateFilter.type === 'current_week' && 'الأسبوع الحالي'}
+                              {dateFilter.type === 'last_week' && 'الأسبوع الماضي'}
+                              {dateFilter.type === 'current_month' && 'الشهر الحالي'}
+                              {dateFilter.type === 'last_month' && 'الشهر الماضي'}
+                              {dateFilter.type === 'custom' && 'فترة مخصصة'}
+                              {dateFilter.type === 'all' && 'جميع الفترات'}
+                            </span>
+                            <span className="text-gray-400">الفترة الزمنية</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-white">{new Date().toLocaleDateString('en-GB')}</span>
+                            <span className="text-gray-400">التاريخ الحالي</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Statistics */}
+                      <div className="bg-[#2B3544] rounded-lg p-3">
+                        <h4 className="text-white font-medium mb-2 flex items-center gap-2 text-sm">
+                          <span>📊</span>
+                          <span>إحصائيات الخزنة</span>
+                        </h4>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-white">{allTransactions.length}</span>
+                            <span className="text-gray-400">عدد المعاملات</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-green-400">{formatPrice(sales.reduce((sum, sale) => sum + (sale.total_amount || 0), 0))}</span>
+                            <span className="text-gray-400">إجمالي المبيعات</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-red-400">{formatPrice(purchaseInvoices.reduce((sum, purchase) => sum + (purchase.total_amount || 0), 0))}</span>
+                            <span className="text-gray-400">إجمالي المشتريات</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-white">
+                              {allTransactions.length > 0
+                                ? new Date(allTransactions[0].created_at).toLocaleDateString('en-GB')
+                                : '-'
+                              }
+                            </span>
+                            <span className="text-gray-400">آخر معاملة</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Date Filter Button */}
+                      <button
+                        onClick={() => setShowDateFilter(true)}
+                        className="w-full bg-purple-600 hover:bg-purple-700 text-white rounded-lg py-2 text-sm font-medium flex items-center justify-center gap-2 transition-colors"
+                      >
+                        <CalendarDaysIcon className="h-4 w-4" />
+                        <span>التاريخ</span>
+                      </button>
+
+                      {/* Current Filter Display */}
+                      {dateFilter.type !== 'all' && (
+                        <div className="text-center">
+                          <span className="text-xs text-purple-400">
+                            {dateFilter.type === 'today' && 'عرض فواتير اليوم'}
+                            {dateFilter.type === 'current_week' && 'عرض فواتير الأسبوع الحالي'}
+                            {dateFilter.type === 'last_week' && 'عرض فواتير الأسبوع الماضي'}
+                            {dateFilter.type === 'current_month' && 'عرض فواتير الشهر الحالي'}
+                            {dateFilter.type === 'last_month' && 'عرض فواتير الشهر الماضي'}
+                            {dateFilter.type === 'custom' && dateFilter.startDate && dateFilter.endDate &&
+                              `من ${dateFilter.startDate.toLocaleDateString('en-GB')} إلى ${dateFilter.endDate.toLocaleDateString('en-GB')}`}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Mobile Content Area - Scrollable */}
+                <div className="flex-1 overflow-y-auto scrollbar-hide">
+                  {/* Transactions Tab Content */}
+                  {activeTab === 'transactions' && (
+                    <div className="p-3 space-y-2">
+                      {isLoadingSales ? (
+                        <div className="flex items-center justify-center py-8">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                        </div>
+                      ) : allTransactions.length === 0 ? (
+                        <div className="text-center py-8 text-gray-400">لا توجد فواتير</div>
+                      ) : (
+                        allTransactions.map((transaction, index) => {
+                          const txnDate = new Date(transaction.created_at)
+                          const timeStr = transaction.time || txnDate.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })
+                          const isSale = transaction.transactionType === 'sale'
+                          const isPurchase = transaction.transactionType === 'purchase'
+
+                          return (
+                            <div
+                              key={transaction.id}
+                              onClick={() => openMobileTransactionDetails(transaction)}
+                              className="bg-[#374151] rounded-lg p-3 cursor-pointer transition-colors active:bg-[#4B5563]"
+                            >
+                              {/* Header Row - Amount + Invoice# + Type Badge */}
+                              <div className="flex justify-between items-center mb-2">
+                                <span className={`font-bold text-lg ${
+                                  parseFloat(transaction.amount) < 0 ? 'text-orange-400' :
+                                  isPurchase ? 'text-red-400' : 'text-white'
+                                }`}>
+                                  {formatPrice(Math.abs(parseFloat(transaction.amount)))}
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-blue-400 font-medium text-sm">#{transaction.invoice_number}</span>
+                                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                    isPurchase
+                                      ? 'bg-blue-900 text-blue-300'
+                                      : transaction.invoice_type === 'مرتجع' || transaction.invoice_type === 'مرتجع بيع' || transaction.invoice_type === 'Sale Return'
+                                        ? 'bg-red-900 text-red-300'
+                                        : 'bg-green-900 text-green-300'
+                                  }`}>
+                                    {isPurchase ? 'شراء' :
+                                     transaction.invoice_type === 'Sale Invoice' ? 'بيع' :
+                                     transaction.invoice_type === 'Sale Return' ? 'مرتجع' :
+                                     transaction.invoice_type === 'فاتورة بيع' ? 'بيع' :
+                                     transaction.invoice_type === 'مرتجع بيع' ? 'مرتجع' :
+                                     'بيع'}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Details Grid */}
+                              <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs border-t border-gray-600 pt-2">
+                                <div className="flex justify-between">
+                                  <span className="text-gray-500">التاريخ:</span>
+                                  <span className="text-gray-300">{txnDate.toLocaleDateString('en-GB')}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-500">الوقت:</span>
+                                  <span className="text-gray-300">{timeStr}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-500">{isPurchase ? 'المورد:' : 'العميل:'}</span>
+                                  <span className="text-gray-300 truncate max-w-[80px]">{transaction.client?.name || '-'}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-500">المدفوع:</span>
+                                  <span className="text-green-400">{formatPrice(transaction.paid_amount || 0)}</span>
+                                </div>
+                              </div>
+
+                              {/* Notes with tap indicator */}
+                              <div className="mt-2 text-xs bg-[#2B3544] rounded p-2 border-t border-gray-600">
+                                {transaction.notes && (
+                                  <div className="text-gray-300 mb-1">{transaction.notes}</div>
+                                )}
+                                <div className="flex items-center justify-end text-gray-500 text-xs">
+                                  <span>اضغط لعرض التفاصيل</span>
+                                  <ChevronLeftIcon className="h-3 w-3 mr-1" />
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })
+                      )}
+                    </div>
+                  )}
+
+                  {/* Payments/Transfers Tab Content */}
+                  {activeTab === 'payments' && (
+                    <div className="p-4 space-y-3">
+                      {isLoadingTransfers ? (
+                        <div className="flex items-center justify-center py-8">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500"></div>
+                        </div>
+                      ) : transfers.length === 0 ? (
+                        <div className="text-center py-8 text-gray-400">لا توجد تحويلات</div>
+                      ) : (
+                        transfers.map((transfer) => (
+                          <div
+                            key={transfer.id}
+                            className="bg-[#374151] rounded-lg p-4"
+                          >
+                            <div className="flex justify-between items-start mb-2">
+                              <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                transfer.amount > 0
+                                  ? 'bg-green-500/20 text-green-400'
+                                  : 'bg-red-500/20 text-red-400'
+                              }`}>
+                                {transfer.amount > 0 ? 'إيداع' : 'سحب'}
+                              </span>
+                              <span className={`font-bold text-lg ${
+                                transfer.amount > 0 ? 'text-green-400' : 'text-red-400'
+                              }`}>
+                                {formatPrice(Math.abs(transfer.amount || 0))}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center text-sm text-gray-400">
+                              <span>{transfer.created_at ? new Date(transfer.created_at).toLocaleDateString('en-GB') : '-'}</span>
+                              <span>{transfer.transaction_type || '-'}</span>
+                            </div>
+                            {transfer.notes && (
+                              <div className="mt-2 text-sm text-gray-300 bg-[#2B3544] rounded p-2">
+                                {transfer.notes}
+                              </div>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+
+                  {/* Statement Tab Content */}
+                  {activeTab === 'statement' && (
+                    <div className="p-4 space-y-3">
+                      {isLoadingStatement ? (
+                        <div className="flex items-center justify-center py-8">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                        </div>
+                      ) : accountStatementData.length === 0 ? (
+                        <div className="text-center py-8 text-gray-400">لا توجد حركات</div>
+                      ) : (
+                        accountStatementData.map((statement, index) => (
+                          <div
+                            key={statement.id || index}
+                            onClick={() => {
+                              // إذا كان العنصر فاتورة بيع أو مرتجع بيع، نفتح تفاصيلها
+                              if (statement.sale_id) {
+                                // إنشاء كائن المعاملة للاستخدام مع openMobileTransactionDetails
+                                const transaction = {
+                                  id: statement.sale_id,
+                                  invoice_number: statement.description?.match(/#?(\d+)/)?.[1] || statement.description?.split(' - ')[1] || '-',
+                                  transactionType: 'sale',
+                                  invoice_type: statement.type === 'مرتجع بيع' ? 'Sale Return' : 'Sale',
+                                  total_amount: statement.paidAmount || statement.invoiceValue || 0,
+                                  amount: statement.paidAmount || 0,
+                                  created_at: statement.created_at,
+                                  notes: ''
+                                }
+                                openMobileTransactionDetails(transaction)
+                              }
+                            }}
+                            className={`bg-[#374151] rounded-lg p-3 transition-colors ${
+                              statement.sale_id ? 'cursor-pointer active:bg-[#4B5563]' : ''
+                            } ${
+                              statement.type === 'فاتورة بيع'
+                                ? 'border-2 border-green-700/50'
+                                : statement.type === 'فاتورة شراء'
+                                  ? 'border-2 border-blue-700/50'
+                                  : statement.type === 'مرتجع بيع'
+                                    ? 'border-2 border-red-700/50'
+                                    : 'border-2 border-gray-600/50'
+                            }`}
+                          >
+                            {/* الصف العلوي: نوع العملية + التاريخ */}
+                            <div className="flex justify-between items-center mb-2">
+                              <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                statement.type === 'فاتورة بيع'
+                                  ? 'bg-green-900 text-green-300'
+                                  : statement.type === 'فاتورة شراء'
+                                    ? 'bg-blue-900 text-blue-300'
+                                    : statement.type === 'مرتجع بيع'
+                                      ? 'bg-red-900 text-red-300'
+                                      : statement.type === 'إيداع'
+                                        ? 'bg-emerald-900 text-emerald-300'
+                                        : statement.type === 'سحب'
+                                          ? 'bg-orange-900 text-orange-300'
+                                          : 'bg-gray-700 text-gray-300'
+                              }`}>
+                                {statement.type}
+                              </span>
+                              <span className="text-gray-400 text-xs">
+                                {new Date(statement.date).toLocaleDateString('en-GB')}
+                              </span>
+                            </div>
+
+                            {/* البيان/الوصف */}
+                            {statement.description && (
+                              <div className="text-sm text-gray-300 mb-3">{statement.description}</div>
+                            )}
+
+                            {/* صف الأرقام */}
+                            <div className="grid grid-cols-2 gap-2 text-xs mb-2">
+                              <div className="text-center">
+                                <div className="text-gray-500 mb-1">المبلغ</div>
+                                <span className={`font-medium ${
+                                  statement.amount >= 0 ? 'text-green-400' : 'text-red-400'
+                                }`}>
+                                  {formatPrice(Math.abs(statement.amount || 0))}
+                                </span>
+                              </div>
+                              <div className="text-center">
+                                <div className="text-gray-500 mb-1">الرصيد</div>
+                                <span className={`font-medium ${
+                                  index === 0
+                                    ? 'bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded'
+                                    : 'text-gray-400'
+                                }`}>
+                                  {formatPrice(statement.balance || 0)}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* مؤشر "اضغط لعرض التفاصيل" للفواتير فقط */}
+                            {statement.sale_id && (
+                              <div className="mt-2 flex items-center justify-end text-gray-500 text-xs">
+                                <span>اضغط لعرض التفاصيل</span>
+                                <ChevronLeftIcon className="h-3 w-3 mr-1" />
+                              </div>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Mobile Bottom Navigation */}
+                <div className="bg-[#374151] border-t border-gray-600 px-1 py-1 flex items-center justify-around safe-area-bottom">
+                  <button
+                    onClick={() => setActiveTab('transactions')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg transition-colors ${
+                      activeTab === 'transactions'
+                        ? 'bg-blue-600 text-white'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    <span className="text-sm">📋</span>
+                    <span className="text-xs font-medium">الفواتير ({allTransactions.length})</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab('payments')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg transition-colors ${
+                      activeTab === 'payments'
+                        ? 'bg-blue-600 text-white'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    <span className="text-sm">💸</span>
+                    <span className="text-xs font-medium">التحويلات</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab('statement')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg transition-colors ${
+                      activeTab === 'statement'
+                        ? 'bg-blue-600 text-white'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    <span className="text-sm">📊</span>
+                    <span className="text-xs font-medium">كشف الحساب</span>
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        ) : (
         <div className="bg-[#2B3544] h-full w-full flex flex-col">
-          
+
           {/* Top Navigation - All buttons in one row */}
           <div className="bg-[#374151] border-b border-gray-600 px-6 py-4">
             <div className="flex items-center justify-between">
@@ -3036,6 +3729,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
             </div>
           </div>
         </div>
+        )}
       </div>
 
       {/* Delete Confirmation Modal */}

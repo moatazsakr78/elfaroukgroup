@@ -145,7 +145,7 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
   } = useInfiniteCustomerStatement({
     customerId: customer?.id,
     dateFilter,
-    enabled: isOpen && activeTab === 'statement',
+    enabled: isOpen && (activeTab === 'statement' || activeTab === 'invoices'),
     pageSize: 200
   })
 
@@ -166,6 +166,23 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
   // Get list of invoice statements for navigation (only invoices, not payments)
   const invoiceStatements = accountStatements.filter(s => s.type === 'فاتورة بيع' || s.type === 'مرتجع بيع')
 
+  // Enrich sales with financial fields from accountStatements
+  const salesWithFinancialData = sales.map((sale) => {
+    // Find the corresponding statement entry to get financial fields
+    const statement = accountStatements.find(s => s.saleId === sale.id)
+    // Use total_amount as fallback for invoiceValue when statement data not available
+    const invoiceValue = statement?.invoiceValue ?? Math.abs(parseFloat(sale.total_amount) || 0)
+    const paidAmount = statement?.paidAmount ?? 0
+    return {
+      ...sale,
+      // Financial fields from statement (if available), fallback to sale data
+      invoiceValue,
+      paidAmount,
+      netAmount: invoiceValue - paidAmount,
+      balance: statement?.balance ?? 0
+    }
+  })
+
   // Product search state
   const [searchQuery, setSearchQuery] = useState('')
   const [highlightedProductId, setHighlightedProductId] = useState<string | null>(null)
@@ -183,17 +200,37 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
 
   // Visible columns state - load from localStorage or use defaults
   const [visibleInvoiceColumns, setVisibleInvoiceColumns] = useState<string[]>(() => {
+    const defaultColumns = ['index', 'invoice_number', 'created_at', 'time', 'invoice_type',
+      'customer_name', 'customer_phone', 'invoiceValue', 'paidAmount', 'netAmount',
+      'payment_method', 'notes', 'safe_name', 'employee_name']
+    const newFinancialColumns = ['invoiceValue', 'paidAmount', 'netAmount']
+
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem(CUSTOMER_INVOICE_COLUMNS_VISIBILITY_KEY)
       if (saved) {
         try {
-          return JSON.parse(saved)
+          const parsed = JSON.parse(saved)
+          // Add new financial columns if they don't exist in saved preferences
+          // Also replace total_amount with the new columns if it exists
+          let updated = [...parsed]
+          const hasNewColumns = newFinancialColumns.some(col => updated.includes(col))
+          if (!hasNewColumns) {
+            // Find position of total_amount or payment_method to insert new columns
+            const totalAmountIndex = updated.indexOf('total_amount')
+            const paymentMethodIndex = updated.indexOf('payment_method')
+            const insertIndex = totalAmountIndex !== -1 ? totalAmountIndex :
+                               (paymentMethodIndex !== -1 ? paymentMethodIndex : updated.length)
+            // Remove total_amount if exists and add new columns
+            updated = updated.filter(col => col !== 'total_amount')
+            updated.splice(insertIndex, 0, ...newFinancialColumns)
+            // Save updated preferences
+            localStorage.setItem(CUSTOMER_INVOICE_COLUMNS_VISIBILITY_KEY, JSON.stringify(updated))
+          }
+          return updated
         } catch {}
       }
     }
-    return ['index', 'invoice_number', 'created_at', 'time', 'invoice_type',
-      'customer_name', 'customer_phone', 'total_amount', 'payment_method', 'notes',
-      'safe_name', 'employee_name']
+    return defaultColumns
   })
   const [visibleDetailsColumns, setVisibleDetailsColumns] = useState<string[]>(() => {
     if (typeof window !== 'undefined') {
@@ -243,6 +280,10 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
     { id: 'customer_name', label: 'العميل', required: false },
     { id: 'customer_phone', label: 'الهاتف', required: false },
     { id: 'total_amount', label: 'المبلغ الإجمالي', required: true },
+    { id: 'invoiceValue', label: 'قيمة الفاتورة', required: false },
+    { id: 'paidAmount', label: 'المبلغ المدفوع', required: false },
+    { id: 'netAmount', label: 'الصافي', required: false },
+    { id: 'balance', label: 'الرصيد', required: false },
     { id: 'payment_method', label: 'طريقة الدفع', required: false },
     { id: 'notes', label: 'البيان', required: false },
     { id: 'safe_name', label: 'الخزنة', required: false },
@@ -2678,17 +2719,91 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
       width: 150,
       render: (value: string, item: any) => <span className="text-gray-300 font-mono text-sm">{item.customer?.phone || '-'}</span>
     },
-    { 
-      id: 'total_amount', 
-      header: 'المبلغ الإجمالي', 
-      accessor: 'total_amount', 
+    {
+      id: 'total_amount',
+      header: 'المبلغ الإجمالي',
+      accessor: 'total_amount',
       width: 150,
       render: (value: number) => <span className="text-green-400 font-medium">{formatPrice(value, 'system')}</span>
     },
-    { 
-      id: 'payment_method', 
-      header: 'طريقة الدفع', 
-      accessor: 'payment_method', 
+    {
+      id: 'invoiceValue',
+      header: 'قيمة الفاتورة',
+      accessor: 'invoiceValue',
+      width: 120,
+      render: (value: number) => (
+        <div className="flex items-center justify-center gap-1">
+          {value > 0 ? (
+            <>
+              <span className="text-green-400">↑</span>
+              <span className="text-green-400 font-medium">{formatPrice(value, 'system')}</span>
+            </>
+          ) : (
+            <span className="text-gray-500">-</span>
+          )}
+        </div>
+      )
+    },
+    {
+      id: 'paidAmount',
+      header: 'المبلغ المدفوع',
+      accessor: 'paidAmount',
+      width: 120,
+      render: (value: number) => (
+        <div className="flex items-center justify-center gap-1">
+          {value > 0 ? (
+            <>
+              <span className="text-red-400">↓</span>
+              <span className="text-red-400 font-medium">{formatPrice(value, 'system')}</span>
+            </>
+          ) : (
+            <span className="text-gray-500">-</span>
+          )}
+        </div>
+      )
+    },
+    {
+      id: 'netAmount',
+      header: 'الصافي',
+      accessor: 'netAmount',
+      width: 120,
+      render: (value: number, item: any) => {
+        const net = (item.invoiceValue || 0) - (item.paidAmount || 0)
+        return (
+          <div className="flex items-center justify-center gap-1">
+            {net !== 0 ? (
+              <>
+                <span className={net > 0 ? 'text-green-400' : 'text-red-400'}>
+                  {net > 0 ? '↑' : '↓'}
+                </span>
+                <span className="text-blue-400 font-medium">{formatPrice(Math.abs(net), 'system')}</span>
+              </>
+            ) : (
+              <span className="text-gray-500">-</span>
+            )}
+          </div>
+        )
+      }
+    },
+    {
+      id: 'balance',
+      header: 'الرصيد',
+      accessor: 'balance',
+      width: 120,
+      render: (value: number, item: any, index: number) => (
+        <span className={`font-medium ${
+          index === 0
+            ? 'bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded'
+            : 'text-gray-400'
+        }`}>
+          {formatPrice(value, 'system')}
+        </span>
+      )
+    },
+    {
+      id: 'payment_method',
+      header: 'طريقة الدفع',
+      accessor: 'payment_method',
       width: 120,
       render: (value: string) => <span className="text-blue-400">{value}</span>
     },
@@ -2919,11 +3034,13 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
                 <div className="bg-[#3B4754] border-b border-gray-600 p-3">
                   <div className="flex justify-between items-center mb-2">
                     <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                      mobileSelectedInvoice.invoice_type === 'مرتجع' || mobileSelectedInvoice.invoice_type === 'مرتجع بيع' || mobileSelectedInvoice.invoice_type === 'مرتجع شراء' || mobileSelectedInvoice.invoice_type === 'Sale Return'
-                        ? 'bg-orange-500/20 text-orange-400'
-                        : mobileSelectedInvoice.invoice_type === 'فاتورة شراء' || mobileSelectedInvoice.invoice_type === 'Purchase Invoice'
-                          ? 'bg-purple-500/20 text-purple-400'
-                          : 'bg-green-500/20 text-green-400'
+                      mobileSelectedInvoice.invoice_type === 'مرتجع شراء'
+                        ? 'bg-orange-900 text-orange-300'
+                        : mobileSelectedInvoice.invoice_type === 'مرتجع' || mobileSelectedInvoice.invoice_type === 'مرتجع بيع' || mobileSelectedInvoice.invoice_type === 'Sale Return'
+                          ? 'bg-red-900 text-red-300'
+                          : mobileSelectedInvoice.invoice_type === 'فاتورة شراء' || mobileSelectedInvoice.invoice_type === 'Purchase Invoice'
+                            ? 'bg-blue-900 text-blue-300'
+                            : 'bg-green-900 text-green-300'
                     }`}>
                       {mobileSelectedInvoice.invoice_type === 'Sale Invoice' ? 'فاتورة بيع' :
                        mobileSelectedInvoice.invoice_type === 'Sale Return' ? 'مرتجع بيع' :
@@ -3188,13 +3305,14 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
                     <div className="flex items-center justify-center py-8">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
                     </div>
-                  ) : sales.length === 0 ? (
+                  ) : salesWithFinancialData.length === 0 ? (
                     <div className="text-center py-8 text-gray-400">لا توجد فواتير</div>
                   ) : (
-                    sales.map((sale, index) => {
+                    salesWithFinancialData.map((sale, index) => {
                       const itemsCount = saleItemsCache[sale.id]?.length || 0
                       const saleDate = new Date(sale.created_at)
                       const timeStr = sale.time || saleDate.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })
+                      const netAmount = (sale.invoiceValue || 0) - (sale.paidAmount || 0)
 
                       return (
                         <div
@@ -3212,11 +3330,13 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
                             <div className="flex items-center gap-2">
                               <span className="text-blue-400 font-medium text-sm">#{sale.invoice_number}</span>
                               <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                                sale.invoice_type === 'مرتجع' || sale.invoice_type === 'مرتجع بيع' || sale.invoice_type === 'مرتجع شراء' || sale.invoice_type === 'Sale Return'
-                                  ? 'bg-orange-500/20 text-orange-400'
-                                  : sale.invoice_type === 'فاتورة شراء' || sale.invoice_type === 'Purchase Invoice'
-                                    ? 'bg-purple-500/20 text-purple-400'
-                                    : 'bg-green-500/20 text-green-400'
+                                sale.invoice_type === 'مرتجع شراء'
+                                  ? 'bg-orange-900 text-orange-300'
+                                  : sale.invoice_type === 'مرتجع' || sale.invoice_type === 'مرتجع بيع' || sale.invoice_type === 'Sale Return'
+                                    ? 'bg-red-900 text-red-300'
+                                    : sale.invoice_type === 'فاتورة شراء' || sale.invoice_type === 'Purchase Invoice'
+                                      ? 'bg-blue-900 text-blue-300'
+                                      : 'bg-green-900 text-green-300'
                               }`}>
                                 {sale.invoice_type === 'Sale Invoice' ? 'فاتورة بيع' :
                                  sale.invoice_type === 'Sale Return' ? 'مرتجع بيع' :
@@ -3260,6 +3380,74 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
                               <span className="text-gray-500">المنتجات:</span>
                               <span className="text-blue-400">{itemsCount > 0 ? itemsCount : '...'}</span>
                             </div>
+                          </div>
+
+                          {/* Financial Fields Row - قيمة الفاتورة | المدفوع | الصافي */}
+                          <div className="grid grid-cols-3 gap-2 text-xs mt-2 border-t border-gray-600 pt-2">
+                            {/* قيمة الفاتورة */}
+                            <div className="text-center">
+                              <div className="text-gray-500 mb-1">قيمة الفاتورة</div>
+                              <div className="flex items-center justify-center gap-1">
+                                {sale.invoiceValue > 0 ? (
+                                  <>
+                                    <span className="text-green-400">↑</span>
+                                    <span className="text-green-400 font-medium">
+                                      {formatPrice(sale.invoiceValue, 'system')}
+                                    </span>
+                                  </>
+                                ) : (
+                                  <span className="text-gray-500">-</span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* المبلغ المدفوع */}
+                            <div className="text-center">
+                              <div className="text-gray-500 mb-1">المدفوع</div>
+                              <div className="flex items-center justify-center gap-1">
+                                {sale.paidAmount > 0 ? (
+                                  <>
+                                    <span className="text-red-400">↓</span>
+                                    <span className="text-red-400 font-medium">
+                                      {formatPrice(sale.paidAmount, 'system')}
+                                    </span>
+                                  </>
+                                ) : (
+                                  <span className="text-gray-500">-</span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* الصافي */}
+                            <div className="text-center">
+                              <div className="text-gray-500 mb-1">الصافي</div>
+                              <div className="flex items-center justify-center gap-1">
+                                {netAmount !== 0 ? (
+                                  <>
+                                    <span className={netAmount > 0 ? 'text-green-400' : 'text-red-400'}>
+                                      {netAmount > 0 ? '↑' : '↓'}
+                                    </span>
+                                    <span className="text-blue-400 font-medium">
+                                      {formatPrice(Math.abs(netAmount), 'system')}
+                                    </span>
+                                  </>
+                                ) : (
+                                  <span className="text-gray-500">-</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* الرصيد */}
+                          <div className="flex justify-end items-center mt-2 border-t border-gray-600 pt-2">
+                            <span className="text-gray-500 text-xs ml-2">الرصيد:</span>
+                            <span className={`text-sm font-medium ${
+                              index === 0
+                                ? 'bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded'
+                                : 'text-gray-400'
+                            }`}>
+                              {formatPrice(sale.balance, 'system')}
+                            </span>
                           </div>
 
                           {/* Notes with tap indicator */}
@@ -3361,17 +3549,33 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
                           className={`bg-[#374151] rounded-lg p-3 transition-colors ${
                             statement.saleId ? 'cursor-pointer active:bg-[#4B5563]' : ''
                           } ${
-                            isIncreasing
-                              ? 'border-2 border-amber-500/50'
-                              : 'border-2 border-gray-500/50'
+                            statement.type === 'فاتورة بيع'
+                              ? 'border-2 border-green-700/50'
+                              : statement.type === 'فاتورة شراء'
+                                ? 'border-2 border-blue-700/50'
+                                : statement.type === 'مرتجع بيع'
+                                  ? 'border-2 border-red-700/50'
+                                  : statement.type === 'مرتجع شراء'
+                                    ? 'border-2 border-orange-700/50'
+                                    : statement.type === 'دفعة'
+                                      ? 'border-2 border-emerald-700/50'
+                                      : 'border-2 border-gray-600/50'
                           }`}
                         >
                           {/* الصف العلوي: نوع العملية + التاريخ */}
                           <div className="flex justify-between items-center mb-2">
-                            <span className={`px-2 py-0.5 rounded text-xs font-medium border ${
-                              isIncreasing
-                                ? 'bg-amber-500/20 text-amber-400 border-amber-600'
-                                : 'bg-gray-500/20 text-gray-300 border-gray-600'
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                              statement.type === 'فاتورة بيع'
+                                ? 'bg-green-900 text-green-300'
+                                : statement.type === 'فاتورة شراء'
+                                  ? 'bg-blue-900 text-blue-300'
+                                  : statement.type === 'مرتجع بيع'
+                                    ? 'bg-red-900 text-red-300'
+                                    : statement.type === 'مرتجع شراء'
+                                      ? 'bg-orange-900 text-orange-300'
+                                      : statement.type === 'دفعة'
+                                        ? 'bg-emerald-900 text-emerald-300'
+                                        : 'bg-gray-700 text-gray-300'
                             }`}>
                               {statement.type}
                             </span>
@@ -4386,8 +4590,8 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
                           <ResizableTable
                             className="h-full w-full"
                             columns={invoiceColumns}
-                            data={sales}
-                            selectedRowId={sales[selectedTransaction]?.id?.toString() || null}
+                            data={salesWithFinancialData}
+                            selectedRowId={salesWithFinancialData[selectedTransaction]?.id?.toString() || null}
                             onRowClick={(sale: any, index: number) => setSelectedTransaction(index)}
                             reportType="CUSTOMER_INVOICES_REPORT"
                           />
