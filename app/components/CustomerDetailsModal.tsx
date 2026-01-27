@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { MagnifyingGlassIcon, XMarkIcon, ChevronLeftIcon, ChevronRightIcon, PlusIcon, PencilSquareIcon, TrashIcon, TableCellsIcon, CalendarDaysIcon, PrinterIcon, DocumentIcon, ArrowDownTrayIcon, DocumentArrowDownIcon } from '@heroicons/react/24/outline'
+import { MagnifyingGlassIcon, XMarkIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon, ChevronUpIcon, PlusIcon, PencilSquareIcon, TrashIcon, TableCellsIcon, CalendarDaysIcon, PrinterIcon, DocumentIcon, ArrowDownTrayIcon, DocumentArrowDownIcon } from '@heroicons/react/24/outline'
 import ResizableTable from './tables/ResizableTable'
 import { supabase } from '../lib/supabase/client'
 import ConfirmDeleteModal from './ConfirmDeleteModal'
@@ -45,18 +45,27 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
   const [isDragging, setIsDragging] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Tablet Detection
+  // Device Detection - Mobile and Tablet
   const [isTabletDevice, setIsTabletDevice] = useState(false)
+  const [isMobileDevice, setIsMobileDevice] = useState(false)
+  const [isMobileInfoExpanded, setIsMobileInfoExpanded] = useState(true)
+
+  // Mobile Invoice Details View
+  const [showMobileInvoiceDetails, setShowMobileInvoiceDetails] = useState(false)
+  const [mobileSelectedInvoice, setMobileSelectedInvoice] = useState<any>(null)
+  const [mobileInvoiceItems, setMobileInvoiceItems] = useState<any[]>([])
+  const [isLoadingMobileInvoiceItems, setIsLoadingMobileInvoiceItems] = useState(false)
 
   useEffect(() => {
     const checkDevice = () => {
       const userAgent = navigator.userAgent.toLowerCase()
       const width = window.innerWidth
 
-      const isMobile = /mobile|android.*mobile|webos|blackberry|opera mini|iemobile/.test(userAgent)
-      const isTablet = (/tablet|ipad|playbook|silk|android(?!.*mobile)/i.test(userAgent) ||
-        (width >= 768 && width <= 1280 && !isMobile))
+      const isMobile = width < 768 || /mobile|android.*mobile|webos|blackberry|opera mini|iemobile/.test(userAgent)
+      const isTablet = !isMobile && (/tablet|ipad|playbook|silk|android(?!.*mobile)/i.test(userAgent) ||
+        (width >= 768 && width <= 1280))
 
+      setIsMobileDevice(isMobile)
       setIsTabletDevice(isTablet)
 
       // Auto-hide customer details on tablet for better space
@@ -900,6 +909,78 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
       setSaleItems([])
     } finally {
       setIsLoadingItems(false)
+    }
+  }
+
+  // Open mobile invoice details
+  const openMobileInvoiceDetails = async (sale: any) => {
+    setMobileSelectedInvoice(sale)
+    setShowMobileInvoiceDetails(true)
+    setIsLoadingMobileInvoiceItems(true)
+
+    try {
+      if (sale.isFromLinkedSupplier) {
+        // Fetch purchase invoice items
+        const { data, error } = await supabase
+          .from('purchase_invoice_items')
+          .select(`
+            id,
+            quantity,
+            unit_price,
+            cost_price,
+            discount,
+            notes,
+            product:products(
+              id,
+              name,
+              barcode,
+              main_image_url,
+              category:categories(name)
+            )
+          `)
+          .eq('invoice_id', sale.id)
+          .order('created_at', { ascending: true })
+
+        if (error) {
+          console.error('Error fetching purchase invoice items:', error)
+          setMobileInvoiceItems([])
+        } else {
+          setMobileInvoiceItems(data || [])
+        }
+      } else {
+        // Fetch sale items
+        const { data, error } = await supabase
+          .from('sale_items')
+          .select(`
+            id,
+            quantity,
+            unit_price,
+            cost_price,
+            discount,
+            notes,
+            product:products(
+              id,
+              name,
+              barcode,
+              main_image_url,
+              category:categories(name)
+            )
+          `)
+          .eq('sale_id', sale.id)
+          .order('created_at', { ascending: true })
+
+        if (error) {
+          console.error('Error fetching sale items:', error)
+          setMobileInvoiceItems([])
+        } else {
+          setMobileInvoiceItems(data || [])
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching mobile invoice items:', error)
+      setMobileInvoiceItems([])
+    } finally {
+      setIsLoadingMobileInvoiceItems(false)
     }
   }
 
@@ -2808,8 +2889,527 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
       <div className={`fixed inset-0 z-50 transition-opacity duration-300 ${
         isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
       }`}>
-        <div className="bg-[#2B3544] h-full w-full flex flex-col">
-          
+        {/* Mobile Layout - Complete redesign for small screens */}
+        {isMobileDevice ? (
+          <div className="bg-[#2B3544] h-full w-full flex flex-col">
+            {/* Mobile Invoice Details View */}
+            {showMobileInvoiceDetails && mobileSelectedInvoice ? (
+              <>
+                {/* Invoice Details Header */}
+                <div className="bg-[#374151] border-b border-gray-600 px-3 py-2 flex items-center gap-3">
+                  <button
+                    onClick={() => {
+                      setShowMobileInvoiceDetails(false)
+                      setMobileSelectedInvoice(null)
+                      setMobileInvoiceItems([])
+                    }}
+                    className="text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-600/30 transition-colors"
+                  >
+                    <ChevronRightIcon className="h-5 w-5" />
+                  </button>
+                  <div className="flex-1 text-center">
+                    <span className="text-white font-medium">تفاصيل الفاتورة</span>
+                    <span className="text-blue-400 mr-2">#{mobileSelectedInvoice.invoice_number}</span>
+                  </div>
+                  <div className="w-9" />
+                </div>
+
+                {/* Invoice Summary Card */}
+                <div className="bg-[#3B4754] border-b border-gray-600 p-3">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                      mobileSelectedInvoice.invoice_type === 'مرتجع' || mobileSelectedInvoice.invoice_type === 'مرتجع بيع' || mobileSelectedInvoice.invoice_type === 'مرتجع شراء' || mobileSelectedInvoice.invoice_type === 'Sale Return'
+                        ? 'bg-orange-500/20 text-orange-400'
+                        : mobileSelectedInvoice.invoice_type === 'فاتورة شراء' || mobileSelectedInvoice.invoice_type === 'Purchase Invoice'
+                          ? 'bg-purple-500/20 text-purple-400'
+                          : 'bg-green-500/20 text-green-400'
+                    }`}>
+                      {mobileSelectedInvoice.invoice_type === 'Sale Invoice' ? 'فاتورة بيع' :
+                       mobileSelectedInvoice.invoice_type === 'Sale Return' ? 'مرتجع بيع' :
+                       mobileSelectedInvoice.invoice_type === 'Purchase Invoice' ? 'فاتورة شراء' :
+                       mobileSelectedInvoice.invoice_type || 'فاتورة بيع'}
+                    </span>
+                    <span className="text-white font-bold text-lg">
+                      {formatPrice(Math.abs(parseFloat(mobileSelectedInvoice.total_amount)), 'system')}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="bg-[#2B3544] border-b border-gray-600 px-3 py-2 flex gap-2">
+                  {!isDefaultCustomer && !mobileSelectedInvoice.isFromLinkedSupplier && (
+                    <button
+                      onClick={() => {
+                        const editData = {
+                          saleId: mobileSelectedInvoice.id,
+                          invoiceNumber: mobileSelectedInvoice.invoice_number,
+                          customerId: customer.id,
+                          customerName: customer.name,
+                          customerPhone: customer.phone,
+                          items: mobileInvoiceItems.map(item => ({
+                            productId: item.product?.id,
+                            productName: item.product?.name,
+                            quantity: item.quantity,
+                            unitPrice: item.unit_price,
+                            discount: item.discount || 0,
+                            barcode: item.product?.barcode,
+                            main_image_url: item.product?.main_image_url
+                          }))
+                        }
+                        localStorage.setItem('pos_edit_invoice', JSON.stringify(editData))
+                        window.open(`/pos?edit=true&saleId=${mobileSelectedInvoice.id}`, '_blank')
+                      }}
+                      className="flex-1 flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2 text-sm font-medium transition-colors"
+                    >
+                      <PencilSquareIcon className="h-4 w-4" />
+                      <span>تحرير</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      handleDeleteInvoice(mobileSelectedInvoice)
+                    }}
+                    className="flex-1 flex items-center justify-center gap-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg py-2 text-sm font-medium transition-colors"
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                    <span>حذف</span>
+                  </button>
+                  <button
+                    onClick={() => setShowColumnManager(true)}
+                    className="flex items-center justify-center gap-1.5 bg-gray-600 hover:bg-gray-700 text-white rounded-lg py-2 px-3 text-sm font-medium transition-colors"
+                  >
+                    <TableCellsIcon className="h-4 w-4" />
+                  </button>
+                </div>
+
+                {/* Invoice Items */}
+                <div className="flex-1 overflow-y-auto scrollbar-hide p-3">
+                  <div className="text-gray-400 text-xs mb-2 text-center">عناصر الفاتورة ({mobileInvoiceItems.length})</div>
+
+                  {isLoadingMobileInvoiceItems ? (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                    </div>
+                  ) : mobileInvoiceItems.length === 0 ? (
+                    <div className="text-center py-8 text-gray-400">لا توجد عناصر</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {mobileInvoiceItems.map((item, idx) => {
+                        const itemTotal = (item.quantity * item.unit_price) - (item.discount || 0)
+                        return (
+                          <div key={item.id || idx} className="bg-[#374151] rounded-lg p-3">
+                            <div className="flex gap-3">
+                              {/* Product Image */}
+                              <div className="w-16 h-16 flex-shrink-0 bg-[#2B3544] rounded-lg overflow-hidden">
+                                {item.product?.main_image_url ? (
+                                  <img
+                                    src={item.product.main_image_url}
+                                    alt={item.product?.name || ''}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center text-gray-500 text-2xl">
+                                    📦
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Product Details */}
+                              <div className="flex-1 min-w-0">
+                                <div className="text-white font-medium text-sm truncate mb-1">
+                                  {item.product?.name || 'منتج غير معروف'}
+                                </div>
+                                <div className="text-gray-400 text-xs mb-1">
+                                  {item.product?.category?.name || '-'}
+                                </div>
+                                <div className="text-gray-500 text-xs" dir="ltr">
+                                  {item.product?.barcode || '-'}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Item Details Grid */}
+                            <div className="grid grid-cols-2 gap-2 mt-3 text-xs">
+                              <div className="flex justify-between">
+                                <span className="text-gray-400">السعر:</span>
+                                <span className="text-white">{formatPrice(item.unit_price, 'system')}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-400">الكمية:</span>
+                                <span className="text-white">{item.quantity}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-400">خصم:</span>
+                                <span className="text-orange-400">{formatPrice(item.discount || 0, 'system')}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-400">الإجمالي:</span>
+                                <span className="text-green-400 font-medium">{formatPrice(itemTotal, 'system')}</span>
+                              </div>
+                            </div>
+
+                            {item.notes && (
+                              <div className="mt-2 text-xs text-gray-300 bg-[#2B3544] rounded p-2">
+                                {item.notes}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Mobile Header - Customer Name */}
+                <div className="bg-[#374151] border-b border-gray-600 px-4 py-2.5 flex items-center justify-between">
+                  <button
+                    onClick={onClose}
+                    className="text-gray-400 hover:text-white w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-600/30 transition-colors"
+                  >
+                    <XMarkIcon className="h-5 w-5" />
+                  </button>
+                  <h1 className="text-white font-medium text-base truncate max-w-[60%]">{customer.name || 'العميل'}</h1>
+                  <div className="w-9" />
+                </div>
+
+                {/* Mobile Balance & Customer Info Section */}
+                <div className="bg-[#3B4754] border-b border-gray-600">
+                  {/* Balance Card with Customer Name - Always visible, clickable to toggle */}
+                  <button
+                    onClick={() => setIsMobileInfoExpanded(!isMobileInfoExpanded)}
+                    className="w-full px-3 py-3 flex items-center gap-3"
+                  >
+                    <div className="flex items-center">
+                      {isMobileInfoExpanded ? (
+                        <ChevronUpIcon className="h-4 w-4 text-gray-400" />
+                      ) : (
+                        <ChevronDownIcon className="h-4 w-4 text-gray-400" />
+                      )}
+                    </div>
+                    <div className="flex-1 bg-blue-600 rounded-lg px-5 py-2 text-center">
+                      <div className="font-bold text-white text-xl">
+                        {formatPrice(isDefaultCustomer ? displayedInvoicesSum : customerBalance, 'system')}
+                      </div>
+                      <div className="text-blue-200 text-[10px]">
+                        {isDefaultCustomer ? 'مجموع الفواتير' : 'رصيد العميل'}
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* Expandable Content */}
+                  {isMobileInfoExpanded && (
+                    <div className="px-3 pb-3 space-y-3">
+                      {/* Customer Info - Compact Row */}
+                      <div className="flex items-center justify-between gap-2 text-sm">
+                        <span className="text-gray-400" dir="ltr">{customer.phone || '-'}</span>
+                        <span className="text-yellow-400 flex items-center gap-1 text-xs">
+                          <span>{customer.rank || 'عادي'}</span>
+                          <span>⭐</span>
+                        </span>
+                      </div>
+
+                      {/* Statistics Grid 2x2 - Compact */}
+                      <div className="grid grid-cols-4 gap-2">
+                        <div className="bg-[#2B3544] rounded-lg p-2 text-center">
+                          <div className="text-white text-base font-bold">{sales.length}</div>
+                          <div className="text-gray-400 text-[9px]">الفواتير</div>
+                        </div>
+                        <div className="bg-[#2B3544] rounded-lg p-2 text-center">
+                          <div className="text-blue-400 text-xs font-bold">{formatPrice(totalInvoicesAmount, 'system')}</div>
+                          <div className="text-gray-400 text-[9px]">الإجمالي</div>
+                        </div>
+                        <div className="bg-[#2B3544] rounded-lg p-2 text-center">
+                          <div className="text-green-400 text-xs font-bold">{formatPrice(totalPayments, 'system')}</div>
+                          <div className="text-gray-400 text-[9px]">الدفعات</div>
+                        </div>
+                        <div className="bg-[#2B3544] rounded-lg p-2 text-center">
+                          <div className="text-white text-xs font-bold">{formatPrice(averageOrderValue, 'system')}</div>
+                          <div className="text-gray-400 text-[9px]">المتوسط</div>
+                        </div>
+                      </div>
+
+                      {/* Date Filter Button - Compact */}
+                      <button
+                        onClick={() => setShowDateFilter(true)}
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2 text-sm font-medium flex items-center justify-center gap-2 transition-colors"
+                      >
+                        <CalendarDaysIcon className="h-4 w-4" />
+                        <span>فلتر التاريخ</span>
+                      </button>
+
+                      {/* Current Filter Display */}
+                      {dateFilter.type !== 'all' && (
+                        <div className="text-center">
+                          <span className="text-xs text-blue-400">
+                            {dateFilter.type === 'today' && 'عرض فواتير اليوم'}
+                            {dateFilter.type === 'current_week' && 'عرض فواتير الأسبوع الحالي'}
+                            {dateFilter.type === 'last_week' && 'عرض فواتير الأسبوع الماضي'}
+                            {dateFilter.type === 'current_month' && 'عرض فواتير الشهر الحالي'}
+                            {dateFilter.type === 'last_month' && 'عرض فواتير الشهر الماضي'}
+                            {dateFilter.type === 'custom' && dateFilter.startDate && dateFilter.endDate &&
+                              `من ${dateFilter.startDate.toLocaleDateString('en-GB')} إلى ${dateFilter.endDate.toLocaleDateString('en-GB')}`}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+            {/* Mobile Content Area - Scrollable */}
+            <div className="flex-1 overflow-y-auto scrollbar-hide">
+              {/* Invoices Tab Content */}
+              {activeTab === 'invoices' && (
+                <div className="p-3 space-y-2">
+                  {isLoadingSales ? (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                    </div>
+                  ) : sales.length === 0 ? (
+                    <div className="text-center py-8 text-gray-400">لا توجد فواتير</div>
+                  ) : (
+                    sales.map((sale, index) => {
+                      const itemsCount = saleItemsCache[sale.id]?.length || 0
+                      const saleDate = new Date(sale.created_at)
+                      const timeStr = sale.time || saleDate.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })
+
+                      return (
+                        <div
+                          key={sale.id}
+                          onClick={() => openMobileInvoiceDetails(sale)}
+                          className="bg-[#374151] rounded-lg p-3 cursor-pointer transition-colors active:bg-[#4B5563]"
+                        >
+                          {/* Header Row - Amount + Invoice# + Type Badge */}
+                          <div className="flex justify-between items-center mb-2">
+                            <span className={`font-bold text-lg ${
+                              parseFloat(sale.total_amount) < 0 ? 'text-orange-400' : 'text-white'
+                            }`}>
+                              {formatPrice(Math.abs(parseFloat(sale.total_amount)), 'system')}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-blue-400 font-medium text-sm">#{sale.invoice_number}</span>
+                              <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                sale.invoice_type === 'مرتجع' || sale.invoice_type === 'مرتجع بيع' || sale.invoice_type === 'مرتجع شراء' || sale.invoice_type === 'Sale Return'
+                                  ? 'bg-orange-500/20 text-orange-400'
+                                  : sale.invoice_type === 'فاتورة شراء' || sale.invoice_type === 'Purchase Invoice'
+                                    ? 'bg-purple-500/20 text-purple-400'
+                                    : 'bg-green-500/20 text-green-400'
+                              }`}>
+                                {sale.invoice_type === 'Sale Invoice' ? 'فاتورة بيع' :
+                                 sale.invoice_type === 'Sale Return' ? 'مرتجع بيع' :
+                                 sale.invoice_type === 'Purchase Invoice' ? 'فاتورة شراء' :
+                                 sale.invoice_type || 'فاتورة بيع'}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Details Grid */}
+                          <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs border-t border-gray-600 pt-2">
+                            <div className="flex justify-between">
+                              <span className="text-gray-500">التاريخ:</span>
+                              <span className="text-gray-300">{saleDate.toLocaleDateString('en-GB')}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-500">الوقت:</span>
+                              <span className="text-gray-300">{timeStr}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-500">العميل:</span>
+                              <span className="text-gray-300 truncate max-w-[80px]">{sale.customer?.name || customer.name || '-'}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-500">الهاتف:</span>
+                              <span className="text-gray-300" dir="ltr">{sale.customer?.phone || customer.phone || '-'}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-500">الدفع:</span>
+                              <span className="text-gray-300">{sale.payment_method?.name || '-'}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-500">الخزنة:</span>
+                              <span className="text-gray-300">{sale.record?.name || '-'}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-500">الموظف:</span>
+                              <span className="text-gray-300 truncate max-w-[80px]">{sale.cashier?.full_name || '-'}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-500">المنتجات:</span>
+                              <span className="text-blue-400">{itemsCount > 0 ? itemsCount : '...'}</span>
+                            </div>
+                          </div>
+
+                          {/* Notes with tap indicator */}
+                          <div className="mt-2 text-xs bg-[#2B3544] rounded p-2 border-t border-gray-600">
+                            {sale.notes && (
+                              <div className="text-gray-300 mb-1">{sale.notes}</div>
+                            )}
+                            <div className="flex items-center justify-end text-gray-500 text-xs">
+                              <span>اضغط لعرض التفاصيل</span>
+                              <ChevronLeftIcon className="h-3 w-3 mr-1" />
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              )}
+
+              {/* Payments Tab Content */}
+              {activeTab === 'payments' && (
+                <div className="p-4 space-y-3">
+                  {isLoadingPayments ? (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500"></div>
+                    </div>
+                  ) : customerPayments.length === 0 ? (
+                    <div className="text-center py-8 text-gray-400">لا توجد دفعات</div>
+                  ) : (
+                    customerPayments.map((payment) => (
+                      <div
+                        key={payment.id}
+                        className="bg-[#374151] rounded-lg p-4"
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <span className="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">
+                            دفعة
+                          </span>
+                          <span className="font-bold text-lg text-green-400">
+                            {formatPrice(payment.amount || 0, 'system')}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm text-gray-400">
+                          <span>{payment.payment_date ? new Date(payment.payment_date).toLocaleDateString('en-GB') : '-'}</span>
+                          <span>{payment.payment_method || '-'}</span>
+                        </div>
+                        {payment.notes && (
+                          <div className="mt-2 text-sm text-gray-300 bg-[#2B3544] rounded p-2">
+                            {payment.notes}
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  )}
+                  {/* Add Payment Button */}
+                  {!isDefaultCustomer && (
+                    <button
+                      onClick={() => {
+                        setPaymentType('payment')
+                        setShowAddPaymentModal(true)
+                      }}
+                      className="w-full bg-green-600 hover:bg-green-700 text-white rounded-lg py-3 font-medium flex items-center justify-center gap-2 transition-colors mt-4"
+                    >
+                      <PlusIcon className="h-5 w-5" />
+                      <span>إضافة دفعة</span>
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Statement Tab Content */}
+              {activeTab === 'statement' && (
+                <div className="p-4 space-y-3">
+                  {isLoadingStatements ? (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                    </div>
+                  ) : accountStatements.length === 0 ? (
+                    <div className="text-center py-8 text-gray-400">لا توجد حركات</div>
+                  ) : (
+                    accountStatements.map((statement, index) => (
+                      <div
+                        key={index}
+                        className="bg-[#374151] rounded-lg p-4"
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                            statement.type === 'فاتورة بيع'
+                              ? 'bg-blue-500/20 text-blue-400'
+                              : statement.type === 'مرتجع بيع'
+                                ? 'bg-orange-500/20 text-orange-400'
+                                : statement.type === 'دفعة'
+                                  ? 'bg-green-500/20 text-green-400'
+                                  : statement.type === 'دين'
+                                    ? 'bg-red-500/20 text-red-400'
+                                    : 'bg-purple-500/20 text-purple-400'
+                          }`}>
+                            {statement.type}
+                          </span>
+                          <span className={`font-bold text-lg ${
+                            statement.amount < 0 ? 'text-green-400' : 'text-white'
+                          }`}>
+                            {formatPrice(Math.abs(statement.amount || 0), 'system')}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm text-gray-400 mb-2">
+                          <span>{new Date(statement.date).toLocaleDateString('en-GB')}</span>
+                          <span className={`font-medium ${
+                            statement.balance < 0 ? 'text-green-400' : statement.balance > 0 ? 'text-red-400' : 'text-gray-400'
+                          }`}>
+                            رصيد: {formatPrice(statement.balance, 'system')}
+                          </span>
+                        </div>
+                        {statement.description && (
+                          <div className="text-sm text-gray-300">{statement.description}</div>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Mobile Bottom Navigation - Compact */}
+            <div className="bg-[#374151] border-t border-gray-600 px-1 py-1 flex items-center justify-around safe-area-bottom">
+              <button
+                onClick={() => setActiveTab('invoices')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg transition-colors ${
+                  activeTab === 'invoices'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <span className="text-sm">📋</span>
+                <span className="text-xs font-medium">الفواتير ({sales.length})</span>
+              </button>
+
+              {!isDefaultCustomer && (
+                <>
+                  <button
+                    onClick={() => setActiveTab('payments')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg transition-colors ${
+                      activeTab === 'payments'
+                        ? 'bg-blue-600 text-white'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    <span className="text-sm">💰</span>
+                    <span className="text-xs font-medium">الدفعات</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab('statement')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg transition-colors ${
+                      activeTab === 'statement'
+                        ? 'bg-blue-600 text-white'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    <span className="text-sm">📊</span>
+                    <span className="text-xs font-medium">كشف الحساب</span>
+                  </button>
+                </>
+              )}
+            </div>
+              </>
+            )}
+          </div>
+        ) : (
+          /* Tablet and Desktop Layout */
+          <div className="bg-[#2B3544] h-full w-full flex flex-col">
+
           {/* Top Navigation - Responsive Layout */}
           <div className="bg-[#374151] border-b border-gray-600">
             {/* Tablet Layout */}
@@ -3888,6 +4488,7 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
             </div>
           </div>
         </div>
+        )}
       </div>
 
       {/* Delete Invoice Confirmation Modal */}
