@@ -600,9 +600,9 @@ export default function SafesPage() {
         </div>
 
         {/* Unified Control Bar - Tabs, Filters, Count & Search in ONE row */}
-        <div className="px-6 pt-4 flex items-center justify-between gap-4">
+        <div className="px-3 sm:px-6 pt-4 flex flex-wrap items-center justify-between gap-2 sm:gap-4">
           {/* Right Section: Tabs + Filters (for records tab) */}
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-4">
             {/* Tabs */}
             <div className="flex bg-[#2B3544] rounded-md overflow-hidden w-fit border border-gray-700">
               <button
@@ -642,7 +642,7 @@ export default function SafesPage() {
 
             {/* Records Tab Filters */}
             {activeTab === 'records' && (
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <select
                   value={transactionFilters.safeId}
                   onChange={(e) => setTransactionFilters(prev => ({ ...prev, safeId: e.target.value }))}
@@ -687,13 +687,13 @@ export default function SafesPage() {
 
           {/* Left Section: Search (for records tab) */}
           {activeTab === 'records' && (
-            <div className="relative">
+            <div className="relative w-full sm:w-auto">
               <input
                 type="text"
                 placeholder="البحث في السجلات..."
                 value={transactionSearchTerm}
                 onChange={(e) => setTransactionSearchTerm(e.target.value)}
-                className="bg-gray-700 text-white placeholder-gray-400 pl-10 pr-4 py-2 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 w-56 text-sm"
+                className="bg-gray-700 text-white placeholder-gray-400 pl-10 pr-4 py-2 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-56 text-sm"
               />
               <MagnifyingGlassIcon className="h-5 w-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
             </div>
@@ -704,9 +704,9 @@ export default function SafesPage() {
         {activeTab === 'safes' && (
           <>
             {/* Statistics Cards */}
-            <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="p-3 sm:p-6 grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
               {/* Total Balance */}
-              <div className="bg-pos-darker rounded-lg p-6 border border-gray-700">
+              <div className="bg-pos-darker rounded-lg p-4 sm:p-6 border border-gray-700">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-gray-400 text-sm">الرصيد الإجمالي</p>
@@ -719,7 +719,7 @@ export default function SafesPage() {
               </div>
 
               {/* Active Safes */}
-              <div className="bg-pos-darker rounded-lg p-6 border border-gray-700">
+              <div className="bg-pos-darker rounded-lg p-4 sm:p-6 border border-gray-700">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-gray-400 text-sm">الخزن النشطة</p>
@@ -732,7 +732,7 @@ export default function SafesPage() {
               </div>
 
               {/* Total Safes */}
-              <div className="bg-pos-darker rounded-lg p-6 border border-gray-700">
+              <div className="bg-pos-darker rounded-lg p-4 sm:p-6 border border-gray-700">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-gray-400 text-sm">إجمالي الخزن</p>
@@ -746,8 +746,8 @@ export default function SafesPage() {
             </div>
 
             {/* Controls */}
-            <div className="px-6 pb-6">
-              <div className="flex items-center justify-between">
+            <div className="px-3 sm:px-6 pb-4 sm:pb-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-4">
                   <button
                     onClick={openAddSafeModal}
@@ -758,13 +758,13 @@ export default function SafesPage() {
                   </button>
                 </div>
 
-                <div className="relative">
+                <div className="relative w-full sm:w-auto">
                   <input
                     type="text"
                     placeholder="البحث في الخزن..."
                     value={safesSearchTerm}
                     onChange={(e) => setSafesSearchTerm(e.target.value)}
-                    className="bg-gray-700 text-white placeholder-gray-400 pl-10 pr-4 py-2 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 w-80"
+                    className="bg-gray-700 text-white placeholder-gray-400 pl-10 pr-4 py-2 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-64 md:w-80"
                   />
                   <MagnifyingGlassIcon className="h-5 w-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                 </div>
@@ -772,8 +772,9 @@ export default function SafesPage() {
             </div>
 
             {/* Safes Table */}
-            <div className="mx-6 bg-pos-darker rounded-lg overflow-hidden border border-gray-700">
-              <table className="w-full text-sm text-right">
+            <div className="mx-3 sm:mx-6 bg-pos-darker rounded-lg overflow-hidden border border-gray-700">
+              <div className="overflow-x-auto">
+              <table className="w-full text-sm text-right min-w-[600px]">
                 <thead className="bg-gray-700 text-gray-300">
                   <tr>
                     <th className="p-3 text-right font-medium">#</th>
@@ -850,13 +851,14 @@ export default function SafesPage() {
                   )}
                 </tbody>
               </table>
+              </div>
             </div>
           </>
         )}
 
         {/* ==================== Records Tab Content ==================== */}
         {activeTab === 'records' && (
-          <div className="p-6 pt-4">
+          <div className="p-3 sm:p-6 pt-4">
             {/* Transactions Table */}
             {/* Offline Mode Notice */}
             {isUsingOfflineData && (
@@ -878,64 +880,66 @@ export default function SafesPage() {
                 </div>
               ) : (
                 <>
-                  <table className="w-full text-sm text-right">
-                    <thead className="bg-gray-700 text-gray-300 sticky top-0 z-10">
-                      <tr>
-                        <th className="p-3 text-right font-medium">#</th>
-                        <th className="p-3 text-right font-medium">نوع العملية</th>
-                        <th className="p-3 text-right font-medium">الخزنة</th>
-                        <th className="p-3 text-right font-medium">المبلغ</th>
-                        <th className="p-3 text-right font-medium">الرصيد بعد</th>
-                        <th className="p-3 text-right font-medium">ملاحظات</th>
-                        <th className="p-3 text-right font-medium">اسم العميل</th>
-                        <th className="p-3 text-right font-medium">بواسطة</th>
-                        <th className="p-3 text-right font-medium">التاريخ</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-pos-darker divide-y divide-gray-700">
-                      {filteredTransactions.length > 0 ? (
-                        filteredTransactions.map((tx, index) => {
-                          const isPending = tx.id.startsWith('pending_')
-                          return (
-                            <tr
-                              key={tx.id}
-                              className={`hover:bg-gray-700 transition-colors cursor-pointer ${isPending ? 'bg-yellow-900/20' : ''}`}
-                              onContextMenu={(e) => !isPending && handleContextMenu(e, tx)}
-                            >
-                              <td className="p-3 text-white font-medium">{index + 1}</td>
-                              <td className="p-3">
-                                <div className="flex items-center gap-2">
-                                  {getTransactionTypeBadge(tx.transaction_type)}
-                                  {isPending && (
-                                    <span className="px-2 py-0.5 rounded-full text-xs bg-yellow-900 text-yellow-300 border border-yellow-600">
-                                      معلق
-                                    </span>
-                                  )}
-                                </div>
-                              </td>
-                              <td className="p-3 text-white">{tx.safe_name}</td>
-                              <td className="p-3">{formatAmount(tx.amount)}</td>
-                              <td className="p-3 text-gray-300">
-                                {isPending ? <span className="text-yellow-400">-</span> : formatPrice(tx.balance_after || 0)}
-                              </td>
-                              <td className="p-3 text-gray-400 max-w-[200px] truncate" title={tx.notes || ''}>
-                                {tx.notes || '-'}
-                              </td>
-                              <td className="p-3 text-gray-400">{tx.customer_name || '-'}</td>
-                              <td className="p-3 text-gray-400">{tx.performed_by || '-'}</td>
-                              <td className="p-3 text-gray-400">{formatDateTime(tx.created_at)}</td>
-                            </tr>
-                          )
-                        })
-                      ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-right min-w-[800px]">
+                      <thead className="bg-gray-700 text-gray-300 sticky top-0 z-10">
                         <tr>
-                          <td colSpan={9} className="p-8 text-center text-gray-400">
-                            {isUsingOfflineData ? 'لا توجد سجلات محفوظة للعرض في وضع عدم الاتصال' : 'لا توجد سجلات متاحة'}
-                          </td>
+                          <th className="p-3 text-right font-medium">#</th>
+                          <th className="p-3 text-right font-medium">نوع العملية</th>
+                          <th className="p-3 text-right font-medium">الخزنة</th>
+                          <th className="p-3 text-right font-medium">المبلغ</th>
+                          <th className="p-3 text-right font-medium">الرصيد بعد</th>
+                          <th className="p-3 text-right font-medium">ملاحظات</th>
+                          <th className="p-3 text-right font-medium">اسم العميل</th>
+                          <th className="p-3 text-right font-medium">بواسطة</th>
+                          <th className="p-3 text-right font-medium">التاريخ</th>
                         </tr>
-                      )}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="bg-pos-darker divide-y divide-gray-700">
+                        {filteredTransactions.length > 0 ? (
+                          filteredTransactions.map((tx, index) => {
+                            const isPending = tx.id.startsWith('pending_')
+                            return (
+                              <tr
+                                key={tx.id}
+                                className={`hover:bg-gray-700 transition-colors cursor-pointer ${isPending ? 'bg-yellow-900/20' : ''}`}
+                                onContextMenu={(e) => !isPending && handleContextMenu(e, tx)}
+                              >
+                                <td className="p-3 text-white font-medium">{index + 1}</td>
+                                <td className="p-3">
+                                  <div className="flex items-center gap-2">
+                                    {getTransactionTypeBadge(tx.transaction_type)}
+                                    {isPending && (
+                                      <span className="px-2 py-0.5 rounded-full text-xs bg-yellow-900 text-yellow-300 border border-yellow-600">
+                                        معلق
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="p-3 text-white">{tx.safe_name}</td>
+                                <td className="p-3">{formatAmount(tx.amount)}</td>
+                                <td className="p-3 text-gray-300">
+                                  {isPending ? <span className="text-yellow-400">-</span> : formatPrice(tx.balance_after || 0)}
+                                </td>
+                                <td className="p-3 text-gray-400 max-w-[200px] truncate" title={tx.notes || ''}>
+                                  {tx.notes || '-'}
+                                </td>
+                                <td className="p-3 text-gray-400">{tx.customer_name || '-'}</td>
+                                <td className="p-3 text-gray-400">{tx.performed_by || '-'}</td>
+                                <td className="p-3 text-gray-400">{formatDateTime(tx.created_at)}</td>
+                              </tr>
+                            )
+                          })
+                        ) : (
+                          <tr>
+                            <td colSpan={9} className="p-8 text-center text-gray-400">
+                              {isUsingOfflineData ? 'لا توجد سجلات محفوظة للعرض في وضع عدم الاتصال' : 'لا توجد سجلات متاحة'}
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                   {/* Sentinel element for infinite scroll */}
                   <div ref={transactionSentinelRef} className="h-4" />
                   {/* Loading more indicator */}
@@ -961,9 +965,9 @@ export default function SafesPage() {
         {activeTab === 'payment_methods' && (
           <>
             {/* Statistics Cards */}
-            <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="p-3 sm:p-6 grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
               {/* Total Payment Methods */}
-              <div className="bg-pos-darker rounded-lg p-6 border border-gray-700">
+              <div className="bg-pos-darker rounded-lg p-4 sm:p-6 border border-gray-700">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-gray-400 text-sm">إجمالي طرق الدفع</p>
@@ -976,7 +980,7 @@ export default function SafesPage() {
               </div>
 
               {/* Active Payment Methods */}
-              <div className="bg-pos-darker rounded-lg p-6 border border-gray-700">
+              <div className="bg-pos-darker rounded-lg p-4 sm:p-6 border border-gray-700">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-gray-400 text-sm">طرق الدفع النشطة</p>
@@ -991,7 +995,7 @@ export default function SafesPage() {
               </div>
 
               {/* Default Payment Method */}
-              <div className="bg-pos-darker rounded-lg p-6 border border-gray-700">
+              <div className="bg-pos-darker rounded-lg p-4 sm:p-6 border border-gray-700">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-gray-400 text-sm">الطريقة الافتراضية</p>
@@ -1007,8 +1011,8 @@ export default function SafesPage() {
             </div>
 
             {/* Controls */}
-            <div className="px-6 pb-6">
-              <div className="flex items-center justify-between">
+            <div className="px-3 sm:px-6 pb-4 sm:pb-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-4">
                   <button
                     onClick={openAddPaymentMethodModal}
@@ -1019,13 +1023,13 @@ export default function SafesPage() {
                   </button>
                 </div>
 
-                <div className="relative">
+                <div className="relative w-full sm:w-auto">
                   <input
                     type="text"
                     placeholder="البحث في طرق الدفع..."
                     value={paymentMethodSearchTerm}
                     onChange={(e) => setPaymentMethodSearchTerm(e.target.value)}
-                    className="bg-gray-700 text-white placeholder-gray-400 pl-10 pr-4 py-2 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 w-80"
+                    className="bg-gray-700 text-white placeholder-gray-400 pl-10 pr-4 py-2 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-64 md:w-80"
                   />
                   <MagnifyingGlassIcon className="h-5 w-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                 </div>
@@ -1033,8 +1037,9 @@ export default function SafesPage() {
             </div>
 
             {/* Payment Methods Table */}
-            <div className="mx-6 bg-pos-darker rounded-lg overflow-hidden border border-gray-700">
-              <table className="w-full text-sm text-right">
+            <div className="mx-3 sm:mx-6 bg-pos-darker rounded-lg overflow-hidden border border-gray-700">
+              <div className="overflow-x-auto">
+              <table className="w-full text-sm text-right min-w-[600px]">
                 <thead className="bg-gray-700 text-gray-300">
                   <tr>
                     <th className="p-3 text-right font-medium">#</th>
@@ -1121,11 +1126,12 @@ export default function SafesPage() {
                   )}
                 </tbody>
               </table>
+              </div>
             </div>
           </>
         )}
 
-        <div className="p-6"></div>
+        <div className="p-3 sm:p-6"></div>
       </div>
 
       {/* ==================== Modals ==================== */}
