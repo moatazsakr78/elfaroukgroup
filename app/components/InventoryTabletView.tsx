@@ -59,17 +59,23 @@ interface InventoryTabletViewProps {
     zero: boolean
   }
   setStockStatusFilters: React.Dispatch<React.SetStateAction<{good: boolean, low: boolean, zero: boolean}>>
+  hasMoreProducts: boolean
+  remainingProductsCount: number
+  onLoadAllProducts: () => void
 }
 
-export default function InventoryTabletView({ 
-  searchQuery, 
-  setSearchQuery, 
-  selectedGroup, 
+export default function InventoryTabletView({
+  searchQuery,
+  setSearchQuery,
+  selectedGroup,
   setSelectedGroup,
   isSidebarOpen,
   setIsSidebarOpen,
   stockStatusFilters,
-  setStockStatusFilters
+  setStockStatusFilters,
+  hasMoreProducts,
+  remainingProductsCount,
+  onLoadAllProducts
 }: InventoryTabletViewProps) {
   const [showBranchesDropdown, setShowBranchesDropdown] = useState(false)
   const [selectedBranches, setSelectedBranches] = useState<{[key: string]: boolean}>({})
@@ -89,6 +95,10 @@ export default function InventoryTabletView({
   const [showColumnsModal, setShowColumnsModal] = useState(false)
   const [visibleColumns, setVisibleColumns] = useState<{[key: string]: boolean}>({})
   const [isCategoriesHidden, setIsCategoriesHidden] = useState(true)
+
+  // Performance: Limit visible products
+  const VISIBLE_PRODUCTS_LIMIT = 50
+  const [showAllProducts, setShowAllProducts] = useState(false)
 
   // Audit status filters
   const [auditStatusFilters, setAuditStatusFilters] = useState({
@@ -513,19 +523,37 @@ export default function InventoryTabletView({
   // OPTIMIZED: Memoized product filtering
   const filteredProducts = useMemo(() => {
     if (!products.length) return []
-    
+
     return products.filter(item => {
-      const matchesSearch = !searchQuery || 
+      const matchesSearch = !searchQuery ||
         item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         item.barcode?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         item.category?.name?.toLowerCase().includes(searchQuery.toLowerCase())
-      
+
       if (!matchesSearch) return false
-      
+
       const stockStatus = getStockStatus(item)
       return stockStatusFilters[stockStatus as keyof typeof stockStatusFilters]
     })
   }, [products, searchQuery, stockStatusFilters, getStockStatus])
+
+  // PERFORMANCE: Limit visible products to reduce DOM nodes
+  const visibleProducts = useMemo(() => {
+    const hasActiveFilter = searchQuery
+    if (hasActiveFilter || showAllProducts) {
+      return filteredProducts
+    }
+    return filteredProducts.slice(0, VISIBLE_PRODUCTS_LIMIT)
+  }, [filteredProducts, searchQuery, showAllProducts])
+
+  const hasMoreProductsLocal = !showAllProducts &&
+    !searchQuery &&
+    filteredProducts.length > VISIBLE_PRODUCTS_LIMIT
+
+  // Reset showAllProducts when filters change
+  useEffect(() => {
+    setShowAllProducts(false)
+  }, [searchQuery, stockStatusFilters])
 
   // OPTIMIZED: Memoized columns data preparation
   const getAllColumns = useMemo(() => {
@@ -693,7 +721,7 @@ export default function InventoryTabletView({
 
             {/* 2. Product Count (Plain Text) */}
             <span className="text-xs text-gray-400 whitespace-nowrap">
-              عرض {filteredProducts.length} من {products.length}
+              عرض {visibleProducts.length} من {products.length}
             </span>
 
             {/* 3. View Toggle (Images or Tables) */}
@@ -911,7 +939,7 @@ export default function InventoryTabletView({
                 <ResizableTable
                   className="h-full w-full"
                   columns={dynamicTableColumns}
-                  data={filteredProducts}
+                  data={visibleProducts}
                   selectedRowId={selectedProduct?.id || null}
                   onRowClick={(item, index) => {
                     if (selectedProduct?.id === item.id) {
@@ -925,7 +953,7 @@ export default function InventoryTabletView({
                 // Grid View - Responsive columns (tablet gets more columns)
                 <div className="h-full overflow-y-auto scrollbar-hide p-4">
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-                    {filteredProducts.map((product, index) => (
+                    {visibleProducts.map((product, index) => (
                       <div
                         key={product.id}
                         onClick={() => {
@@ -1008,6 +1036,18 @@ export default function InventoryTabletView({
                       </div>
                     ))}
                   </div>
+
+                  {/* Load All Products Button - Mobile/Tablet */}
+                  {hasMoreProductsLocal && (
+                    <div className="flex justify-center py-6">
+                      <button
+                        onClick={() => setShowAllProducts(true)}
+                        className="w-full max-w-md px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-sm transition-colors shadow-lg"
+                      >
+                        تحميل كل المنتجات ({filteredProducts.length - VISIBLE_PRODUCTS_LIMIT} منتج إضافي)
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

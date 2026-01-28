@@ -1086,6 +1086,9 @@ export default function InventoryPage() {
         setIsSidebarOpen={setIsSidebarOpen}
         stockStatusFilters={stockStatusFilters}
         setStockStatusFilters={setStockStatusFilters}
+        hasMoreProducts={hasMoreProducts}
+        remainingProductsCount={filteredProducts.length - VISIBLE_PRODUCTS_LIMIT}
+        onLoadAllProducts={() => setShowAllProducts(true)}
       />
     )
   }

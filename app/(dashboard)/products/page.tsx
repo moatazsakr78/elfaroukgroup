@@ -916,6 +916,9 @@ export default function ProductsPage() {
         setSelectedGroup={setSelectedGroup}
         isSidebarOpen={isSidebarOpen}
         setIsSidebarOpen={setIsSidebarOpen}
+        hasMoreProducts={hasMoreProducts}
+        remainingProductsCount={filteredProducts.length - VISIBLE_PRODUCTS_LIMIT}
+        onLoadAllProducts={() => setShowAllProducts(true)}
       />
     )
   }

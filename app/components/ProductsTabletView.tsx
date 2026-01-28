@@ -58,15 +58,21 @@ interface ProductsTabletViewProps {
   setSelectedGroup: (group: string) => void
   isSidebarOpen: boolean
   setIsSidebarOpen: (open: boolean) => void
+  hasMoreProducts: boolean
+  remainingProductsCount: number
+  onLoadAllProducts: () => void
 }
 
-export default function ProductsTabletView({ 
-  searchQuery, 
-  setSearchQuery, 
-  selectedGroup, 
+export default function ProductsTabletView({
+  searchQuery,
+  setSearchQuery,
+  selectedGroup,
   setSelectedGroup,
   isSidebarOpen,
-  setIsSidebarOpen
+  setIsSidebarOpen,
+  hasMoreProducts,
+  remainingProductsCount,
+  onLoadAllProducts
 }: ProductsTabletViewProps) {
   const [isCategorySidebarOpen, setIsCategorySidebarOpen] = useState(false)
   const [isProductSidebarOpen, setIsProductSidebarOpen] = useState(false)
@@ -91,6 +97,10 @@ export default function ProductsTabletView({
   const [selectedBranches, setSelectedBranches] = useState<{[key: string]: boolean}>({})
   const [tempSelectedBranches, setTempSelectedBranches] = useState<{[key: string]: boolean}>({})
   const [isCategoriesHidden, setIsCategoriesHidden] = useState(true)
+
+  // Performance: Limit visible products
+  const VISIBLE_PRODUCTS_LIMIT = 50
+  const [showAllProducts, setShowAllProducts] = useState(false)
 
   // Missing data filter state
   const [showMissingDataModal, setShowMissingDataModal] = useState(false)
@@ -637,6 +647,25 @@ export default function ProductsTabletView({
     filteredProducts = filterProductsByMissingData(filteredProducts, missingDataFilter, missingDataFilterMode)
   }
 
+  // PERFORMANCE: Limit visible products to reduce DOM nodes
+  const visibleProducts = useMemo(() => {
+    const hasActiveFilter = searchQuery || missingDataFilter.size > 0
+    if (hasActiveFilter || showAllProducts) {
+      return filteredProducts
+    }
+    return filteredProducts.slice(0, VISIBLE_PRODUCTS_LIMIT)
+  }, [filteredProducts, searchQuery, missingDataFilter, showAllProducts])
+
+  const hasMoreProductsLocal = !showAllProducts &&
+    !searchQuery &&
+    missingDataFilter.size === 0 &&
+    filteredProducts.length > VISIBLE_PRODUCTS_LIMIT
+
+  // Reset showAllProducts when filters change
+  useEffect(() => {
+    setShowAllProducts(false)
+  }, [searchQuery, missingDataFilter])
+
   // Toggle categories visibility
   const toggleCategoriesVisibility = () => {
     setIsCategoriesHidden(!isCategoriesHidden)
@@ -850,7 +879,7 @@ export default function ProductsTabletView({
 
               {/* 2. Product Count (Plain Text) */}
               <span className="text-xs text-gray-400 whitespace-nowrap">
-                عرض {filteredProducts.length} من {products.length}
+                عرض {visibleProducts.length} من {products.length}
               </span>
 
               {/* 3. View Toggle (Images or Tables) */}
@@ -927,7 +956,7 @@ export default function ProductsTabletView({
                 <ResizableTable
                   className="h-full w-full"
                   columns={dynamicTableColumns}
-                  data={filteredProducts}
+                  data={visibleProducts}
                   selectedRowId={selectedProduct?.id || null}
                   onRowClick={(product, index) => {
                     if (selectedProduct?.id === product.id) {
@@ -941,7 +970,7 @@ export default function ProductsTabletView({
                 // Grid View - Responsive columns (tablet gets more columns)
                 <div className="h-full overflow-y-auto scrollbar-hide p-4">
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-                    {filteredProducts.map((product, index) => (
+                    {visibleProducts.map((product, index) => (
                       <div
                         key={product.id}
                         onClick={() => {
@@ -1060,6 +1089,18 @@ export default function ProductsTabletView({
                       </div>
                     ))}
                   </div>
+
+                  {/* Load All Products Button - Mobile/Tablet */}
+                  {hasMoreProductsLocal && (
+                    <div className="flex justify-center py-6">
+                      <button
+                        onClick={() => setShowAllProducts(true)}
+                        className="w-full max-w-md px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-sm transition-colors shadow-lg"
+                      >
+                        تحميل كل المنتجات ({filteredProducts.length - VISIBLE_PRODUCTS_LIMIT} منتج إضافي)
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
