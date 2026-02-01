@@ -884,15 +884,15 @@ export default function SafesPage() {
                     <table className="w-full text-sm text-right min-w-[800px]">
                       <thead className="bg-gray-700 text-gray-300 sticky top-0 z-10">
                         <tr>
-                          <th className="p-3 text-right font-medium">#</th>
-                          <th className="p-3 text-right font-medium">نوع العملية</th>
-                          <th className="p-3 text-right font-medium">الخزنة</th>
-                          <th className="p-3 text-right font-medium">المبلغ</th>
-                          <th className="p-3 text-right font-medium">الرصيد بعد</th>
-                          <th className="p-3 text-right font-medium">ملاحظات</th>
-                          <th className="p-3 text-right font-medium">اسم العميل</th>
-                          <th className="p-3 text-right font-medium">بواسطة</th>
-                          <th className="p-3 text-right font-medium">التاريخ</th>
+                          <th className="py-2 px-3 text-right font-medium">#</th>
+                          <th className="py-2 px-3 text-right font-medium">نوع العملية</th>
+                          <th className="py-2 px-3 text-right font-medium">الخزنة</th>
+                          <th className="py-2 px-3 text-right font-medium">المبلغ</th>
+                          <th className="py-2 px-3 text-right font-medium">الرصيد بعد</th>
+                          <th className="py-2 px-3 text-right font-medium">ملاحظات</th>
+                          <th className="py-2 px-3 text-right font-medium">اسم العميل</th>
+                          <th className="py-2 px-3 text-right font-medium">بواسطة</th>
+                          <th className="py-2 px-3 text-right font-medium">التاريخ</th>
                         </tr>
                       </thead>
                       <tbody className="bg-pos-darker divide-y divide-gray-700">
@@ -905,8 +905,8 @@ export default function SafesPage() {
                                 className={`hover:bg-gray-700 transition-colors cursor-pointer ${isPending ? 'bg-yellow-900/20' : ''}`}
                                 onContextMenu={(e) => !isPending && handleContextMenu(e, tx)}
                               >
-                                <td className="p-3 text-white font-medium">{index + 1}</td>
-                                <td className="p-3">
+                                <td className="py-2 px-3 text-white font-medium">{index + 1}</td>
+                                <td className="py-2 px-3">
                                   <div className="flex items-center gap-2">
                                     {getTransactionTypeBadge(tx.transaction_type)}
                                     {isPending && (
@@ -916,17 +916,17 @@ export default function SafesPage() {
                                     )}
                                   </div>
                                 </td>
-                                <td className="p-3 text-white">{tx.safe_name}</td>
-                                <td className="p-3">{formatAmount(tx.amount)}</td>
-                                <td className="p-3 text-gray-300">
+                                <td className="py-2 px-3 text-white">{tx.safe_name}</td>
+                                <td className="py-2 px-3">{formatAmount(tx.amount)}</td>
+                                <td className="py-2 px-3 text-gray-300">
                                   {isPending ? <span className="text-yellow-400">-</span> : formatPrice(tx.balance_after || 0)}
                                 </td>
-                                <td className="p-3 text-gray-400 max-w-[200px] truncate" title={tx.notes || ''}>
+                                <td className="py-2 px-3 text-gray-400 max-w-[200px] truncate" title={tx.notes || ''}>
                                   {tx.notes || '-'}
                                 </td>
-                                <td className="p-3 text-gray-400">{tx.customer_name || '-'}</td>
-                                <td className="p-3 text-gray-400">{tx.performed_by || '-'}</td>
-                                <td className="p-3 text-gray-400">{formatDateTime(tx.created_at)}</td>
+                                <td className="py-2 px-3 text-gray-400">{tx.customer_name || '-'}</td>
+                                <td className="py-2 px-3 text-gray-400">{tx.performed_by || '-'}</td>
+                                <td className="py-2 px-3 text-gray-400">{formatDateTime(tx.created_at)}</td>
                               </tr>
                             )
                           })

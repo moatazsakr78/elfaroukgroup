@@ -44,7 +44,8 @@ export default function SimpleDateFilterModal({ isOpen, onClose, onDateFilterCha
 
     if (selectedFilter === 'custom') {
       filter.startDate = customStartDate || undefined
-      filter.endDate = customEndDate || undefined
+      // إذا لم يكن هناك endDate، استخدم startDate (يوم واحد)
+      filter.endDate = customEndDate || customStartDate || undefined
     }
 
     onDateFilterChange(filter)
@@ -117,35 +118,57 @@ export default function SimpleDateFilterModal({ isOpen, onClose, onDateFilterCha
   }
 
   const handleDateClick = (date: Date) => {
-    // Check if clicking on already selected start date
-    if (customStartDate && date.toDateString() === customStartDate.toDateString() && !customEndDate) {
-      // Remove start date selection
+    const isStartDate = customStartDate && date.toDateString() === customStartDate.toDateString()
+    const isEndDate = customEndDate && date.toDateString() === customEndDate.toDateString()
+
+    // Toggle: إذا ضغط على تاريخ محدد، يتم إلغاؤه
+    if (isStartDate && isEndDate) {
+      // نفس اليوم محدد كبداية ونهاية (يوم واحد) → إلغاء الكل
       setCustomStartDate(null)
-      if (selectedFilter === 'custom') {
+      setCustomEndDate(null)
+      setSelectedFilter('all')
+      return
+    }
+
+    if (isStartDate) {
+      // إلغاء تاريخ البداية
+      if (customEndDate) {
+        // إذا كان هناك تاريخ نهاية، يصبح هو البداية
+        setCustomStartDate(customEndDate)
+        setCustomEndDate(null)
+      } else {
+        // لا يوجد نهاية، إلغاء الكل
+        setCustomStartDate(null)
         setSelectedFilter('all')
       }
       return
     }
-    
-    // Check if clicking on already selected end date
-    if (customEndDate && date.toDateString() === customEndDate.toDateString()) {
-      // Remove end date selection
+
+    if (isEndDate) {
+      // إلغاء تاريخ النهاية فقط
       setCustomEndDate(null)
       return
     }
-    
-    if (!customStartDate || (customStartDate && customEndDate)) {
-      // Start new selection
+
+    // تاريخ جديد غير محدد
+    if (!customStartDate) {
+      // لا يوجد بداية، هذا التاريخ يصبح البداية
+      setCustomStartDate(date)
+      setSelectedFilter('custom')
+    } else if (!customEndDate) {
+      // يوجد بداية فقط، هذا التاريخ يصبح النهاية
+      if (date >= customStartDate) {
+        setCustomEndDate(date)
+      } else {
+        // التاريخ قبل البداية، يصبح هو البداية والقديم يصبح النهاية
+        setCustomEndDate(customStartDate)
+        setCustomStartDate(date)
+      }
+    } else {
+      // يوجد بداية ونهاية، بدء تحديد جديد
       setCustomStartDate(date)
       setCustomEndDate(null)
       setSelectedFilter('custom')
-    } else if (date >= customStartDate) {
-      // Set end date
-      setCustomEndDate(date)
-    } else {
-      // Date is before start, make it the new start
-      setCustomEndDate(customStartDate)
-      setCustomStartDate(date)
     }
   }
 
@@ -162,6 +185,10 @@ export default function SimpleDateFilterModal({ isOpen, onClose, onDateFilterCha
       if (customStartDate && customEndDate) {
         const formatDate = (date: Date) => {
           return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`
+        }
+        // إذا كان نفس اليوم، أظهر تاريخ واحد فقط
+        if (customStartDate.toDateString() === customEndDate.toDateString()) {
+          return formatDate(customStartDate)
         }
         return `${formatDate(customStartDate)} - ${formatDate(customEndDate)}`
       }
@@ -346,9 +373,9 @@ export default function SimpleDateFilterModal({ isOpen, onClose, onDateFilterCha
 
             {/* Selection Instructions */}
             <div className="text-center text-gray-400 text-sm">
-              {!customStartDate && 'اضغط على تاريخ البداية'}
-              {customStartDate && !customEndDate && 'اضغط على تاريخ النهاية'}
-              {customStartDate && customEndDate && 'تم تحديد النطاق - يمكنك تعديله بالضغط على تاريخ جديد'}
+              {!customStartDate && 'اضغط على تاريخ لتحديده'}
+              {customStartDate && !customEndDate && 'اضغط على تاريخ آخر لتحديد فترة، أو اضغط على نفس التاريخ لإلغائه'}
+              {customStartDate && customEndDate && 'اضغط على أي تاريخ محدد لإلغائه، أو اضغط على تاريخ جديد لبدء تحديد جديد'}
             </div>
           </div>
         </div>
