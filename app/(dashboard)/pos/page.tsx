@@ -2092,6 +2092,12 @@ function POSPageContent() {
     [updateActiveTabCart, getProductPriceByType, isPurchaseMode, currentBranch],
   );
 
+  // Ref to hold the latest handleAddToCart function to avoid re-renders
+  const handleAddToCartRef = useRef(handleAddToCart);
+  useEffect(() => {
+    handleAddToCartRef.current = handleAddToCart;
+  }, [handleAddToCart]);
+
   // OPTIMIZED: Remove from Cart
   const removeFromCart = useCallback((itemId: string) => {
     setCartItems((prev) => {
@@ -2277,10 +2283,10 @@ function POSPageContent() {
 
       if (variantName && variantType === 'color') {
         // إضافة مع اللون المحدد
-        handleAddToCart(productWithPrice, 1, variantName);
+        handleAddToCartRef.current(productWithPrice, 1, variantName);
       } else {
         // إضافة بدون لون
-        handleAddToCart(productWithPrice, 1);
+        handleAddToCartRef.current(productWithPrice, 1);
       }
 
       // صوت التنبيه
@@ -2293,7 +2299,7 @@ function POSPageContent() {
         searchInputRef.current?.focus();
       }, 100);
     }
-  }, [debouncedSearchQuery, searchMode, barcodeMap, isPurchaseMode, isTransferMode, selectedSupplier, selectedWarehouse, selections.record, transferFromLocation, transferToLocation, hasRequiredForCart, getProductPriceByType, handleAddToCart, playBeep]);
+  }, [debouncedSearchQuery, searchMode, barcodeMap, isPurchaseMode, isTransferMode, selectedSupplier, selectedWarehouse, selections.record, transferFromLocation, transferToLocation, hasRequiredForCart, getProductPriceByType, playBeep]);
 
   const handleColorSelection = async (
     selections: { [key: string]: number },
@@ -4729,38 +4735,40 @@ function POSPageContent() {
                   </button>
                 )}
 
-                {/* Party Selection Button (Customer/Supplier) */}
-                <button
-                  onClick={() => setIsPartyModalOpen(true)}
-                  className={`flex flex-col items-center p-2 cursor-pointer min-w-[80px] transition-all relative ${
-                    selectedPartyType === 'supplier'
-                      ? "text-amber-400 hover:text-amber-300"
-                      : "text-gray-300 hover:text-white"
-                  }`}
-                  title={selectedPartyType === 'customer'
-                    ? `العميل: ${selections.customer?.name || 'غير محدد'}`
-                    : `المورد: ${selectedSupplierForSale?.name || 'غير محدد'}`}
-                >
-                  {selectedPartyType === 'customer' ? (
-                    <>
-                      <UserIcon className="h-5 w-5 mb-1" />
-                      <span className="text-sm truncate max-w-[70px]">
-                        {selections.customer?.name || 'اختر عميل'}
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <TruckIcon className="h-5 w-5 mb-1" />
-                      <span className="text-sm truncate max-w-[70px]">
-                        {selectedSupplierForSale?.name || 'اختر مورد'}
-                      </span>
-                    </>
-                  )}
-                  {(selectedPartyType === 'customer' && !selections.customer) ||
-                   (selectedPartyType === 'supplier' && !selectedSupplierForSale) ? (
-                    <div className="w-1 h-1 bg-red-400 rounded-full mt-1"></div>
-                  ) : null}
-                </button>
+                {/* Party Selection Button (Customer/Supplier) - Hidden in Purchase Mode */}
+                {!isPurchaseMode && (
+                  <button
+                    onClick={() => setIsPartyModalOpen(true)}
+                    className={`flex flex-col items-center p-2 cursor-pointer min-w-[80px] transition-all relative ${
+                      selectedPartyType === 'supplier'
+                        ? "text-amber-400 hover:text-amber-300"
+                        : "text-gray-300 hover:text-white"
+                    }`}
+                    title={selectedPartyType === 'customer'
+                      ? `العميل: ${selections.customer?.name || 'غير محدد'}`
+                      : `المورد: ${selectedSupplierForSale?.name || 'غير محدد'}`}
+                  >
+                    {selectedPartyType === 'customer' ? (
+                      <>
+                        <UserIcon className="h-5 w-5 mb-1" />
+                        <span className="text-sm truncate max-w-[70px]">
+                          {selections.customer?.name || 'اختر عميل'}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <TruckIcon className="h-5 w-5 mb-1" />
+                        <span className="text-sm truncate max-w-[70px]">
+                          {selectedSupplierForSale?.name || 'اختر مورد'}
+                        </span>
+                      </>
+                    )}
+                    {(selectedPartyType === 'customer' && !selections.customer) ||
+                     (selectedPartyType === 'supplier' && !selectedSupplierForSale) ? (
+                      <div className="w-1 h-1 bg-red-400 rounded-full mt-1"></div>
+                    ) : null}
+                  </button>
+                )}
 
                 {/* Price Type Button */}
                 {!isPurchaseMode && !isTransferMode && (

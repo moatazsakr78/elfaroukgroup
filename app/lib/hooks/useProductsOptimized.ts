@@ -850,12 +850,44 @@ export function useProducts() {
               setProducts(prev => [enrichedProduct, ...prev] as Product[])
             }
           } else if (payload.eventType === 'UPDATE') {
-            // Handle UPDATE events more efficiently for specific fields
+            // Handle UPDATE events by updating the product in-place without full refetch
+            // This prevents the skeleton loading flash when updating products (e.g., in purchase mode)
             const updatedProduct = payload.new as any
-            const oldProduct = payload.old as any
-            
-            // For product updates, do full refetch to get latest data
-            fetchProductsOptimized()
+
+            // Fetch the updated product with category data
+            const { data: productData } = await supabase
+              .from('products')
+              .select(`
+                *,
+                category:categories(
+                  id,
+                  name,
+                  name_en
+                )
+              `)
+              .eq('id', updatedProduct.id)
+              .single()
+
+            if (productData) {
+              // Update the product in the list without changing isLoading
+              setProducts(prev => prev.map(product => {
+                if (product.id === updatedProduct.id) {
+                  // Merge the updated data while preserving computed fields
+                  return {
+                    ...product,
+                    ...productData,
+                    // Preserve existing computed data that isn't in the DB
+                    inventoryData: product.inventoryData,
+                    variantsData: product.variantsData,
+                    totalQuantity: product.totalQuantity,
+                    productColors: product.productColors,
+                    colors: product.colors,
+                    allImages: product.allImages,
+                  }
+                }
+                return product
+              }))
+            }
           } else {
             // For DELETE, do a smart refetch
             fetchProductsOptimized()

@@ -620,10 +620,17 @@ const getDateRangeForFilter = (filter: DateFilter): { startDate: string; endDate
       endDate = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
       break;
     case 'custom':
-      if (filter.startDate && filter.endDate) {
+      // ✅ الإصلاح: ضبط الساعات بشكل صحيح للتاريخ المخصص
+      if (filter.startDate) {
+        const start = new Date(filter.startDate);
+        start.setHours(0, 0, 0, 0);
+
+        const end = filter.endDate ? new Date(filter.endDate) : new Date(filter.startDate);
+        end.setHours(23, 59, 59, 999);
+
         return {
-          startDate: filter.startDate.toISOString(),
-          endDate: filter.endDate.toISOString()
+          startDate: start.toISOString(),
+          endDate: end.toISOString()
         };
       }
       return null;
