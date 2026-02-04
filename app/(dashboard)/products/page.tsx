@@ -1734,7 +1734,7 @@ export default function ProductsPage() {
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="bg-[#2B3544] rounded-2xl shadow-2xl border border-[#4A5568] max-w-6xl w-full max-h-[90vh] overflow-y-auto scrollbar-hide">
               {/* Header */}
-              <div className="sticky top-0 bg-[#2B3544] px-8 py-6 border-b border-[#4A5568] flex items-center justify-between rounded-t-2xl">
+              <div className="sticky top-0 bg-[#2B3544] px-4 md:px-8 py-4 md:py-6 border-b border-[#4A5568] flex items-center justify-between rounded-t-2xl">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center">
                     <span className="text-white font-bold text-lg">📦</span>
@@ -1753,11 +1753,11 @@ export default function ProductsPage() {
               </div>
               
               {/* Content */}
-              <div className="p-8">
-                <div className="grid grid-cols-3 gap-8">
+              <div className="p-4 md:p-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-8">
                   
                   {/* Left Column - Product Info */}
-                  <div className="space-y-6">
+                  <div className="space-y-6 order-2 lg:order-1">
                     
                     {/* Basic Info Card */}
                     <div className="bg-[#374151] rounded-xl p-6 border border-[#4A5568]">
@@ -1890,7 +1890,7 @@ export default function ProductsPage() {
                   </div>
 
                   {/* Middle Column - Inventory */}
-                  <div className="space-y-6">
+                  <div className="space-y-6 order-3 lg:order-2">
                     
                     {/* Total Inventory Card */}
                     <div className="bg-[#374151] rounded-xl p-6 border border-[#4A5568]">
@@ -2012,7 +2012,7 @@ export default function ProductsPage() {
                   </div>
 
                   {/* Right Column - Images */}
-                  <div className="space-y-6">
+                  <div className="space-y-6 order-1 lg:order-3">
                     
                     {/* Main Image Preview */}
                     <div className="bg-[#374151] rounded-xl p-6 border border-[#4A5568]">
