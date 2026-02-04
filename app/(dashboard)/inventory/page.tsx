@@ -15,6 +15,7 @@ import ManagementModal from '../../components/ManagementModal'
 import CategoriesTreeView from '../../components/CategoriesTreeView'
 import ColumnsControlModal from '../../components/ColumnsControlModal'
 import QuantityAdjustmentModal from '../../components/QuantityAdjustmentModal'
+import InventoryPDFExportModal from '../../components/InventoryPDFExportModal'
 import { useProductsAdmin } from '../../../lib/hooks/useProductsAdmin'
 import { supabase } from '../../lib/supabase/client'
 import { revalidateProductPage } from '../../../lib/utils/revalidate'
@@ -87,6 +88,10 @@ export default function InventoryPage() {
   const [quantityModalMode, setQuantityModalMode] = useState<'add' | 'edit'>('add')
   const [selectedProductForQuantity, setSelectedProductForQuantity] = useState<any>(null)
   const [selectedBranchForQuantity, setSelectedBranchForQuantity] = useState<string>('')
+
+  // PDF Export modal states
+  const [showPDFExportModal, setShowPDFExportModal] = useState(false)
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([])
   
   // Audit status states - removed since we now use database values
   
@@ -1139,9 +1144,12 @@ export default function InventoryPage() {
               <span className="text-sm">إدارة</span>
             </button>
 
-            <button className="flex flex-col items-center p-2 text-gray-300 hover:text-white cursor-pointer min-w-[80px]">
+            <button
+              onClick={() => setShowPDFExportModal(true)}
+              className="flex flex-col items-center p-2 text-gray-300 hover:text-white cursor-pointer min-w-[80px]"
+            >
               <DocumentArrowDownIcon className="h-5 w-5 mb-1" />
-              <span className="text-sm">حفظ كـ PDF</span>
+              <span className="text-sm">Packing</span>
             </button>
 
             <button className="flex flex-col items-center p-2 text-gray-300 hover:text-white cursor-pointer min-w-[80px]">
@@ -1959,7 +1967,7 @@ export default function InventoryPage() {
             const currentStatus = (branchInventory as any)?.audit_status || 'غير مجرود'
             const allStatuses = ['غير مجرود', 'استعد', 'تام الجرد']
             const availableStatuses = allStatuses.filter(status => status !== currentStatus)
-            
+
             return availableStatuses.map((status) => {
               const getStatusColor = (status: string) => {
                 switch(status) {
@@ -1969,7 +1977,7 @@ export default function InventoryPage() {
                   default: return 'hover:bg-gray-600/20 text-gray-400'
                 }
               }
-              
+
               return (
                 <button
                   key={status}
@@ -1984,6 +1992,14 @@ export default function InventoryPage() {
           }
         </div>
       )}
+
+      {/* PDF Export Modal */}
+      <InventoryPDFExportModal
+        isOpen={showPDFExportModal}
+        onClose={() => setShowPDFExportModal(false)}
+        products={filteredProducts}
+        selectedProductIds={selectedProductIds}
+      />
     </div>
   )
 }

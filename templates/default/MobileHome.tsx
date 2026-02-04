@@ -993,6 +993,25 @@ export default function MobileHome({
                     </div>
                   </button>
 
+                  {/* Catalog - كتالوج - for everyone */}
+                  <button
+                    onClick={() => {
+                      window.location.href = '/catalog';
+                      closeMenu();
+                    }}
+                    className="flex items-center gap-3 w-full p-3 text-black hover:bg-gray-300 rounded-lg transition-colors text-right group"
+                  >
+                    <div className="p-2 bg-[var(--primary-color)] rounded-full group-hover:bg-[var(--interactive-color)] transition-colors">
+                      <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                      </svg>
+                    </div>
+                    <div className="flex-1 text-right">
+                      <h3 className="font-semibold text-base text-black">كتالوج</h3>
+                      <p className="text-xs text-gray-600">عرض كتالوج المنتجات بالأسعار</p>
+                    </div>
+                  </button>
+
                 </div>
               </div>
               )}
