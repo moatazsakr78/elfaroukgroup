@@ -99,6 +99,7 @@ export default function ProductsPage() {
   const [showProductModal, setShowProductModal] = useState(false)
   const [modalProduct, setModalProduct] = useState<Product | null>(null)
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
+  const [showPurchasePrice, setShowPurchasePrice] = useState(false)
   const [showColorAssignmentModal, setShowColorAssignmentModal] = useState(false)
   const [showColorAssignmentModalNew, setShowColorAssignmentModalNew] = useState(false)
   const [showColorChangeModal, setShowColorChangeModal] = useState(false)
@@ -853,6 +854,15 @@ export default function ProductsPage() {
   }, [])
 
 
+  // دالة البحث بكلمات متعددة - تُرجع true إذا كل الكلمات موجودة في أي من الحقول
+  const matchesMultiWordSearch = (query: string, ...fields: (string | null | undefined)[]): boolean => {
+    if (!query) return true;
+    const words = query.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+    if (words.length === 0) return true;
+    const combinedText = fields.filter(Boolean).map(f => f!.toLowerCase()).join(' ');
+    return words.every(word => combinedText.includes(word));
+  };
+
   // OPTIMIZED: Memoized product filtering to prevent unnecessary re-renders
   const filteredProducts = useMemo(() => {
     let filtered = products
@@ -866,12 +876,10 @@ export default function ProductsPage() {
       )
     }
 
-    // Search query filter
+    // Search query filter - يدعم البحث بكلمات متعددة
     if (searchQuery) {
-      const query = searchQuery.toLowerCase()
       filtered = filtered.filter(product =>
-        product.name.toLowerCase().includes(query) ||
-        (product.barcode && product.barcode.toLowerCase().includes(query))
+        matchesMultiWordSearch(searchQuery, product.name, product.barcode)
       )
     }
 
@@ -1337,6 +1345,7 @@ export default function ProductsPage() {
                                 // Set first available image as selected
                                 const firstImage = product.allImages?.[0] || product.main_image_url || null
                                 setSelectedImage(firstImage)
+                                setShowPurchasePrice(false) // Reset purchase price visibility
                                 setShowProductModal(true)
                               }}
                               className={`bg-black/70 hover:bg-black/90 text-white p-2 rounded-full opacity-0 ${!isSidebarOpen ? 'group-hover:opacity-100' : 'pointer-events-none'} transition-all duration-200 shadow-lg`}
@@ -1817,9 +1826,20 @@ export default function ProductsPage() {
                       </div>
                       
                       <div className="grid grid-cols-2 gap-4">
-                        <div className="bg-[#2B3544] rounded-lg p-4 text-center">
-                          <p className="text-gray-400 text-sm mb-1">سعر الشراء</p>
-                          <p className="text-orange-400 font-bold text-lg">{(modalProduct.cost_price || 0).toFixed(2)}</p>
+                        <div
+                          onClick={() => setShowPurchasePrice(!showPurchasePrice)}
+                          className="bg-[#2B3544] rounded-lg p-4 text-center cursor-pointer hover:bg-[#374151] transition-colors relative"
+                        >
+                          {showPurchasePrice ? (
+                            <>
+                              <p className="text-gray-400 text-sm mb-1">سعر الشراء</p>
+                              <p className="text-orange-400 font-bold text-lg">{(modalProduct.cost_price || 0).toFixed(2)}</p>
+                            </>
+                          ) : (
+                            <div className="flex items-center justify-center h-full min-h-[52px]">
+                              <EyeSlashIcon className="h-6 w-6 text-gray-500" />
+                            </div>
+                          )}
                         </div>
                         <div className="bg-[#2B3544] rounded-lg p-4 text-center">
                           <p className="text-gray-400 text-sm mb-1">سعر الجملة</p>

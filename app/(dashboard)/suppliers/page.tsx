@@ -683,12 +683,19 @@ export default function SuppliersPage() {
     return subGroups
   }
 
+  // دالة البحث بكلمات متعددة - تُرجع true إذا كل الكلمات موجودة في أي من الحقول
+  const matchesMultiWordSearch = (query: string, ...fields: (string | null | undefined)[]): boolean => {
+    if (!query) return true;
+    const words = query.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+    if (words.length === 0) return true;
+    const combinedText = fields.filter(Boolean).map(f => f!.toLowerCase()).join(' ');
+    return words.every(word => combinedText.includes(word));
+  };
+
   // فلترة الموردين حسب المجموعة المحددة والبحث
   const filteredSuppliers = suppliers.filter(supplier => {
-    // فلترة البحث أولاً
-    const matchesSearch = supplier.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (supplier.phone && supplier.phone.includes(searchQuery)) ||
-      (supplier.city && supplier.city.toLowerCase().includes(searchQuery.toLowerCase()))
+    // فلترة البحث أولاً - يدعم البحث بكلمات متعددة
+    const matchesSearch = matchesMultiWordSearch(searchQuery, supplier.name, supplier.phone, supplier.city)
     
     // إذا لم يكن هناك مجموعة محددة، إظهار جميع الموردين
     if (!selectedSupplierGroup) {

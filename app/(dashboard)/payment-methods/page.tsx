@@ -139,8 +139,17 @@ export default function PaymentMethodsPage() {
     })
   }
 
+  // دالة البحث بكلمات متعددة - تُرجع true إذا كل الكلمات موجودة في أي من الحقول
+  const matchesMultiWordSearch = (query: string, ...fields: (string | null | undefined)[]): boolean => {
+    if (!query) return true;
+    const words = query.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+    if (words.length === 0) return true;
+    const combinedText = fields.filter(Boolean).map(f => f!.toLowerCase()).join(' ');
+    return words.every(word => combinedText.includes(word));
+  };
+
   const filteredPaymentMethods = paymentMethods.filter(method =>
-    method.name.toLowerCase().includes(searchTerm.toLowerCase())
+    matchesMultiWordSearch(searchTerm, method.name)
   )
 
   return (

@@ -702,6 +702,15 @@ export default function InventoryPage() {
 
     console.log('📦 Total products before filtering:', products.length);
 
+    // دالة البحث بكلمات متعددة - تُرجع true إذا كل الكلمات موجودة في أي من الحقول
+    const matchesMultiWordSearch = (query: string, ...fields: (string | null | undefined)[]): boolean => {
+      if (!query) return true;
+      const words = query.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+      if (words.length === 0) return true;
+      const combinedText = fields.filter(Boolean).map(f => f!.toLowerCase()).join(' ');
+      return words.every(word => combinedText.includes(word));
+    };
+
     const filtered = products.filter(item => {
       // Category filter: If a category is selected and it's not the root "منتجات" category
       if (selectedCategory && selectedCategory.name !== 'منتجات') {
@@ -711,11 +720,8 @@ export default function InventoryPage() {
         }
       }
 
-      // Text search filter
-      const matchesSearch = !searchQuery ||
-        item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.barcode?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.category?.name?.toLowerCase().includes(searchQuery.toLowerCase())
+      // Text search filter - يدعم البحث بكلمات متعددة
+      const matchesSearch = matchesMultiWordSearch(searchQuery, item.name, item.barcode, item.category?.name)
 
       if (!matchesSearch) return false
 
