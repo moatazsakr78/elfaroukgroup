@@ -7,6 +7,7 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { Product } from '../../../lib/hooks/useProductsAdmin'
+import { registerArabicFont } from './fonts/amiri-font'
 
 // Extend jsPDF type to include autoTable
 declare module 'jspdf' {
@@ -100,6 +101,10 @@ export async function generateInventoryPDF(
     unit: 'mm',
     format: 'a4'
   })
+
+  // Register and set Arabic font
+  registerArabicFont(doc)
+  doc.setFont('Amiri')
 
   // Get enabled columns in order
   const enabledColumns = options.columns.filter(col => col.enabled)
@@ -227,7 +232,7 @@ export async function generateInventoryPDF(
     startY: 28,
     theme: 'grid',
     styles: {
-      font: 'helvetica',
+      font: 'Amiri',
       fontSize: 9,
       cellPadding: 3,
       halign: 'center',
@@ -239,12 +244,14 @@ export async function generateInventoryPDF(
     headStyles: {
       fillColor: [43, 53, 68], // #2B3544
       textColor: [255, 255, 255],
-      fontStyle: 'bold',
+      font: 'Amiri',
+      fontStyle: 'normal', // Amiri doesn't have bold variant
       halign: 'center'
     },
     bodyStyles: {
       fillColor: [55, 65, 81], // #374151
       textColor: [255, 255, 255],
+      font: 'Amiri',
       halign: 'center'
     },
     alternateRowStyles: {

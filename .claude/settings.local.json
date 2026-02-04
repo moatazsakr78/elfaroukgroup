@@ -346,7 +346,8 @@
       "Bash(start http://localhost:3001/whatsapp)",
       "Bash(start:*)",
       "Bash(du -sh:*)",
-      "Bash(npx next lint:*)"
+      "Bash(npx next lint:*)",
+      "Bash(certutil:*)"
     ],
     "deny": [],
     "additionalDirectories": [

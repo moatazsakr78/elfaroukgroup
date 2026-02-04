@@ -92,7 +92,32 @@ export default function InventoryPage() {
   // PDF Export modal states
   const [showPDFExportModal, setShowPDFExportModal] = useState(false)
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([])
-  
+  const [isSelectionMode, setIsSelectionMode] = useState(false)
+
+  // Multi-select helper functions
+  const toggleProductSelection = useCallback((id: string) => {
+    setSelectedProductIds(prev =>
+      prev.includes(id) ? prev.filter(pid => pid !== id) : [...prev, id]
+    )
+  }, [])
+
+  const toggleSelectAll = useCallback((productIds: string[]) => {
+    setSelectedProductIds(prev => {
+      const allSelected = productIds.every(id => prev.includes(id))
+      if (allSelected) {
+        return prev.filter(id => !productIds.includes(id))
+      } else {
+        const newSet = new Set([...prev, ...productIds])
+        return Array.from(newSet)
+      }
+    })
+  }, [])
+
+  const clearSelection = useCallback(() => {
+    setSelectedProductIds([])
+    setIsSelectionMode(false)
+  }, [])
+
   // Audit status states - removed since we now use database values
   
   // Audit status filter states
@@ -199,7 +224,7 @@ export default function InventoryPage() {
 
   // Initialize visible columns state
   useEffect(() => {
-    const allColumns = ['index', 'name', 'category', 'totalQuantity', 'cost_price', 'price', 'wholesale_price', 'price1', 'price2', 'price3', 'price4', 'barcode', 'audit_status']
+    const allColumns = ['select', 'index', 'name', 'category', 'totalQuantity', 'cost_price', 'price', 'wholesale_price', 'price1', 'price2', 'price3', 'price4', 'barcode', 'audit_status']
     
     // Add branch columns
     branches.forEach(branch => {
@@ -250,10 +275,29 @@ export default function InventoryPage() {
   // OPTIMIZED: Generate dynamic table columns with advanced memoization
   const dynamicTableColumns = useMemo(() => {
     const staticColumns = [
-    { 
-      id: 'index', 
-      header: '#', 
-      accessor: '#', 
+    // عمود التحديد - يظهر فقط في وضع التحديد
+    ...(isSelectionMode ? [{
+      id: 'select',
+      header: '✓',
+      accessor: 'id',
+      width: 45,
+      render: (value: any, item: any) => (
+        <input
+          type="checkbox"
+          checked={selectedProductIds.includes(item.id)}
+          onChange={(e) => {
+            e.stopPropagation()
+            toggleProductSelection(item.id)
+          }}
+          onClick={(e: React.MouseEvent) => e.stopPropagation()}
+          className="w-4 h-4 rounded border-gray-500 bg-[#2B3544] text-blue-600 focus:ring-blue-500 focus:ring-2 cursor-pointer accent-blue-600"
+        />
+      )
+    }] : []),
+    {
+      id: 'index',
+      header: '#',
+      accessor: '#',
       width: 60,
       render: (value: any, item: any, index: number) => (
         <span className="text-gray-400 font-medium">{index + 1}</span>
@@ -560,7 +604,7 @@ export default function InventoryPage() {
     
     // Filter columns based on visibility
     return allColumns.filter(col => visibleColumns[col.id] !== false)
-  }, [branches, visibleColumns, selectedBranches])
+  }, [branches, visibleColumns, selectedBranches, selectedProductIds, toggleProductSelection, isSelectionMode])
 
   // OPTIMIZED: Memoized columns data preparation
   const getAllColumns = useMemo(() => {
@@ -1152,6 +1196,24 @@ export default function InventoryPage() {
               <span className="text-sm">Packing</span>
             </button>
 
+            {/* Selection indicator - يظهر فقط في وضع التحديد */}
+            {isSelectionMode && (
+              <div className="flex items-center gap-2 px-3 py-1 bg-blue-600/20 border border-blue-500/30 rounded-lg mr-2">
+                <span className="text-blue-400 text-sm font-medium">
+                  {selectedProductIds.length > 0
+                    ? `تم تحديد ${selectedProductIds.length} منتج`
+                    : 'وضع التحديد - اختر المنتجات'}
+                </span>
+                <button
+                  onClick={clearSelection}
+                  className="text-blue-300 hover:text-white transition-colors"
+                  title="إلغاء وضع التحديد"
+                >
+                  <XMarkIcon className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+
             <button className="flex flex-col items-center p-2 text-gray-300 hover:text-white cursor-pointer min-w-[80px]">
               <DocumentTextIcon className="h-5 w-5 mb-1" />
               <span className="text-sm">اكسل</span>
@@ -1424,18 +1486,42 @@ export default function InventoryPage() {
                       <div
                         key={product.id}
                         onClick={() => {
-                          if (selectedProduct?.id === product.id) {
-                            setSelectedProduct(null)
+                          if (isSelectionMode) {
+                            // في وضع التحديد، الضغط على الكارت يحدد/يلغي تحديد المنتج
+                            toggleProductSelection(product.id)
                           } else {
-                            setSelectedProduct(product)
+                            // في الوضع العادي، الضغط على الكارت يفتح التفاصيل
+                            if (selectedProduct?.id === product.id) {
+                              setSelectedProduct(null)
+                            } else {
+                              setSelectedProduct(product)
+                            }
                           }
                         }}
                         className={`bg-[#374151] rounded-lg p-3 cursor-pointer transition-all duration-200 border-2 relative group ${
                           selectedProduct?.id === product.id
                             ? 'border-blue-500 bg-[#434E61]'
+                            : selectedProductIds.includes(product.id)
+                            ? 'border-blue-400/50 bg-[#3a4a5e]'
                             : 'border-transparent hover:border-gray-500 hover:bg-[#434E61]'
                         }`}
                       >
+                        {/* Multi-select checkbox - يظهر فقط في وضع التحديد */}
+                        {isSelectionMode && (
+                          <div className="absolute top-2 left-2 z-10">
+                            <input
+                              type="checkbox"
+                              checked={selectedProductIds.includes(product.id)}
+                              onChange={(e) => {
+                                e.stopPropagation()
+                                toggleProductSelection(product.id)
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              className="w-4 h-4 rounded border-gray-500 bg-[#2B3544] text-blue-600 focus:ring-blue-500 focus:ring-2 cursor-pointer accent-blue-600"
+                            />
+                          </div>
+                        )}
+
                         {/* Product Image - OPTIMIZED */}
                         <div className="mb-3 relative">
                           <ProductGridImage
@@ -1999,6 +2085,10 @@ export default function InventoryPage() {
         onClose={() => setShowPDFExportModal(false)}
         products={filteredProducts}
         selectedProductIds={selectedProductIds}
+        onSelectModeRequest={() => {
+          setIsSelectionMode(true)
+          setSelectedProductIds([])
+        }}
       />
     </div>
   )

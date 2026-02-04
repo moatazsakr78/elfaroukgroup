@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { XMarkIcon, DocumentArrowDownIcon } from '@heroicons/react/24/outline'
-import { Product } from '../../../lib/hooks/useProductsAdmin'
+import { Product } from '../../lib/hooks/useProductsAdmin'
 import {
   generateInventoryPDF,
   PDFExportColumn,
@@ -16,13 +16,15 @@ interface InventoryPDFExportModalProps {
   onClose: () => void
   products: Product[]
   selectedProductIds: string[]
+  onSelectModeRequest?: () => void
 }
 
 export default function InventoryPDFExportModal({
   isOpen,
   onClose,
   products,
-  selectedProductIds
+  selectedProductIds,
+  onSelectModeRequest
 }: InventoryPDFExportModalProps) {
   // Export columns state
   const [columns, setColumns] = useState<PDFExportColumn[]>(
@@ -198,6 +200,23 @@ export default function InventoryPDFExportModal({
                   </span>
                 </label>
               </div>
+
+              {/* زر تفعيل وضع التحديد */}
+              {onSelectModeRequest && selectedProductIds.length === 0 && (
+                <button
+                  onClick={() => {
+                    onSelectModeRequest()
+                    onClose()
+                  }}
+                  disabled={isExporting}
+                  className="w-full mt-4 px-4 py-2.5 bg-blue-600/20 text-blue-400 border border-blue-500/50 rounded-lg hover:bg-blue-600/30 transition-colors flex items-center justify-center gap-2 font-medium disabled:opacity-50"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  الانتقال لتحديد المنتجات
+                </button>
+              )}
             </div>
 
             {/* Price Type Selection */}
