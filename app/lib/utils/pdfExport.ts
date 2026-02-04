@@ -8,6 +8,39 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { Product } from '../../../lib/hooks/useProductsAdmin'
 import { registerArabicFont } from './fonts/amiri-font'
+import { supabase } from '@/app/lib/supabase/client'
+
+/**
+ * Convert hex color to RGB array
+ */
+function hexToRgb(hex: string): [number, number, number] {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
+  return result
+    ? [parseInt(result[1], 16), parseInt(result[2], 16), parseInt(result[3], 16)]
+    : [93, 31, 31] // fallback to #5d1f1f
+}
+
+/**
+ * Fetch active store theme color from database
+ */
+async function getActiveThemeColor(): Promise<[number, number, number]> {
+  try {
+    const { data, error } = await (supabase as any)
+      .from('store_theme_colors')
+      .select('primary_color')
+      .eq('is_active', true)
+      .single()
+
+    if (data?.primary_color) {
+      return hexToRgb(data.primary_color)
+    }
+  } catch (error) {
+    console.warn('Error fetching theme color:', error)
+  }
+
+  // Default fallback: #5d1f1f (dark brown/maroon)
+  return [93, 31, 31]
+}
 
 // Extend jsPDF type to include autoTable
 declare module 'jspdf' {
@@ -32,6 +65,9 @@ export interface PDFExportOptions {
   priceType: PriceType
   includeImages: boolean
   title?: string
+  themeColor?: string  // Store theme color
+  logoUrl?: string     // Logo URL
+  companyName?: string // Company name
 }
 
 // Available columns for export
@@ -182,42 +218,57 @@ export async function generateInventoryPDF(
     body.push(row.reverse())
   }
 
-  // Add title
-  const title = options.title || 'جرد المخزون - El Farouk Group'
-  const date = new Date().toLocaleDateString('ar-EG', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  })
+  // === NEW HEADER DESIGN ===
+  const pageWidth = doc.internal.pageSize.getWidth()
+  const headerHeight = 25
 
-  // Title styling
-  doc.setFontSize(18)
-  doc.setTextColor(43, 53, 68) // #2B3544
-  doc.text(title, doc.internal.pageSize.getWidth() - 14, 15, { align: 'right' })
+  // Fetch active theme color from database
+  const themeColorRgb = await getActiveThemeColor()
 
-  // Date
-  doc.setFontSize(12)
-  doc.setTextColor(107, 114, 128) // Gray
-  doc.text(`التاريخ: ${date}`, doc.internal.pageSize.getWidth() - 14, 22, { align: 'right' })
+  // 1. Draw header bar with store theme color
+  doc.setFillColor(themeColorRgb[0], themeColorRgb[1], themeColorRgb[2])
+  doc.rect(0, 0, pageWidth, headerHeight, 'F')
+
+  // 2. Add logo (on the left side)
+  const logoUrl = options.logoUrl || '/assets/logo/El Farouk Group2.png'
+  const logoBase64 = imageCache.get('__logo__') || await imageToBase64(logoUrl)
+  const logoSize = 18
+  if (logoBase64) {
+    try {
+      doc.addImage(logoBase64, 'PNG', 10, 3.5, logoSize, logoSize)
+    } catch (error) {
+      console.warn('Error adding logo to PDF:', error)
+    }
+  }
+
+  // 3. Add company name (next to logo on the left)
+  const companyName = options.companyName || 'El Farouk Group'
+  doc.setFont('Amiri')
+  doc.setFontSize(18) // Increased from 16 to 18
+  doc.setTextColor(255, 255, 255) // White
+  doc.text(companyName, 10 + logoSize + 5, 14, { align: 'left' })
+
+  // Start table after header
+  const tableStartY = headerHeight + 5
 
   // Find image column index (after reversal for RTL)
   const imageColIndex = enabledColumns.findIndex(col => col.id === 'main_image_url')
   const reversedImageColIndex = imageColIndex >= 0 ? enabledColumns.length - 1 - imageColIndex : -1
 
-  // Calculate column widths
-  const pageWidth = doc.internal.pageSize.getWidth() - 28 // margins
+  // Calculate column widths - reduced margins for better space utilization
+  const tableWidth = doc.internal.pageSize.getWidth() - 20 // reduced from 28 to 20
   const colCount = enabledColumns.length
 
-  // Define column widths based on content type
+  // Define column widths based on content type - larger image column
   const columnStyles: { [key: number]: { cellWidth: number } } = {}
   enabledColumns.forEach((col, idx) => {
     const reversedIdx = enabledColumns.length - 1 - idx
-    let width = pageWidth / colCount // Default equal width
+    let width = tableWidth / colCount // Default equal width
 
     if (col.id === 'main_image_url') {
-      width = 25 // Fixed width for images
+      width = 35 // Increased from 25 for larger images
     } else if (col.id === 'name') {
-      width = 50 // Wider for product names
+      width = 55 // Increased for product names
     } else if (col.id === 'index') {
       width = 12 // Narrow for index
     }
@@ -225,37 +276,39 @@ export async function generateInventoryPDF(
     columnStyles[reversedIdx] = { cellWidth: width }
   })
 
-  // Generate table
+  // Generate table with new design
   autoTable(doc, {
     head: [headers],
     body: body,
-    startY: 28,
+    startY: tableStartY,
     theme: 'grid',
+    margin: { left: 10, right: 10 }, // Reduced margins
     styles: {
       font: 'Amiri',
-      fontSize: 9,
-      cellPadding: 3,
+      fontSize: 13, // Increased from 11 to 13 for better readability
+      cellPadding: 4, // Increased padding
       halign: 'center',
       valign: 'middle',
-      textColor: [255, 255, 255],
-      lineColor: [74, 85, 104],
+      textColor: [55, 65, 81], // Dark gray text
+      lineColor: [209, 213, 219], // Light gray borders
       lineWidth: 0.5
     },
     headStyles: {
-      fillColor: [43, 53, 68], // #2B3544
-      textColor: [255, 255, 255],
+      fillColor: themeColorRgb, // Dynamic store theme color
+      textColor: [255, 255, 255], // White text
       font: 'Amiri',
-      fontStyle: 'normal', // Amiri doesn't have bold variant
+      fontStyle: 'normal',
+      fontSize: 14, // Increased from 12 to 14
       halign: 'center'
     },
     bodyStyles: {
-      fillColor: [55, 65, 81], // #374151
-      textColor: [255, 255, 255],
+      fillColor: [255, 255, 255], // White background
+      textColor: [55, 65, 81], // Dark gray text
       font: 'Amiri',
       halign: 'center'
     },
     alternateRowStyles: {
-      fillColor: [43, 53, 68] // #2B3544
+      fillColor: [243, 244, 246] // #F3F4F6 - Light gray for alternating rows
     },
     columnStyles,
     didDrawCell: function(data) {
@@ -269,8 +322,8 @@ export async function generateInventoryPDF(
 
           if (base64) {
             try {
-              const imgWidth = 18
-              const imgHeight = 18
+              const imgWidth = 28 // Increased from 18
+              const imgHeight = 28 // Increased from 18
               const x = data.cell.x + (data.cell.width - imgWidth) / 2
               const y = data.cell.y + (data.cell.height - imgHeight) / 2
 
@@ -286,10 +339,11 @@ export async function generateInventoryPDF(
     rowPageBreak: 'avoid',
     didParseCell: function(data) {
       if (reversedImageColIndex >= 0 && data.column.index === reversedImageColIndex && data.section === 'body') {
-        // Make rows taller to accommodate images
-        data.cell.styles.minCellHeight = 22
+        // Make rows taller to accommodate larger images
+        data.cell.styles.minCellHeight = 32 // Increased from 22
       }
     }
+    // Header only on first page - removed didDrawPage hook
   })
 
   // Add page numbers
