@@ -46,6 +46,8 @@ export interface CreateSalesInvoiceParams {
   partyType?: 'customer' | 'supplier'
   supplierId?: string | null
   supplierName?: string | null
+  // Brand support
+  brandId?: string | null
 }
 
 export async function createSalesInvoice({
@@ -60,7 +62,8 @@ export async function createSalesInvoice({
   userName = null,
   partyType = 'customer',
   supplierId = null,
-  supplierName = null
+  supplierName = null,
+  brandId = null
 }: CreateSalesInvoiceParams) {
   if (!selections.branch) {
     throw new Error('يجب تحديد الفرع قبل إنشاء الفاتورة')
@@ -243,23 +246,30 @@ export async function createSalesInvoice({
     })
 
     // Start transaction
+    const salesInsertData: any = {
+      invoice_number: invoiceNumber,
+      total_amount: totalAmount,
+      tax_amount: taxAmount,
+      discount_amount: discountAmount,
+      profit: profit,
+      payment_method: paymentMethod,
+      branch_id: selections.branch.id,
+      customer_id: customerId,
+      supplier_id: effectiveSupplierId,
+      record_id: hasNoSafe ? null : selections.record.id,
+      notes: finalNotes,
+      time: timeString,
+      invoice_type: (isReturn ? 'Sale Return' : 'Sale Invoice') as any
+    }
+
+    // Add brand_id if provided
+    if (brandId) {
+      salesInsertData.brand_id = brandId
+    }
+
     const { data: salesData, error: salesError } = await supabase
       .from('sales')
-      .insert({
-        invoice_number: invoiceNumber,
-        total_amount: totalAmount,
-        tax_amount: taxAmount,
-        discount_amount: discountAmount,
-        profit: profit,
-        payment_method: paymentMethod,
-        branch_id: selections.branch.id,
-        customer_id: customerId,
-        supplier_id: effectiveSupplierId,
-        record_id: hasNoSafe ? null : selections.record.id,
-        notes: finalNotes,
-        time: timeString,
-        invoice_type: (isReturn ? 'Sale Return' : 'Sale Invoice') as any
-      })
+      .insert(salesInsertData)
       .select()
       .single()
 

@@ -9,8 +9,10 @@ import { CartProvider } from '@/lib/contexts/CartContext'
 import { UserProfileProvider } from '@/lib/contexts/UserProfileContext'
 import { ThemeProvider } from '@/lib/contexts/ThemeContext'
 import { PermissionsProvider } from '@/lib/contexts/PermissionsContext'
+import { BrandProvider } from '@/lib/brand/brand-context'
+import { getCurrentBrand } from '@/lib/brand/get-brand'
 import { Providers } from './providers'
-import { CLIENT_CONFIG } from '@/client.config'
+import { CLIENT_CONFIG, getBrandConfig } from '@/client.config'
 
 export const metadata: Metadata = {
   title: CLIENT_CONFIG.appName,
@@ -41,11 +43,19 @@ export const viewport = {
   userScalable: false,
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  // Resolve current brand from request headers (set by middleware)
+  let brand = null
+  try {
+    brand = await getCurrentBrand()
+  } catch {
+    // Fallback: brand will be null, BrandProvider handles this gracefully
+  }
+
   return (
     <html lang="ar" dir="rtl">
       <head>
@@ -56,21 +66,23 @@ export default function RootLayout({
       </head>
       <body className="font-arabic bg-[#1F2937] text-gray-800">
         <Providers>
-          <ThemeProvider>
-            <SystemSettingsProvider>
-              <CurrencyProvider>
-                <UserProfileProvider>
-                  <PermissionsProvider>
-                    <CartProvider>
-                      <ServiceWorkerRegister />
-                      <TopHeader />
-                      {children}
-                    </CartProvider>
-                  </PermissionsProvider>
-                </UserProfileProvider>
-              </CurrencyProvider>
-            </SystemSettingsProvider>
-          </ThemeProvider>
+          <BrandProvider brand={brand}>
+            <ThemeProvider>
+              <SystemSettingsProvider>
+                <CurrencyProvider>
+                  <UserProfileProvider>
+                    <PermissionsProvider>
+                      <CartProvider>
+                        <ServiceWorkerRegister />
+                        <TopHeader />
+                        {children}
+                      </CartProvider>
+                    </PermissionsProvider>
+                  </UserProfileProvider>
+                </CurrencyProvider>
+              </SystemSettingsProvider>
+            </ThemeProvider>
+          </BrandProvider>
         </Providers>
       </body>
     </html>

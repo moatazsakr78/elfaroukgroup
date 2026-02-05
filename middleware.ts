@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server'
 import { hasPageAccess, rolePermissions, type UserRole } from '@/app/lib/auth/roleBasedAccess'
 import { auth } from '@/lib/auth.config'
 import { PAGE_ACCESS_MAP } from '@/types/permissions'
+import { resolveBrandFromHostname } from '@/lib/brand/brand-resolver'
 
 // Cookie name for storing last valid page
 const LAST_PAGE_COOKIE = 'last_valid_page'
@@ -74,24 +75,62 @@ export default auth(async (req) => {
     return NextResponse.next()
   }
 
+  // --- Brand Resolution ---
+  // Resolve brand from hostname and inject into request headers
+  const hostname = req.headers.get('host') || 'localhost'
+  let brand: Awaited<ReturnType<typeof resolveBrandFromHostname>> | null = null
+  try {
+    brand = await resolveBrandFromHostname(hostname)
+  } catch (e) {
+    console.error('Brand resolution error:', e)
+  }
+
+  // Helper to add brand headers to any response
+  const addBrandHeaders = (response: NextResponse) => {
+    if (brand) {
+      response.headers.set('x-brand-id', brand.id)
+      response.headers.set('x-brand-slug', brand.slug)
+    }
+    return response
+  }
+
+  // For store pages (non-admin, non-auth), rewrite to brand-specific routes
+  const isAdminPath = adminOnlyPaths.some(path =>
+    pathname === path || pathname.startsWith(path + '/')
+  )
+  const isCustomerPath = customerOnlyPaths.some(path =>
+    pathname === path || pathname.startsWith(path + '/')
+  )
+  const isAuthPath = alwaysPublicPaths.some(path => pathname === path || pathname.startsWith(path + '/'))
+  const isApiPath = pathname.startsWith('/api/')
+  const isStoreBrandRoute = pathname.startsWith('/store/')
+
+  // Rewrite homepage and store pages to brand-specific routes
+  // Only if not already a /store/ route, not admin, not auth, not API, not customer-only
+  if (brand && !isAdminPath && !isCustomerPath && !isAuthPath && !isApiPath && !isStoreBrandRoute) {
+    // Rewrite store-facing pages to /store/[brandSlug] routes
+    if (pathname === '/') {
+      const url = req.nextUrl.clone()
+      url.pathname = `/store/${brand.slug}`
+      const response = NextResponse.rewrite(url)
+      return addBrandHeaders(response)
+    }
+    if (pathname === '/catalog') {
+      const url = req.nextUrl.clone()
+      url.pathname = `/store/${brand.slug}/catalog`
+      const response = NextResponse.rewrite(url)
+      return addBrandHeaders(response)
+    }
+  }
+
   // Allow always-public paths (login, register, etc.)
-  if (alwaysPublicPaths.some(path => pathname === path || pathname.startsWith(path + '/'))) {
-    return NextResponse.next()
+  if (isAuthPath) {
+    return addBrandHeaders(NextResponse.next())
   }
 
   // Get session from NextAuth
   const session = req.auth
   const userRole = session?.user?.role as UserRole | null
-
-  // Check if it's an admin-only path
-  const isAdminPath = adminOnlyPaths.some(path =>
-    pathname === path || pathname.startsWith(path + '/')
-  )
-
-  // Check if it's a customer-only path
-  const isCustomerPath = customerOnlyPaths.some(path =>
-    pathname === path || pathname.startsWith(path + '/')
-  )
 
   // Block admin paths for non-authenticated users
   if (isAdminPath) {
@@ -155,6 +194,7 @@ export default auth(async (req) => {
     // Access granted - update last valid page cookie
     console.log('✅ Access granted');
     const response = NextResponse.next()
+    addBrandHeaders(response)
     response.cookies.set(LAST_PAGE_COOKIE, pathname, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -172,7 +212,7 @@ export default auth(async (req) => {
     return NextResponse.redirect(loginUrl)
   }
 
-  return NextResponse.next()
+  return addBrandHeaders(NextResponse.next())
 })
 
 export const config = {

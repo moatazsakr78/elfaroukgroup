@@ -347,7 +347,9 @@
       "Bash(start:*)",
       "Bash(du -sh:*)",
       "Bash(npx next lint:*)",
-      "Bash(certutil:*)"
+      "Bash(certutil:*)",
+      "WebFetch(domain:nanobanana.io)",
+      "mcp__supabase__get_advisors"
     ],
     "deny": [],
     "additionalDirectories": [

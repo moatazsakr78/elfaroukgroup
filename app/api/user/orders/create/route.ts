@@ -70,6 +70,9 @@ export async function POST(request: Request) {
       )
     }
 
+    // Get brand_id from request headers (set by middleware)
+    const brandId = request.headers.get('x-brand-id') || null
+
     // Generate order number
     const orderNumber = 'ORD-' + Date.now().toString().slice(-8)
 
@@ -147,22 +150,29 @@ export async function POST(request: Request) {
     // Insert order into orders table
     // Note: user_session is used instead of user_id because user_id is uuid type
     // and NextAuth user.id is a text string
+    const orderInsertData: any = {
+      order_number: orderNumber,
+      customer_id: customerId,
+      user_session: userId, // Store NextAuth user ID in user_session (text field)
+      customer_name: orderData.customer.name,
+      customer_phone: orderData.customer.phone,
+      customer_address: orderData.customer.address || null,
+      total_amount: orderData.total,
+      subtotal_amount: orderData.subtotal,
+      shipping_amount: orderData.shipping,
+      status: 'pending',
+      delivery_type: orderData.delivery_method === 'delivery' ? 'delivery' : 'pickup',
+      notes: notes
+    }
+
+    // Add brand_id if available
+    if (brandId) {
+      orderInsertData.brand_id = brandId
+    }
+
     const { data: orderResult, error: orderError } = await supabaseAdmin
       .from('orders')
-      .insert({
-        order_number: orderNumber,
-        customer_id: customerId,
-        user_session: userId, // Store NextAuth user ID in user_session (text field)
-        customer_name: orderData.customer.name,
-        customer_phone: orderData.customer.phone,
-        customer_address: orderData.customer.address || null,
-        total_amount: orderData.total,
-        subtotal_amount: orderData.subtotal,
-        shipping_amount: orderData.shipping,
-        status: 'pending',
-        delivery_type: orderData.delivery_method === 'delivery' ? 'delivery' : 'pickup',
-        notes: notes
-      })
+      .insert(orderInsertData)
       .select('id, order_number')
       .single()
 

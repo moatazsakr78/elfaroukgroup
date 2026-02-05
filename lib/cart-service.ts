@@ -5,15 +5,16 @@ export class CartService {
   static supabase = supabase;
   
   // Fetch cart items from Supabase with product details
-  static async getCartItems(sessionId: string): Promise<CartItemData[]> {
+  static async getCartItems(sessionId: string, brandId?: string | null): Promise<CartItemData[]> {
     try {
       // Check cache first
-      const cached = CartCache.get(`cart_${sessionId}`);
-      if (cached && !CartCache.isExpired(`cart_${sessionId}`)) {
+      const cacheKey = brandId ? `cart_${sessionId}_${brandId}` : `cart_${sessionId}`;
+      const cached = CartCache.get(cacheKey);
+      if (cached && !CartCache.isExpired(cacheKey)) {
         return cached;
       }
-      
-      const { data, error } = await supabase
+
+      let query = supabase
         .from('cart_items')
         .select(`
           *,
@@ -26,17 +27,24 @@ export class CartService {
         `)
         .eq('session_id', sessionId)
         .order('created_at', { ascending: false });
-      
+
+      // Filter by brand if provided (separate carts per brand)
+      if (brandId) {
+        query = query.eq('brand_id', brandId);
+      }
+
+      const { data, error } = await query;
+
       if (error) {
         console.error('Error fetching cart items:', error);
         return [];
       }
-      
+
       const cartItems = data || [];
-      
+
       // Cache the result
-      CartCache.set(`cart_${sessionId}`, cartItems);
-      
+      CartCache.set(cacheKey, cartItems);
+
       return cartItems;
     } catch (error) {
       console.error('Error in getCartItems:', error);
@@ -53,7 +61,8 @@ export class CartService {
     selectedColor?: string,
     selectedShape?: string,
     selectedSize?: string,
-    notes?: string
+    notes?: string,
+    brandId?: string | null
   ): Promise<CartItemData | null> {
     try {
       console.log('🏪 CartService.addToCart called with:', {
@@ -67,11 +76,17 @@ export class CartService {
         notes
       });
       // Check if item already exists in cart (handle null values properly)
-      const { data: existingItems } = await supabase
+      let existingQuery = supabase
         .from('cart_items')
         .select('*')
         .eq('session_id', sessionId)
         .eq('product_id', productId);
+
+      if (brandId) {
+        existingQuery = existingQuery.eq('brand_id', brandId);
+      }
+
+      const { data: existingItems } = await existingQuery;
 
       // Find matching item considering null/empty string equivalence
       const existingItem = existingItems?.find(item => {
@@ -92,18 +107,23 @@ export class CartService {
         return updateResult;
       } else {
         // Insert new item
+        const insertData: any = {
+          session_id: sessionId,
+          product_id: productId,
+          quantity,
+          price,
+          selected_color: selectedColor,
+          selected_shape: selectedShape,
+          selected_size: selectedSize,
+          notes: notes || null
+        };
+        if (brandId) {
+          insertData.brand_id = brandId;
+        }
+
         const { data, error } = await supabase
           .from('cart_items')
-          .insert({
-            session_id: sessionId,
-            product_id: productId,
-            quantity,
-            price,
-            selected_color: selectedColor,
-            selected_shape: selectedShape,
-            selected_size: selectedSize,
-            notes: notes || null
-          })
+          .insert(insertData)
           .select(`
             *,
             products!cart_items_product_id_fkey(
@@ -131,7 +151,8 @@ export class CartService {
         
         
         // Clear cache to force refresh
-        CartCache.clear(`cart_${sessionId}`);
+        const cacheKey = brandId ? `cart_${sessionId}_${brandId}` : `cart_${sessionId}`;
+        CartCache.clear(cacheKey);
         
         return data;
       }
@@ -275,12 +296,18 @@ export class CartService {
   }
   
   // Clear entire cart for session
-  static async clearCart(sessionId: string): Promise<boolean> {
+  static async clearCart(sessionId: string, brandId?: string | null): Promise<boolean> {
     try {
-      const { error } = await supabase
+      let query = supabase
         .from('cart_items')
         .delete()
         .eq('session_id', sessionId);
+
+      if (brandId) {
+        query = query.eq('brand_id', brandId);
+      }
+
+      const { error } = await query;
       
       if (error) {
         console.error('Error clearing cart:', error);
@@ -298,12 +325,18 @@ export class CartService {
   }
   
   // Get cart item count
-  static async getCartItemCount(sessionId: string): Promise<number> {
+  static async getCartItemCount(sessionId: string, brandId?: string | null): Promise<number> {
     try {
-      const { count, error } = await supabase
+      let query = supabase
         .from('cart_items')
         .select('*', { count: 'exact', head: true })
         .eq('session_id', sessionId);
+
+      if (brandId) {
+        query = query.eq('brand_id', brandId);
+      }
+
+      const { count, error } = await query;
       
       if (error) {
         console.error('Error getting cart count:', error);
@@ -328,7 +361,7 @@ export class CartService {
         'postgres_changes',
         {
           event: '*',
-          schema: 'public',
+          schema: 'elfaroukgroup',
           table: 'cart_items',
           filter: `session_id=eq.${sessionId}`
         },

@@ -31,3 +31,34 @@ export const CLIENT_CONFIG = {
 }
 
 export type SchemaName = typeof CLIENT_CONFIG.schema
+
+/**
+ * Get brand-specific config for store pages
+ * Falls back to CLIENT_CONFIG defaults
+ */
+export function getBrandConfig(brand: {
+  name?: string | null
+  name_ar?: string | null
+  description?: string | null
+  logo_url?: string | null
+  theme_color?: string | null
+  background_color?: string | null
+  primary_color?: string | null
+  default_currency?: string | null
+  website_currency?: string | null
+} | null) {
+  if (!brand) return CLIENT_CONFIG
+
+  return {
+    ...CLIENT_CONFIG,
+    appName: brand.name || CLIENT_CONFIG.appName,
+    companyName: brand.name_ar || brand.name || CLIENT_CONFIG.companyName,
+    description: brand.description || CLIENT_CONFIG.description,
+    logoPath: brand.logo_url || CLIENT_CONFIG.logoPath,
+    themeColor: brand.theme_color || CLIENT_CONFIG.themeColor,
+    backgroundColor: brand.background_color || CLIENT_CONFIG.backgroundColor,
+    primaryColor: brand.primary_color || CLIENT_CONFIG.primaryColor,
+    defaultCurrency: brand.default_currency || CLIENT_CONFIG.defaultCurrency,
+    websiteCurrency: brand.website_currency || CLIENT_CONFIG.websiteCurrency,
+  }
+}

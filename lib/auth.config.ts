@@ -4,6 +4,7 @@ import Google from "next-auth/providers/google"
 import bcrypt from "bcryptjs"
 import { createClient } from "@supabase/supabase-js"
 import { CLIENT_CONFIG } from "@/client.config"
+import { cookies, headers } from "next/headers"
 
 // Create Supabase client for server-side operations
 const supabase = createClient(
@@ -19,6 +20,16 @@ const supabase = createClient(
     }
   }
 )
+
+// Helper to get brand_id from request headers (set by middleware)
+function getBrandIdFromHeaders(): string | null {
+  try {
+    const headersList = headers()
+    return headersList.get('x-brand-id') || null
+  } catch {
+    return null
+  }
+}
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
@@ -46,12 +57,21 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         }
 
         try {
+          // Get brand_id from request headers (set by middleware)
+          const brandId = getBrandIdFromHeaders()
+
           // Use Supabase client to query auth_users table for authentication
-          const { data: authUsers, error: authError } = await supabase
+          let authQuery = supabase
             .from('auth_users')
-            .select('id, email, name, image, password_hash')
+            .select('id, email, name, image, password_hash, brand_id')
             .eq('email', credentials.email)
-            .limit(1)
+
+          // Filter by brand if available (allows same email on different brands)
+          if (brandId) {
+            authQuery = authQuery.eq('brand_id', brandId)
+          }
+
+          const { data: authUsers, error: authError } = await authQuery.limit(1)
 
           if (authError) {
             console.error('❌ Supabase query error:', authError)
@@ -114,7 +134,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             name: authUser.name,
             image: authUser.image,
             role: userRole,
-            pageRestrictions
+            pageRestrictions,
+            brandId: (authUser as any).brand_id || brandId || null
           }
         } catch (error) {
           console.error('❌ Auth error during login:', error)
@@ -133,12 +154,19 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       // Handle Google OAuth sign-in
       if (account?.provider === "google") {
         try {
-          // Check if user exists using Supabase
-          const { data: existingUsers, error: queryError } = await supabase
+          const brandId = getBrandIdFromHeaders()
+
+          // Check if user exists using Supabase (scoped by brand)
+          let existingQuery = supabase
             .from('auth_users')
             .select('id')
             .eq('email', user.email!)
-            .limit(1)
+
+          if (brandId) {
+            existingQuery = existingQuery.eq('brand_id', brandId)
+          }
+
+          const { data: existingUsers, error: queryError } = await existingQuery.limit(1)
 
           if (queryError) {
             console.error('❌ Error checking existing user:', queryError)
@@ -147,15 +175,20 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
           // If user doesn't exist, create one
           if (!existingUsers || existingUsers.length === 0) {
-            // Create auth_users entry
+            // Create auth_users entry (with brand_id)
+            const insertData: any = {
+              email: user.email!,
+              name: user.name || user.email!.split('@')[0],
+              image: user.image || null,
+              password_hash: '' // No password for OAuth users
+            }
+            if (brandId) {
+              insertData.brand_id = brandId
+            }
+
             const { data: newUser, error: insertError } = await supabase
               .from('auth_users')
-              .insert({
-                email: user.email!,
-                name: user.name || user.email!.split('@')[0],
-                image: user.image || null,
-                password_hash: '' // No password for OAuth users
-              })
+              .insert(insertData)
               .select('id')
               .single()
 
@@ -270,14 +303,22 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         // Initial sign in - set userId and role
         // For Google users, fetch from database
         if (account?.provider === "google") {
-          const { data: authUsers, error: authError } = await supabase
+          const brandId = getBrandIdFromHeaders()
+
+          let authQuery = supabase
             .from('auth_users')
-            .select('id')
+            .select('id, brand_id')
             .eq('email', user.email!)
-            .limit(1)
+
+          if (brandId) {
+            authQuery = authQuery.eq('brand_id', brandId)
+          }
+
+          const { data: authUsers, error: authError } = await authQuery.limit(1)
 
           if (!authError && authUsers && authUsers.length > 0) {
             token.userId = authUsers[0].id
+            token.brandId = (authUsers[0] as any).brand_id || brandId || null
 
             // Fetch role and permission_id from user_profiles
             const { data: profiles, error: profileError } = await supabase
@@ -307,6 +348,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           token.userId = user.id
           token.role = user.role
           token.pageRestrictions = user.pageRestrictions || []
+          token.brandId = (user as any).brandId || null
         }
       } else if (token.userId && !token.role) {
         // Subsequent requests - role is missing, fetch it again
@@ -347,6 +389,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         session.user.id = token.userId as string
         session.user.role = token.role as string
         session.user.pageRestrictions = token.pageRestrictions as string[] || []
+        ;(session.user as any).brandId = token.brandId as string || null
       }
       return session
     }

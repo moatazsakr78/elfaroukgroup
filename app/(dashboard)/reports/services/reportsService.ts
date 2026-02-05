@@ -81,25 +81,33 @@ const getPreviousPeriodRange = (filter: DateFilter): { startDate: string; endDat
 };
 
 // Fetch KPIs (Total Sales, Profit, Order Count, etc.)
-export const fetchKPIs = async (filter: DateFilter): Promise<KPIData> => {
+export const fetchKPIs = async (filter: DateFilter, brandId?: string | null): Promise<KPIData> => {
   const { startDate, endDate } = getDateRange(filter);
   const prevPeriod = getPreviousPeriodRange(filter);
 
   // Current period
-  const { data: currentData, error: currentError } = await supabase
+  let currentQuery = supabase
     .from('sales')
     .select('id, total_amount, profit, customer_id')
     .gte('created_at', startDate)
     .lte('created_at', endDate);
 
+  if (brandId) currentQuery = currentQuery.eq('brand_id', brandId);
+
+  const { data: currentData, error: currentError } = await currentQuery;
+
   if (currentError) throw currentError;
 
   // Previous period
-  const { data: prevData, error: prevError } = await supabase
+  let prevQuery = supabase
     .from('sales')
     .select('id, total_amount, profit, customer_id')
     .gte('created_at', prevPeriod.startDate)
     .lte('created_at', prevPeriod.endDate);
+
+  if (brandId) prevQuery = prevQuery.eq('brand_id', brandId);
+
+  const { data: prevData, error: prevError } = await prevQuery;
 
   if (prevError) throw prevError;
 
@@ -127,15 +135,19 @@ export const fetchKPIs = async (filter: DateFilter): Promise<KPIData> => {
 };
 
 // Fetch Sales Trend (daily data for line chart)
-export const fetchSalesTrend = async (filter: DateFilter, days: number = 30): Promise<SalesTrendPoint[]> => {
+export const fetchSalesTrend = async (filter: DateFilter, days: number = 30, brandId?: string | null): Promise<SalesTrendPoint[]> => {
   const { startDate, endDate } = getDateRange(filter);
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('sales')
     .select('created_at, total_amount, profit')
     .gte('created_at', startDate)
     .lte('created_at', endDate)
     .order('created_at', { ascending: true });
+
+  if (brandId) query = query.eq('brand_id', brandId);
+
+  const { data, error } = await query;
 
   if (error) throw error;
 
@@ -164,10 +176,10 @@ export const fetchSalesTrend = async (filter: DateFilter, days: number = 30): Pr
 };
 
 // Fetch Top Products
-export const fetchTopProducts = async (filter: DateFilter, limit: number = 10): Promise<TopProductData[]> => {
+export const fetchTopProducts = async (filter: DateFilter, limit: number = 10, brandId?: string | null): Promise<TopProductData[]> => {
   const { startDate, endDate } = getDateRange(filter);
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('sale_items')
     .select(`
       product_id,
@@ -175,10 +187,14 @@ export const fetchTopProducts = async (filter: DateFilter, limit: number = 10): 
       unit_price,
       cost_price,
       products!inner(id, name, category_id, categories(name)),
-      sales!inner(created_at)
+      sales!inner(created_at, brand_id)
     `)
     .gte('sales.created_at', startDate)
     .lte('sales.created_at', endDate);
+
+  if (brandId) query = query.eq('sales.brand_id', brandId);
+
+  const { data, error } = await query;
 
   if (error) throw error;
 
@@ -218,10 +234,10 @@ export const fetchTopProducts = async (filter: DateFilter, limit: number = 10): 
 };
 
 // Fetch Top Customers
-export const fetchTopCustomers = async (filter: DateFilter, limit: number = 10): Promise<TopCustomerData[]> => {
+export const fetchTopCustomers = async (filter: DateFilter, limit: number = 10, brandId?: string | null): Promise<TopCustomerData[]> => {
   const { startDate, endDate } = getDateRange(filter);
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('sales')
     .select(`
       customer_id,
@@ -231,6 +247,10 @@ export const fetchTopCustomers = async (filter: DateFilter, limit: number = 10):
     .gte('created_at', startDate)
     .lte('created_at', endDate)
     .not('customer_id', 'is', null);
+
+  if (brandId) query = query.eq('brand_id', brandId);
+
+  const { data, error } = await query;
 
   if (error) throw error;
 
@@ -265,19 +285,23 @@ export const fetchTopCustomers = async (filter: DateFilter, limit: number = 10):
 };
 
 // Fetch Category Distribution (for Pie chart)
-export const fetchCategoryDistribution = async (filter: DateFilter): Promise<CategoryDistribution[]> => {
+export const fetchCategoryDistribution = async (filter: DateFilter, brandId?: string | null): Promise<CategoryDistribution[]> => {
   const { startDate, endDate } = getDateRange(filter);
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('sale_items')
     .select(`
       quantity,
       unit_price,
       products!inner(category_id, categories(id, name)),
-      sales!inner(created_at)
+      sales!inner(created_at, brand_id)
     `)
     .gte('sales.created_at', startDate)
     .lte('sales.created_at', endDate);
+
+  if (brandId) query = query.eq('sales.brand_id', brandId);
+
+  const { data, error } = await query;
 
   if (error) throw error;
 
@@ -315,14 +339,18 @@ export const fetchCategoryDistribution = async (filter: DateFilter): Promise<Cat
 };
 
 // Fetch Payment Methods Distribution
-export const fetchPaymentMethods = async (filter: DateFilter): Promise<PaymentMethodData[]> => {
+export const fetchPaymentMethods = async (filter: DateFilter, brandId?: string | null): Promise<PaymentMethodData[]> => {
   const { startDate, endDate } = getDateRange(filter);
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('sales')
     .select('payment_method, total_amount')
     .gte('created_at', startDate)
     .lte('created_at', endDate);
+
+  if (brandId) query = query.eq('brand_id', brandId);
+
+  const { data, error } = await query;
 
   if (error) throw error;
 
@@ -359,14 +387,18 @@ export const fetchPaymentMethods = async (filter: DateFilter): Promise<PaymentMe
 };
 
 // Fetch Hourly Sales Distribution
-export const fetchHourlySales = async (filter: DateFilter): Promise<HourlySalesData[]> => {
+export const fetchHourlySales = async (filter: DateFilter, brandId?: string | null): Promise<HourlySalesData[]> => {
   const { startDate, endDate } = getDateRange(filter);
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('sales')
     .select('created_at, total_amount')
     .gte('created_at', startDate)
     .lte('created_at', endDate);
+
+  if (brandId) query = query.eq('brand_id', brandId);
+
+  const { data, error } = await query;
 
   if (error) throw error;
 
@@ -407,14 +439,18 @@ export const fetchHourlySales = async (filter: DateFilter): Promise<HourlySalesD
 };
 
 // Fetch Day of Week Sales (Best Day Analysis)
-export const fetchDayOfWeekSales = async (filter: DateFilter): Promise<DayOfWeekData[]> => {
+export const fetchDayOfWeekSales = async (filter: DateFilter, brandId?: string | null): Promise<DayOfWeekData[]> => {
   const { startDate, endDate } = getDateRange(filter);
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('sales')
     .select('created_at, total_amount')
     .gte('created_at', startDate)
     .lte('created_at', endDate);
+
+  if (brandId) query = query.eq('brand_id', brandId);
+
+  const { data, error } = await query;
 
   if (error) throw error;
 
@@ -496,14 +532,20 @@ export const fetchPayables = async (): Promise<PayableData[]> => {
 };
 
 // Fetch Expenses by Category
-export const fetchExpenses = async (filter: DateFilter): Promise<ExpenseData[]> => {
+export const fetchExpenses = async (filter: DateFilter, brandId?: string | null): Promise<ExpenseData[]> => {
   const { startDate, endDate } = getDateRange(filter);
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('expenses')
     .select('category, amount')
     .gte('created_at', startDate)
     .lte('created_at', endDate);
+
+  if (brandId) {
+    query = query.eq('brand_id', brandId);
+  }
+
+  const { data, error } = await query;
 
   if (error) throw error;
 
@@ -538,15 +580,19 @@ export const fetchExpenses = async (filter: DateFilter): Promise<ExpenseData[]> 
 };
 
 // Fetch Revenue vs Profit Trend
-export const fetchRevenueVsProfit = async (filter: DateFilter): Promise<RevenueVsProfitData[]> => {
+export const fetchRevenueVsProfit = async (filter: DateFilter, brandId?: string | null): Promise<RevenueVsProfitData[]> => {
   const { startDate, endDate } = getDateRange(filter);
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('sales')
     .select('created_at, total_amount, profit')
     .gte('created_at', startDate)
     .lte('created_at', endDate)
     .order('created_at', { ascending: true });
+
+  if (brandId) query = query.eq('brand_id', brandId);
+
+  const { data, error } = await query;
 
   if (error) throw error;
 
