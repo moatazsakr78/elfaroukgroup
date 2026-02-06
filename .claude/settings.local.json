@@ -350,7 +350,8 @@
       "Bash(certutil:*)",
       "WebFetch(domain:nanobanana.io)",
       "mcp__supabase__get_advisors",
-      "Bash(xargs:*)"
+      "Bash(xargs:*)",
+      "Bash(npx next build:*)"
     ],
     "deny": [],
     "additionalDirectories": [

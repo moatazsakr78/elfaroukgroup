@@ -182,6 +182,9 @@ export async function createSalesInvoice({
     throw new Error(`خطأ في معرف العميل: ${customerId}`)
   }
 
+  // Track if sale was created on server (used in catch block to prevent offline duplicates)
+  let createdSaleId: string | null = null
+
   try {
     // Validate cart items
     for (const item of cartItems) {
@@ -245,8 +248,8 @@ export async function createSalesInvoice({
       partyType: partyType
     })
 
-    // Start transaction
-    const salesInsertData: any = {
+    // Prepare sale data for atomic insertion
+    const saleData: any = {
       invoice_number: invoiceNumber,
       total_amount: totalAmount,
       tax_amount: taxAmount,
@@ -255,35 +258,17 @@ export async function createSalesInvoice({
       payment_method: paymentMethod,
       branch_id: selections.branch.id,
       customer_id: customerId,
-      supplier_id: effectiveSupplierId,
-      record_id: hasNoSafe ? null : selections.record.id,
-      notes: finalNotes,
+      supplier_id: effectiveSupplierId || '',
+      record_id: hasNoSafe ? '' : selections.record.id,
+      notes: finalNotes || '',
       time: timeString,
-      invoice_type: (isReturn ? 'Sale Return' : 'Sale Invoice') as any
+      invoice_type: (isReturn ? 'Sale Return' : 'Sale Invoice'),
+      brand_id: brandId || ''
     }
 
-    // Add brand_id if provided
-    if (brandId) {
-      salesInsertData.brand_id = brandId
-    }
-
-    const { data: salesData, error: salesError } = await supabase
-      .from('sales')
-      .insert(salesInsertData)
-      .select()
-      .single()
-
-    if (salesError) {
-      console.error('Sales creation error:', salesError)
-      throw new Error(`خطأ في إنشاء الفاتورة: ${salesError.message}`)
-    }
-
-    console.log('Sales invoice created successfully:', salesData)
-
-    // Create sale items (negative quantities for returns)
+    // Prepare sale items for atomic insertion (negative quantities for returns)
     const saleItems = cartItems.map(item => {
-      // تنسيق النص العربي بشكل صحيح
-      let notesText = null
+      let notesText = ''
       if (item.selectedColors && Object.keys(item.selectedColors).length > 0) {
         const colorEntries = Object.entries(item.selectedColors as Record<string, number>)
           .filter(([color, qty]) => qty > 0)
@@ -293,35 +278,37 @@ export async function createSalesInvoice({
           notesText = `الألوان المحددة: ${colorEntries}`
         }
       }
-      
+
       return {
-        sale_id: salesData.id,
         product_id: item.product.id,
         quantity: isReturn ? -item.quantity : item.quantity,
         unit_price: item.price,
         cost_price: item.product.cost_price || 0,
         discount: 0,
         notes: notesText,
-        branch_id: item.branch_id || selections.branch.id // الفرع الخاص بكل منتج أو الفرع المحدد في الفاتورة
+        branch_id: item.branch_id || selections.branch.id
       }
     })
 
-    console.log('Attempting to insert sale items:', saleItems)
-    
-    const { data: saleItemsData, error: saleItemsError } = await supabase
-      .from('sale_items')
-      .insert(saleItems)
-      .select()
+    console.log('Creating sale atomically with items:', { saleData, itemCount: saleItems.length })
 
-    if (saleItemsError) {
-      console.error('Sale items error:', saleItemsError)
-      console.error('Sale items data that failed:', saleItems)
-      // If sale items creation fails, we should clean up the sale record
-      await supabase.from('sales').delete().eq('id', salesData.id)
-      throw new Error(`خطأ في إضافة عناصر الفاتورة: ${saleItemsError.message}`)
+    // Atomic insert: sale + items in a single transaction
+    // If items fail, the entire sale is rolled back - no orphaned sales
+    // @ts-ignore - function exists in database but not in generated types
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('create_sale_with_items' as any, {
+      p_sale_data: saleData,
+      p_items: saleItems
+    })
+
+    if (rpcError) {
+      console.error('Atomic sale creation error:', rpcError)
+      throw new Error(`خطأ في إنشاء الفاتورة: ${rpcError.message}`)
     }
 
-    console.log('Sale items created successfully:', saleItemsData)
+    const salesData = { id: rpcResult.id, invoice_number: rpcResult.invoice_number }
+    createdSaleId = salesData.id
+
+    console.log('Sale + items created atomically:', salesData)
 
     // Note: Invoices are only assigned to the selected safe - no duplication to main safe
     // Each safe shows only its own invoices
@@ -503,6 +490,11 @@ export async function createSalesInvoice({
       // If no split payment and payment method is cash, entire amount goes to drawer
       // For returns, this will be negative (money out of drawer)
       cashToDrawer = totalAmount - (creditAmount || 0)
+      // Guard: if totalAmount is 0 but creditAmount > 0, something is wrong
+      if (totalAmount === 0 && (creditAmount || 0) > 0) {
+        console.error('BUG: totalAmount is 0 but creditAmount > 0, skipping drawer update')
+        cashToDrawer = 0
+      }
     }
 
     // Always create a transaction record in cash_drawer_transactions
@@ -602,13 +594,18 @@ export async function createSalesInvoice({
       error.message?.includes('فشل في توليد') ||
       error.message?.includes('Failed to fetch') ||
       error.message?.includes('ERR_NAME_NOT_RESOLVED') ||
-      error.message?.includes('RPC') ||
       error.message?.includes('timeout') ||
       error.message?.includes('ENOTFOUND') ||
       error.message?.includes('ECONNREFUSED')
     )
 
     if (isNetworkError) {
+      // If the sale was already created on the server, DON'T create an offline duplicate
+      if (createdSaleId) {
+        console.error('Sale was already created on server (id:', createdSaleId, ') but a later step failed. DO NOT create offline duplicate.')
+        throw new Error('الفاتورة اتعملت جزئياً - برجاء المراجعة')
+      }
+
       console.log('Network error detected in createSalesInvoice, falling back to offline mode...')
 
       try {

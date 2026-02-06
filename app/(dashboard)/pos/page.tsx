@@ -2592,17 +2592,14 @@ function POSPageContent() {
           return sum + itemTotal;
         }, 0);
 
-        // Delete old sale items
-        const { error: deleteError } = await supabase
+        // Fetch old item IDs first (so we only delete these specific items later)
+        const { data: oldItems } = await supabase
           .from('sale_items')
-          .delete()
+          .select('id')
           .eq('sale_id', saleId);
+        const oldItemIds = oldItems?.map((i: any) => i.id) || [];
 
-        if (deleteError) {
-          throw new Error(`خطأ في حذف المنتجات القديمة: ${deleteError.message}`);
-        }
-
-        // Insert new sale items
+        // Insert new sale items FIRST (safe - old items still exist as fallback)
         const newSaleItems = cartItems.map(item => ({
           sale_id: saleId,
           product_id: item.product.id,
@@ -2610,7 +2607,8 @@ function POSPageContent() {
           unit_price: item.price,
           cost_price: item.product.cost_price || 0,
           discount: item.discount || 0,
-          notes: ''
+          notes: '',
+          branch_id: item.branch_id || selections.branch?.id || ''
         }));
 
         const { error: insertError } = await supabase
@@ -2618,7 +2616,21 @@ function POSPageContent() {
           .insert(newSaleItems);
 
         if (insertError) {
+          // Old items are still intact - no data loss
           throw new Error(`خطأ في إضافة المنتجات الجديدة: ${insertError.message}`);
+        }
+
+        // Delete old sale items AFTER new ones succeed (by specific IDs)
+        if (oldItemIds.length > 0) {
+          const { error: deleteError } = await supabase
+            .from('sale_items')
+            .delete()
+            .in('id', oldItemIds);
+
+          if (deleteError) {
+            console.warn('Failed to delete old sale items:', deleteError.message);
+            // Non-fatal: new items exist, old items will just be extra
+          }
         }
 
         // Update sale total
