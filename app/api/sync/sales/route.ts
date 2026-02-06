@@ -133,35 +133,24 @@ async function processSingleSale(sale: PendingSale): Promise<SyncResult> {
     ? `${finalNotes} | مزامنة offline: ${sale.temp_invoice_number}`
     : `مزامنة offline: ${sale.temp_invoice_number}`
 
-  // Create the sale record
-  const { data: salesData, error: salesError } = await supabase
-    .from('sales')
-    .insert({
-      invoice_number: invoiceNumber,
-      total_amount: sale.total_amount,
-      tax_amount: sale.tax_amount,
-      discount_amount: sale.discount_amount,
-      profit: sale.profit,
-      payment_method: sale.payment_method,
-      branch_id: sale.branch_id,
-      customer_id: sale.customer_id,
-      record_id: sale.record_id,
-      notes: finalNotes,
-      time: timeString,
-      invoice_type: sale.invoice_type,
-      created_at: sale.created_at // Use original creation time
-    })
-    .select()
-    .single()
-
-  if (salesError) {
-    console.error('Sales creation error:', salesError)
-    throw new Error(`خطأ في إنشاء الفاتورة: ${salesError.message}`)
+  // Build sale data for atomic RPC
+  const saleData = {
+    invoice_number: invoiceNumber,
+    total_amount: sale.total_amount,
+    tax_amount: sale.tax_amount,
+    discount_amount: sale.discount_amount,
+    profit: sale.profit,
+    payment_method: sale.payment_method,
+    branch_id: sale.branch_id,
+    customer_id: sale.customer_id,
+    record_id: sale.record_id,
+    notes: finalNotes,
+    time: timeString,
+    invoice_type: sale.invoice_type
   }
 
-  // Create sale items
+  // Build items array for atomic RPC
   const saleItems = sale.items.map(item => ({
-    sale_id: salesData.id,
     product_id: item.product_id,
     quantity: item.quantity,
     unit_price: item.unit_price,
@@ -171,15 +160,19 @@ async function processSingleSale(sale: PendingSale): Promise<SyncResult> {
     branch_id: item.branch_id
   }))
 
-  const { error: saleItemsError } = await supabase
-    .from('sale_items')
-    .insert(saleItems)
+  // Atomic insert: sale + items in a single transaction
+  // @ts-ignore - function exists in database but not in generated types
+  const { data: rpcResult, error: rpcError } = await supabase.rpc(
+    'create_sale_with_items',
+    { p_sale_data: saleData, p_items: saleItems }
+  )
 
-  if (saleItemsError) {
-    // Cleanup sale if items fail
-    await supabase.from('sales').delete().eq('id', salesData.id)
-    throw new Error(`خطأ في إضافة عناصر الفاتورة: ${saleItemsError.message}`)
+  if (rpcError) {
+    console.error('Sales creation error:', rpcError)
+    throw new Error(`خطأ في إنشاء الفاتورة: ${rpcError.message}`)
   }
+
+  const salesData = rpcResult as { id: string; invoice_number: string }
 
   // Update inventory
   for (const item of sale.items) {

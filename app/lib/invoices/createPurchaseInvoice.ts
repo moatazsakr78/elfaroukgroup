@@ -128,54 +128,48 @@ export async function createPurchaseInvoice({
     const branchId = selections.warehouse.locationType === 'branch' ? selections.warehouse.id : null
     const warehouseId = selections.warehouse.locationType === 'warehouse' ? selections.warehouse.id : null
 
-    // Start transaction - Create purchase invoice
-    const { data: purchaseData, error: purchaseError } = await supabase
-      .from('purchase_invoices')
-      .insert({
-        invoice_number: invoiceNumber,
-        supplier_id: selections.supplier.id,
-        invoice_date: now.toISOString().split('T')[0], // Current date in YYYY-MM-DD format
-        total_amount: totalAmount,
-        tax_amount: taxAmount,
-        discount_amount: discountAmount,
-        net_amount: netAmount,
-        payment_status: 'pending', // Can be 'pending', 'paid', 'partial'
-        notes: hasNoSafe ? `${notes || ''} [بدون خزنة]`.trim() : (notes || null),
-        branch_id: branchId,
-        warehouse_id: warehouseId,
-        record_id: hasNoSafe ? null : selections.record.id,
-        time: timeString,
-        invoice_type: (isReturn ? 'Purchase Return' : 'Purchase Invoice') as any,
-        is_active: true
-      })
-      .select()
-      .single()
-
-    if (purchaseError) {
-      throw new Error(`خطأ في إنشاء فاتورة الشراء: ${purchaseError.message}`)
+    // Build invoice data for atomic RPC
+    const invoiceData = {
+      invoice_number: invoiceNumber,
+      supplier_id: selections.supplier.id,
+      invoice_date: now.toISOString().split('T')[0],
+      total_amount: totalAmount,
+      tax_amount: taxAmount,
+      discount_amount: discountAmount,
+      net_amount: netAmount,
+      payment_status: 'pending',
+      notes: hasNoSafe ? `${notes || ''} [بدون خزنة]`.trim() : (notes || null),
+      branch_id: branchId,
+      warehouse_id: warehouseId,
+      record_id: hasNoSafe ? null : selections.record.id,
+      time: timeString,
+      invoice_type: isReturn ? 'Purchase Return' : 'Purchase Invoice',
+      is_active: true
     }
 
-    // Create purchase invoice items
+    // Build items array for atomic RPC
     const purchaseItems = finalCartItems.map(item => ({
-      purchase_invoice_id: purchaseData.id,
       product_id: item.product.id,
       quantity: item.quantity,
       unit_purchase_price: item.price,
       total_price: item.total,
-      discount_amount: 0, // You can add item-level discount if needed
-      tax_amount: 0, // You can add item-level tax if needed
+      discount_amount: 0,
+      tax_amount: 0,
       notes: item.selectedColors ? `الألوان: ${Object.entries(item.selectedColors).map(([color, qty]) => `${color} (${qty})`).join(', ')}` : 'غير محدد - وضع الشراء'
     }))
 
-    const { error: purchaseItemsError } = await supabase
-      .from('purchase_invoice_items')
-      .insert(purchaseItems)
+    // Atomic insert: invoice + items in a single transaction
+    // @ts-ignore - function exists in database but not in generated types
+    const { data: rpcResult, error: rpcError } = await supabase.rpc(
+      'create_purchase_invoice_with_items' as any,
+      { p_invoice_data: invoiceData, p_items: purchaseItems }
+    )
 
-    if (purchaseItemsError) {
-      // If purchase items creation fails, we should clean up the purchase invoice record
-      await supabase.from('purchase_invoices').delete().eq('id', purchaseData.id)
-      throw new Error(`خطأ في إضافة عناصر فاتورة الشراء: ${purchaseItemsError.message}`)
+    if (rpcError) {
+      throw new Error(`خطأ في إنشاء فاتورة الشراء: ${rpcError.message}`)
     }
+
+    const purchaseData = rpcResult as { id: string; invoice_number: string }
 
     // NOTE: Removed the logic that creates a copy in the main record
     // Now purchase invoices only appear in the explicitly selected safe

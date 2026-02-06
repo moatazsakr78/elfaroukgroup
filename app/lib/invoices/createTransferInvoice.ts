@@ -77,62 +77,54 @@ export async function createTransferInvoice({
 
     console.log('استخدام الخزنة:', hasNoSafe ? 'لا يوجد' : finalRecord?.name)
 
-    // Create transfer invoice in purchase_invoices table (we'll use it for transfer invoices too)
-    const { data: transferInvoice, error: invoiceError } = await supabase
-      .from('purchase_invoices')
-      .insert({
-        invoice_number: invoiceNumber,
-        invoice_date: new Date().toISOString(),
-        supplier_id: null, // No supplier for transfers
-        branch_id: transferToLocation.type === 'branch' ? transferToLocation.id.toString() : null,
-        warehouse_id: transferToLocation.type === 'warehouse' ? transferToLocation.id.toString() : null,
-        record_id: finalRecordId,
-        total_amount: 0, // Transfers have no monetary value
-        discount_amount: 0,
-        tax_amount: 0,
-        net_amount: 0,
-        notes: hasNoSafe
-          ? `[TRANSFER] نقل من ${transferFromLocation.name} إلى ${transferToLocation.name} [بدون خزنة]`
-          : `[TRANSFER] نقل من ${transferFromLocation.name} إلى ${transferToLocation.name}`,
-        invoice_type: 'Purchase Invoice', // We'll identify transfers by the [TRANSFER] prefix in notes
-        is_active: true
-      })
-      .select()
-      .single()
-
-    if (invoiceError) {
-      console.error('خطأ في إنشاء فاتورة النقل:', invoiceError)
-      throw new Error(`خطأ في إنشاء فاتورة النقل: ${invoiceError.message}`)
+    // Build invoice data for atomic RPC
+    const transferInvoiceData = {
+      invoice_number: invoiceNumber,
+      invoice_date: new Date().toISOString().split('T')[0],
+      supplier_id: null,
+      branch_id: transferToLocation.type === 'branch' ? transferToLocation.id.toString() : null,
+      warehouse_id: transferToLocation.type === 'warehouse' ? transferToLocation.id.toString() : null,
+      record_id: finalRecordId,
+      total_amount: 0,
+      discount_amount: 0,
+      tax_amount: 0,
+      net_amount: 0,
+      notes: hasNoSafe
+        ? `[TRANSFER] نقل من ${transferFromLocation.name} إلى ${transferToLocation.name} [بدون خزنة]`
+        : `[TRANSFER] نقل من ${transferFromLocation.name} إلى ${transferToLocation.name}`,
+      invoice_type: 'Purchase Invoice',
+      is_active: true
     }
 
+    // Build all items array upfront for atomic insert
+    const transferItems = cartItems.map(item => ({
+      product_id: item.product.id,
+      quantity: item.quantity,
+      unit_purchase_price: 0,
+      total_price: 0,
+      notes: `[TRANSFER] نقل من ${transferFromLocation.name} إلى ${transferToLocation.name}`
+    }))
+
+    // Atomic insert: invoice + all items in a single transaction
+    // @ts-ignore - function exists in database but not in generated types
+    const { data: rpcResult, error: rpcError } = await supabase.rpc(
+      'create_purchase_invoice_with_items' as any,
+      { p_invoice_data: transferInvoiceData, p_items: transferItems }
+    )
+
+    if (rpcError) {
+      console.error('خطأ في إنشاء فاتورة النقل:', rpcError)
+      throw new Error(`خطأ في إنشاء فاتورة النقل: ${rpcError.message}`)
+    }
+
+    const transferInvoice = rpcResult as { id: string; invoice_number: string }
     console.log('تم إنشاء فاتورة النقل بنجاح:', transferInvoice)
 
-    // Process each cart item
+    // Process inventory updates for each cart item
     const transferResults = []
-    
+
     for (const item of cartItems) {
       console.log(`معالجة المنتج: ${item.product.name} - الكمية: ${item.quantity}`)
-      
-      // Create transfer item record
-      const { data: transferItem, error: itemError } = await supabase
-        .from('purchase_invoice_items')
-        .insert({
-          purchase_invoice_id: transferInvoice.id,
-          product_id: item.product.id,
-          quantity: item.quantity,
-          unit_purchase_price: 0, // No cost in transfers
-          total_price: 0,
-          notes: `[TRANSFER] نقل من ${transferFromLocation.name} إلى ${transferToLocation.name}`
-        })
-        .select()
-        .single()
-
-      if (itemError) {
-        console.error(`خطأ في إنشاء عنصر النقل للمنتج ${item.product.name}:`, itemError)
-        throw new Error(`خطأ في إنشاء عنصر النقل للمنتج ${item.product.name}: ${itemError.message}`)
-      }
-
-      console.log(`تم إنشاء عنصر النقل بنجاح للمنتج: ${item.product.name}`)
 
       // Handle inventory updates based on location types
       let inventoryUpdateResult
@@ -245,7 +237,7 @@ export async function createTransferInvoice({
       transferResults.push({
         product: item.product,
         quantity: item.quantity,
-        transferItemId: transferItem.id,
+        transferItemId: transferInvoice.id,
         inventoryUpdated: inventoryUpdateResult
       })
     }
