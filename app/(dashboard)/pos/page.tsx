@@ -2038,6 +2038,20 @@ function POSPageContent() {
           }
         });
       }
+
+      // باركود الأشكال من shapes (من جدول product_color_shape_definitions)
+      const productShapes = (product as any).shapes;
+      if (productShapes && Array.isArray(productShapes)) {
+        productShapes.forEach((shape: any) => {
+          if (shape.barcode) {
+            map.set(shape.barcode.toLowerCase(), {
+              product,
+              variantName: shape.name,
+              variantType: 'shape'
+            });
+          }
+        });
+      }
     });
 
     return map;
@@ -2050,11 +2064,12 @@ function POSPageContent() {
 
   // OPTIMIZED: Memoized POS Cart Functions
   const handleAddToCart = useCallback(
-    (product: any, quantity: number, selectedColor?: string) => {
+    (product: any, quantity: number, selectedColor?: string, selectedShape?: string) => {
       console.log("Adding to cart:", {
         productId: product.id,
         quantity,
         selectedColor,
+        selectedShape,
         branchId: currentBranch?.id,
         branchName: currentBranch?.name,
       });
@@ -2080,13 +2095,42 @@ function POSPageContent() {
             existingItem.selectedColors[selectedColor] =
               (existingItem.selectedColors[selectedColor] || 0) + quantity;
 
-            // Recalculate total quantity from all colors
-            existingItem.quantity = Object.values(
-              existingItem.selectedColors,
-            ).reduce(
-              (total: number, colorQty) => total + (colorQty as number),
+            // Recalculate total quantity from all colors + shapes
+            const colorsTotal = existingItem.selectedColors
+              ? Object.values(existingItem.selectedColors).reduce(
+                  (total: number, colorQty) => total + (colorQty as number),
+                  0,
+                )
+              : 0;
+            const shapesTotal = existingItem.selectedShapes
+              ? Object.values(existingItem.selectedShapes).reduce(
+                  (total: number, shapeQty) => total + (shapeQty as number),
+                  0,
+                )
+              : 0;
+            existingItem.quantity = colorsTotal + shapesTotal || existingItem.quantity;
+          } else if (selectedShape) {
+            // Initialize selectedShapes if it doesn't exist
+            if (!existingItem.selectedShapes) {
+              existingItem.selectedShapes = {};
+            }
+
+            // Add or update shape quantity
+            existingItem.selectedShapes[selectedShape] =
+              (existingItem.selectedShapes[selectedShape] || 0) + quantity;
+
+            // Recalculate total quantity from all colors + shapes
+            const colorsTotal = existingItem.selectedColors
+              ? Object.values(existingItem.selectedColors).reduce(
+                  (total: number, colorQty) => total + (colorQty as number),
+                  0,
+                )
+              : 0;
+            const shapesTotal = Object.values(existingItem.selectedShapes).reduce(
+              (total: number, shapeQty) => total + (shapeQty as number),
               0,
             );
+            existingItem.quantity = colorsTotal + shapesTotal || existingItem.quantity;
           } else {
             existingItem.quantity += quantity;
           }
@@ -2110,6 +2154,9 @@ function POSPageContent() {
             total: productPrice * quantity,
             selectedColors: selectedColor
               ? { [selectedColor]: quantity }
+              : undefined,
+            selectedShapes: selectedShape
+              ? { [selectedShape]: quantity }
               : undefined,
             color: selectedColor || null,
             // إضافة معلومات الفرع للمنتج
@@ -2320,8 +2367,11 @@ function POSPageContent() {
       if (variantName && variantType === 'color') {
         // إضافة مع اللون المحدد
         handleAddToCartRef.current(productWithPrice, 1, variantName);
+      } else if (variantName && variantType === 'shape') {
+        // إضافة مع الشكل المحدد
+        handleAddToCartRef.current(productWithPrice, 1, undefined, variantName);
       } else {
-        // إضافة بدون لون
+        // إضافة بدون لون أو شكل
         handleAddToCartRef.current(productWithPrice, 1);
       }
 

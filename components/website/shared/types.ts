@@ -33,6 +33,7 @@ export interface ProductColor {
   hex: string;
   image_url?: string;
   quantity?: number;
+  barcode?: string | null;
 }
 
 export interface ProductShape {
@@ -40,6 +41,7 @@ export interface ProductShape {
   name: string;
   image_url?: string;
   quantity?: number;
+  barcode?: string | null;
 }
 
 export interface ProductSize {

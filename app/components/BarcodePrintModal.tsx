@@ -29,6 +29,17 @@ interface LabelSettings {
   priceType: 'price' | 'wholesale_price' | 'price1' | 'price2' | 'price3' | 'price4'
 }
 
+interface PrintableItem {
+  key: string
+  productName: string
+  variantName?: string
+  variantType?: 'color' | 'shape'
+  barcode: string
+  colorHex?: string
+  imageUrl?: string
+  product: Product
+}
+
 export default function BarcodePrintModal({ isOpen, onClose, products, branches }: BarcodePrintModalProps) {
   const [labelSize, setLabelSize] = useState<LabelSize>('large')
   const [selectedBranch, setSelectedBranch] = useState<string>('')
@@ -40,22 +51,79 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
     showCompanyName: true,
     priceType: 'price'
   })
-  const [copies, setCopies] = useState<{[productId: string]: number}>({})
+  const [copies, setCopies] = useState<{[key: string]: number}>({})
   const [searchQuery, setSearchQuery] = useState('')
   const barcodeRefs = useRef<{[key: string]: SVGSVGElement | null}>({})
   const [showPreview, setShowPreview] = useState(false)
   const [isPreparing, setIsPreparing] = useState(false)
 
-  // Initialize copies to 0 for each product
+  // Build flat list of printable items (product barcode + color barcodes + shape barcodes)
+  const printableItems = useMemo(() => {
+    const items: PrintableItem[] = []
+
+    products.forEach(product => {
+      // Main product barcode
+      if (product.barcode) {
+        items.push({
+          key: product.id as string,
+          productName: product.name,
+          barcode: product.barcode,
+          imageUrl: product.main_image_url || undefined,
+          product
+        })
+      }
+
+      // Color variant barcodes
+      const colors = (product as any).colors
+      if (colors && Array.isArray(colors)) {
+        colors.forEach((color: any) => {
+          if (color.barcode) {
+            items.push({
+              key: `${product.id}__color__${color.name}`,
+              productName: product.name,
+              variantName: color.name,
+              variantType: 'color',
+              barcode: color.barcode,
+              colorHex: color.hex,
+              imageUrl: color.image_url || product.main_image_url || undefined,
+              product
+            })
+          }
+        })
+      }
+
+      // Shape variant barcodes
+      const shapes = (product as any).shapes
+      if (shapes && Array.isArray(shapes)) {
+        shapes.forEach((shape: any) => {
+          if (shape.barcode) {
+            items.push({
+              key: `${product.id}__shape__${shape.name}`,
+              productName: product.name,
+              variantName: shape.name,
+              variantType: 'shape',
+              barcode: shape.barcode,
+              imageUrl: shape.image_url || product.main_image_url || undefined,
+              product
+            })
+          }
+        })
+      }
+    })
+
+    return items
+  }, [products])
+
+  // Initialize copies to 0 for each printable item
   useEffect(() => {
-    if (products.length > 0) {
-      const initialCopies: {[productId: string]: number} = {}
-      products.forEach(product => {
-        initialCopies[product.id] = 0
+    if (printableItems.length > 0) {
+      const initialCopies: {[key: string]: number} = {}
+      printableItems.forEach(item => {
+        initialCopies[item.key] = 0
       })
       setCopies(initialCopies)
     }
-  }, [products])
+  }, [printableItems])
 
   // Set first branch as default
   useEffect(() => {
@@ -67,12 +135,12 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
   const generateBarcodes = () => {
     // Generate barcodes as Canvas images for thermal printers
     let generatedCount = 0
-    products.forEach((product) => {
-      const numCopies = copies[product.id] || 0
+    printableItems.forEach((item) => {
+      const numCopies = copies[item.key] || 0
 
       for (let i = 0; i < numCopies; i++) {
-        const canvasId = `barcode-canvas-${product.id}-${i}`
-        const imgId = `barcode-img-${product.id}-${i}`
+        const canvasId = `barcode-canvas-${item.key}-${i}`
+        const imgId = `barcode-img-${item.key}-${i}`
 
         // Create temporary canvas
         let canvas = document.getElementById(canvasId) as HTMLCanvasElement
@@ -83,10 +151,10 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
           document.body.appendChild(canvas)
         }
 
-        if (canvas && product.barcode) {
+        if (canvas && item.barcode) {
           try {
             // Generate barcode on canvas - optimized for 50x25mm thermal labels
-            JsBarcode(canvas, product.barcode, {
+            JsBarcode(canvas, item.barcode, {
               format: 'CODE128',
               width: 1.4,              // Sharp, clear lines for thermal printing
               height: 38,              // Optimal height for scanning
@@ -105,7 +173,7 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
               generatedCount++
             }
           } catch (error) {
-            console.error(`Error generating barcode for ${product.name}:`, error)
+            console.error(`Error generating barcode for ${item.productName}:`, error)
           }
         }
       }
@@ -120,7 +188,7 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
     const totalLabels = Object.values(copies).reduce((sum, count) => sum + count, 0)
 
     if (totalLabels === 0) {
-      alert('⚠️ يرجى تحديد عدد النسخ للمنتجات أولاً')
+      alert('\u26A0\uFE0F يرجى تحديد عدد النسخ للمنتجات أولاً')
       return
     }
 
@@ -141,10 +209,10 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
 
     // Wait for DOM to update
     setTimeout(() => {
-      console.log('👁️ Generating barcodes for preview...')
-      console.log(`📊 Total labels to preview: ${totalLabels}`)
+      console.log('Generating barcodes for preview...')
+      console.log(`Total labels to preview: ${totalLabels}`)
       const count = generateBarcodes()
-      console.log(`✅ Generated ${count} barcode preview images`)
+      console.log(`Generated ${count} barcode preview images`)
 
       // Wait for images to load and show preview
       setTimeout(() => {
@@ -153,7 +221,7 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
         images.forEach((img: any) => {
           if (img.complete && img.src) loadedCount++
         })
-        console.log(`📸 Preview images loaded: ${loadedCount}/${images.length}`)
+        console.log(`Preview images loaded: ${loadedCount}/${images.length}`)
 
         setShowPreview(true)
         // Keep container visible for preview
@@ -166,14 +234,14 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
     const totalLabels = Object.values(copies).reduce((sum, count) => sum + count, 0)
 
     if (totalLabels === 0) {
-      alert('⚠️ يرجى تحديد عدد النسخ للمنتجات أولاً')
+      alert('\u26A0\uFE0F يرجى تحديد عدد النسخ للمنتجات أولاً')
       return
     }
 
     // Make print container visible to generate barcodes
     const printContainer = document.getElementById('barcode-print-container')
     if (!printContainer) {
-      console.error('❌ Print container not found')
+      console.error('Print container not found')
       alert('خطأ: لم يتم العثور على حاوية الطباعة')
       return
     }
@@ -182,16 +250,16 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
     setIsPreparing(true)
 
     // Make container visible for barcode generation
-    console.log('🖨️ Preparing print container...')
+    console.log('Preparing print container...')
     printContainer.style.display = 'block'
     printContainer.style.visibility = 'visible'
 
     // Wait for DOM to update
     setTimeout(() => {
-      console.log('🖨️ Generating barcodes as PNG images...')
-      console.log(`📊 Total labels: ${totalLabels}`)
+      console.log('Generating barcodes as PNG images...')
+      console.log(`Total labels: ${totalLabels}`)
       const count = generateBarcodes()
-      console.log(`✅ Generated ${count} barcodes`)
+      console.log(`Generated ${count} barcodes`)
 
       // Wait for images to fully load
       setTimeout(() => {
@@ -201,14 +269,14 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
         images.forEach((img: any) => {
           if (img.complete && img.src) loadedCount++
         })
-        console.log(`📸 Images: ${loadedCount}/${images.length}`)
+        console.log(`Images: ${loadedCount}/${images.length}`)
 
         if (loadedCount < images.length) {
-          console.warn('⚠️ Not all images loaded!')
+          console.warn('Not all images loaded!')
         }
 
         // Create iframe for printing
-        console.log('📄 Creating print iframe...')
+        console.log('Creating print iframe...')
         const iframe = document.createElement('iframe')
         iframe.style.position = 'absolute'
         iframe.style.width = '0'
@@ -218,7 +286,7 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
 
         const iframeDoc = iframe.contentWindow?.document
         if (!iframeDoc) {
-          console.error('❌ Failed to create iframe')
+          console.error('Failed to create iframe')
           setIsPreparing(false)
           return
         }
@@ -286,12 +354,9 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
 
         // Wait for iframe to load
         setTimeout(() => {
-          console.log('🖨️ Printing from iframe...')
-          console.log(`📄 Total pages to print: ${totalLabels} (one label per page)`)
-          console.log(`📏 Page size: ${currentDimensions.width}mm (width) × ${currentDimensions.height}mm (height)`)
-          console.log(`📐 Orientation: Landscape (horizontal)`)
-          console.log(`📊 Ratio: ${(currentDimensions.width / currentDimensions.height).toFixed(1)}:1`)
-          console.log(`ℹ️ If sticker appears square, check printer settings in "More settings"`)
+          console.log('Printing from iframe...')
+          console.log(`Total pages to print: ${totalLabels} (one label per page)`)
+          console.log(`Page size: ${currentDimensions.width}mm (width) x ${currentDimensions.height}mm (height)`)
 
           // Hide loading state
           setIsPreparing(false)
@@ -308,7 +373,7 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
             // Cleanup canvas elements
             const canvases = document.querySelectorAll('[id^="barcode-canvas-"]')
             canvases.forEach(canvas => canvas.remove())
-            console.log('✅ Cleanup complete')
+            console.log('Cleanup complete')
           }, 1000)
         }, 500)
       }, 1500)
@@ -351,23 +416,24 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
 
   const selectedBranchName = branches.find(b => b.id === selectedBranch)?.name || ''
 
-  // Filter products based on search query
-  const filteredProducts = useMemo(() => {
-    if (!searchQuery) return products
+  // Filter printable items based on search query
+  const filteredItems = useMemo(() => {
+    if (!searchQuery) return printableItems
 
     const query = searchQuery.toLowerCase()
-    return products.filter(product =>
-      product.name.toLowerCase().includes(query) ||
-      (product.barcode && product.barcode.toLowerCase().includes(query))
+    return printableItems.filter(item =>
+      item.productName.toLowerCase().includes(query) ||
+      (item.variantName && item.variantName.toLowerCase().includes(query)) ||
+      item.barcode.toLowerCase().includes(query)
     )
-  }, [products, searchQuery])
+  }, [printableItems, searchQuery])
 
-  // Generate barcodes for all products in preview cards
+  // Generate barcodes for preview cards
   useEffect(() => {
-    filteredProducts.forEach(product => {
-      if (product.barcode && barcodeRefs.current[product.id]) {
+    filteredItems.forEach(item => {
+      if (item.barcode && barcodeRefs.current[item.key]) {
         try {
-          JsBarcode(barcodeRefs.current[product.id]!, product.barcode, {
+          JsBarcode(barcodeRefs.current[item.key]!, item.barcode, {
             format: 'CODE128',
             width: 0.6,          // Very thin for small horizontal preview
             height: 20,          // Low height for horizontal layout
@@ -381,21 +447,33 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
         }
       }
     })
-  }, [filteredProducts, labelSize])
+  }, [filteredItems, labelSize])
 
   if (!isOpen) return null
 
   // Dimensions for thermal label printer (50mm x 25mm sticker)
-  // For landscape orientation: width (longer side) = 50mm, height (shorter side) = 25mm
   const dimensions = {
     small: { width: 50, height: 25 },
     large: { width: 50, height: 25 }
   }
 
-  // Note: Some thermal printers expect dimensions in different order
-  // If the sticker appears square, the printer may be interpreting the size differently
-
   const currentDimensions = dimensions[labelSize]
+
+  // Get display label for an item
+  const getItemDisplayName = (item: PrintableItem) => {
+    if (item.variantName) {
+      return `${item.productName} - ${item.variantName}`
+    }
+    return item.productName
+  }
+
+  // Get label name for print sticker (shorter)
+  const getItemStickerName = (item: PrintableItem) => {
+    if (item.variantName) {
+      return `${item.productName} - ${item.variantName}`
+    }
+    return item.productName
+  }
 
   return (
     <>
@@ -408,7 +486,7 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
             <p className="text-gray-600 mb-3">يتم تحويل الباركود إلى صور PNG</p>
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
               <p className="text-blue-800 text-sm font-medium">
-                📄 كل استيكر سيطبع على صفحة منفصلة
+                كل استيكر سيطبع على صفحة منفصلة
               </p>
               <p className="text-blue-600 text-xs mt-1">
                 عدد الملصقات: {Object.values(copies).reduce((sum, count) => sum + count, 0)}
@@ -479,7 +557,7 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
                     >
                       <div className="text-center">
                         <div className="font-bold mb-1">قياسي</div>
-                        <div className="text-xs opacity-75">50×25 مم</div>
+                        <div className="text-xs opacity-75">50x25 مم</div>
                       </div>
                     </button>
                     <button
@@ -493,7 +571,7 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
                     >
                       <div className="text-center">
                         <div className="font-bold mb-1 text-gray-500">كبير</div>
-                        <div className="text-xs opacity-50">50×25 مم</div>
+                        <div className="text-xs opacity-50">50x25 مم</div>
                       </div>
                     </button>
                   </div>
@@ -608,28 +686,28 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
               {/* Search Bar */}
               <div className="p-4 border-b border-[#4A5568]">
                 <h3 className="text-white text-lg font-semibold mb-3 text-center">معاينة الملصقات</h3>
-                <p className="text-gray-400 text-sm mb-3 text-center">حدد عدد النسخ لكل منتج</p>
+                <p className="text-gray-400 text-sm mb-3 text-center">حدد عدد النسخ لكل منتج أو متغير</p>
                 <div className="relative">
                   <MagnifyingGlassIcon className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                   <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="ابحث عن منتج بالاسم أو الباركود..."
+                    placeholder="ابحث عن منتج أو لون أو شكل بالاسم أو الباركود..."
                     className="w-full pl-4 pr-10 py-3 bg-[#374151] border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
 
-              {/* Products Grid */}
+              {/* Items Grid */}
               <div className="flex-1 p-4 overflow-y-auto scrollbar-hide">
                 <div className="grid grid-cols-3 gap-4">
-                  {filteredProducts.map(product => {
-                    const hasQuantity = (copies[product.id] || 0) > 0
+                  {filteredItems.map(item => {
+                    const hasQuantity = (copies[item.key] || 0) > 0
 
                     return (
                       <div
-                        key={product.id}
+                        key={item.key}
                         className={`rounded-lg p-3 border-2 transition-all ${
                           hasQuantity
                             ? 'bg-blue-900/30 border-blue-500 shadow-lg shadow-blue-500/20'
@@ -639,16 +717,33 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
                         {/* Product Image */}
                         <div className="mb-2 relative h-32">
                           <ProductGridImage
-                            src={product.main_image_url}
-                            alt={product.name}
+                            src={item.imageUrl || item.product.main_image_url}
+                            alt={getItemDisplayName(item)}
                             priority={false}
                           />
                         </div>
 
-                        {/* Product Info */}
+                        {/* Item Info */}
                         <div className="mb-2">
-                          <h4 className="text-white font-medium text-sm mb-1 truncate">{product.name}</h4>
-                          <p className="text-gray-400 text-xs truncate">{product.barcode || 'لا يوجد باركود'}</p>
+                          <h4 className="text-white font-medium text-sm mb-1 truncate">{item.productName}</h4>
+                          {item.variantName && (
+                            <div className="flex items-center gap-1.5 mb-1">
+                              {item.variantType === 'color' && item.colorHex && (
+                                <span
+                                  className="w-3 h-3 rounded-full border border-gray-500 flex-shrink-0"
+                                  style={{ backgroundColor: item.colorHex }}
+                                />
+                              )}
+                              <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                item.variantType === 'color'
+                                  ? 'bg-purple-900/50 text-purple-300'
+                                  : 'bg-orange-900/50 text-orange-300'
+                              }`}>
+                                {item.variantType === 'color' ? 'لون' : 'شكل'}: {item.variantName}
+                              </span>
+                            </div>
+                          )}
+                          <p className="text-gray-400 text-xs truncate">{item.barcode}</p>
                         </div>
 
                         {/* Copies Input */}
@@ -657,8 +752,8 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
                           <input
                             type="number"
                             min="0"
-                            value={copies[product.id] || 0}
-                            onChange={(e) => setCopies(prev => ({ ...prev, [product.id]: parseInt(e.target.value) || 0 }))}
+                            value={copies[item.key] || 0}
+                            onChange={(e) => setCopies(prev => ({ ...prev, [item.key]: parseInt(e.target.value) || 0 }))}
                             className={`w-full border rounded px-3 py-2 text-center font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                               hasQuantity
                                 ? 'bg-blue-600 border-blue-400 text-white'
@@ -683,25 +778,25 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
                                 <div className="text-[5px] font-bold text-gray-800 truncate">المعرض</div>
                               )}
                               {labelSettings.showProductName && (
-                                <div className="text-[4px] font-medium text-gray-700 truncate">{product.name}</div>
+                                <div className="text-[4px] font-medium text-gray-700 truncate">{getItemDisplayName(item)}</div>
                               )}
                             </div>
 
                             {/* Center - Barcode */}
-                            {labelSettings.showBarcode && product.barcode && (
+                            {labelSettings.showBarcode && item.barcode && (
                               <div className="flex flex-col items-center justify-center flex-[2] px-0.5">
                                 <svg
-                                  ref={(el) => { if (el) barcodeRefs.current[product.id] = el }}
+                                  ref={(el) => { if (el) barcodeRefs.current[item.key] = el }}
                                   style={{ maxWidth: '100%', height: 'auto' }}
                                 />
-                                <div className="text-[4px] font-mono font-bold text-gray-700">*{product.barcode}*</div>
+                                <div className="text-[4px] font-mono font-bold text-gray-700">*{item.barcode}*</div>
                               </div>
                             )}
 
                             {/* Right - Price */}
                             {labelSettings.showPrice && (
                               <div className="flex flex-col items-end justify-center flex-1 pl-1">
-                                <div className="text-[6px] font-bold text-gray-900">{getPrice(product).toFixed(2)}</div>
+                                <div className="text-[6px] font-bold text-gray-900">{getPrice(item.product).toFixed(2)}</div>
                                 <div className="text-[4px] font-bold text-gray-900">LE</div>
                               </div>
                             )}
@@ -870,7 +965,7 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
                   <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
-                        <span className="text-white text-xl">ℹ️</span>
+                        <span className="text-white text-xl">i</span>
                       </div>
                       <div>
                         <h4 className="text-blue-900 font-bold mb-1">معاينة الملصقات قبل الطباعة</h4>
@@ -880,14 +975,14 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
                   </div>
 
                   <div className="flex flex-wrap gap-4 justify-center">
-                    {products.flatMap(product =>
-                      Array.from({ length: copies[product.id] || 0 }, (_, index) => {
-                        const imgElement = document.getElementById(`barcode-img-${product.id}-${index}`) as HTMLImageElement
+                    {printableItems.flatMap(item =>
+                      Array.from({ length: copies[item.key] || 0 }, (_, index) => {
+                        const imgElement = document.getElementById(`barcode-img-${item.key}-${index}`) as HTMLImageElement
                         const imgSrc = imgElement?.src || ''
 
                         return (
                           <div
-                            key={`preview-${product.id}-${index}`}
+                            key={`preview-${item.key}-${index}`}
                             className="border-2 border-gray-400 bg-white shadow-lg overflow-hidden"
                             style={{
                               width: `${currentDimensions.width * 3}px`,
@@ -896,29 +991,29 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
                           >
                             {/* Vertical Layout Preview */}
                             <div className="flex flex-col items-center justify-start w-full h-full p-1 gap-0">
-                              {/* Top: Product Name */}
+                              {/* Top: Product Name + Variant */}
                               {labelSettings.showProductName && (
                                 <div className="text-gray-900 text-center w-full mb-0 truncate px-1" style={{ fontSize: '12px', fontWeight: '800' }}>
-                                  {product.name}
+                                  {getItemStickerName(item)}
                                 </div>
                               )}
 
                               {/* Center: Barcode and Price */}
                               <div className="flex flex-col items-center justify-center w-full" style={{ gap: '0px' }}>
                                 {/* Barcode Image */}
-                                {labelSettings.showBarcode && product.barcode && imgSrc && (
+                                {labelSettings.showBarcode && item.barcode && imgSrc && (
                                   <img
                                     src={imgSrc}
-                                    alt={product.barcode}
+                                    alt={item.barcode}
                                     className="max-w-full h-auto"
                                     style={{ imageRendering: 'crisp-edges', maxWidth: '90%' }}
                                   />
                                 )}
 
-                                {/* Price - Below Barcode (no barcode number) */}
+                                {/* Price - Below Barcode */}
                                 {labelSettings.showPrice && (
                                   <div className="text-gray-900 text-center w-full" style={{ fontSize: '11px', fontWeight: '800' }}>
-                                    {getPrice(product).toFixed(2)} LE
+                                    {getPrice(item.product).toFixed(2)} LE
                                   </div>
                                 )}
                               </div>
@@ -972,10 +1067,10 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
       {/* Hidden print content */}
       <div id="barcode-print-container">
         <div className="print-labels-grid">
-          {products.flatMap(product =>
-            Array.from({ length: copies[product.id] || 0 }, (_, index) => (
-              <div key={`${product.id}-${index}`} className="barcode-sticker">
-                {/* Vertical Layout: Company Name → Barcode → Product Name → Price */}
+          {printableItems.flatMap(item =>
+            Array.from({ length: copies[item.key] || 0 }, (_, index) => (
+              <div key={`${item.key}-${index}`} className="barcode-sticker">
+                {/* Vertical Layout: Product Name + Variant → Barcode → Price */}
                 <div style={{
                   display: 'flex',
                   flexDirection: 'column',
@@ -986,7 +1081,7 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
                   padding: '0.5mm 2mm'
                 }}>
 
-                  {/* Top: Product Name */}
+                  {/* Top: Product Name + Variant */}
                   {labelSettings.showProductName && (
                     <div style={{
                       fontSize: '11pt',
@@ -1001,7 +1096,7 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
                       textOverflow: 'ellipsis',
                       padding: '0 1mm'
                     }}>
-                      {product.name}
+                      {getItemStickerName(item)}
                     </div>
                   )}
 
@@ -1015,10 +1110,10 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
                     gap: '0mm'
                   }}>
                     {/* Barcode Image */}
-                    {labelSettings.showBarcode && product.barcode && (
+                    {labelSettings.showBarcode && item.barcode && (
                       <img
-                        id={`barcode-img-${product.id}-${index}`}
-                        alt={product.barcode}
+                        id={`barcode-img-${item.key}-${index}`}
+                        alt={item.barcode}
                         style={{
                           display: 'block',
                           maxWidth: '90%',
@@ -1028,7 +1123,7 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
                       />
                     )}
 
-                    {/* Price - Below Barcode (no barcode number) */}
+                    {/* Price - Below Barcode */}
                     {labelSettings.showPrice && (
                       <div style={{
                         fontSize: '10pt',
@@ -1038,7 +1133,7 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
                         width: '100%',
                         fontFamily: 'Arial, sans-serif'
                       }}>
-                        {getPrice(product).toFixed(2)} LE
+                        {getPrice(item.product).toFixed(2)} LE
                       </div>
                     )}
                   </div>

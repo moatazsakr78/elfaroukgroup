@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../supabase/client'
-import { ProductColor } from '../../../components/website/shared/types'
+import { ProductColor, ProductShape } from '../../../components/website/shared/types'
 import { cache, CacheKeys, CacheTTL } from '../cache/memoryCache'
 
 export interface Product {
@@ -71,6 +71,7 @@ export interface Product {
   isDiscounted?: boolean
   discountLabel?: string
   colors?: ProductColor[] // Color variants
+  shapes?: ProductShape[] // Shape variants
 }
 
 // ✨ Interface للفيديوهات
@@ -610,6 +611,18 @@ export function useProducts() {
         }))
         .sort((a: any, b: any) => b.quantity - a.quantity);
 
+      // Extract shape variants with barcode
+      const shapeVariants = productVariantsData
+        .filter((variant: any) => variant.variant_type === 'shape' && variant.name)
+        .map((variant: any) => ({
+          id: variant.id,
+          name: variant.name,
+          image_url: variant.image_url,
+          barcode: variant.barcode || null,
+          quantity: variant.quantity || 0
+        }))
+        .sort((a: any, b: any) => b.quantity - a.quantity);
+
       // Get videos for this product
       const productVideos = videosByProduct.get(product.id) || []
 
@@ -621,6 +634,7 @@ export function useProducts() {
         variantsData: variantsByLocation,
         productColors: productColors,
         colors: colorVariants,
+        shapes: shapeVariants,
         allImages: uniqueImages,
         additional_images: parsedAdditionalImages, // ✨ من الحقل الجديد
         actualVideoUrl: actualVideoUrl, // ✨ رابط الفيديو فقط
