@@ -1075,22 +1075,29 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
       }
     }
 
-    // Load additional images from video_url field (stored as JSON)
-    if (editProduct.video_url) {
+    // Load additional images - check additional_images_urls first, then fallback to video_url
+    let additionalImageUrls: string[] = []
+
+    if ((editProduct as any).additional_images_urls && Array.isArray((editProduct as any).additional_images_urls) && (editProduct as any).additional_images_urls.length > 0) {
+      additionalImageUrls = (editProduct as any).additional_images_urls
+    } else if (editProduct.video_url) {
       try {
-        const additionalImageUrls = JSON.parse(editProduct.video_url)
-        if (Array.isArray(additionalImageUrls)) {
-          const additionalImageFiles: ImageFile[] = additionalImageUrls.map((url, index) => ({
-            file: new File([], `additional-image-${index}.jpg`),
-            preview: url,
-            id: `additional-existing-${index}`
-          }))
-          
-          setAdditionalImages(additionalImageFiles)
+        const parsed = JSON.parse(editProduct.video_url)
+        if (Array.isArray(parsed)) {
+          additionalImageUrls = parsed
         }
       } catch (error) {
-        console.error('Error loading additional images:', error)
+        // video_url is not JSON (actual video URL), skip
       }
+    }
+
+    if (additionalImageUrls.length > 0) {
+      const additionalImageFiles: ImageFile[] = additionalImageUrls.map((url, index) => ({
+        file: new File([], `additional-image-${index}.jpg`),
+        preview: url,
+        id: `additional-existing-${index}`
+      }))
+      setAdditionalImages(additionalImageFiles)
     }
   }
 
