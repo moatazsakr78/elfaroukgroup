@@ -20,7 +20,7 @@ interface ColorSelectionModalProps {
   isOpen: boolean
   onClose: () => void
   product: any
-  onAddToCart: (selections: any, totalQuantity: number, purchasePricingData?: PurchasePricingData) => void
+  onAddToCart: (selections: any, totalQuantity: number, purchasePricingData?: PurchasePricingData, shapeSelections?: { [key: string]: number }) => void
   hasRequiredForCart?: boolean
   selectedBranchId?: string
   isPurchaseMode?: boolean
@@ -46,6 +46,7 @@ export default function ColorSelectionModal({
   selectedPriceType = 'price'
 }: ColorSelectionModalProps) {
   const [selections, setSelections] = useState<{[key: string]: number}>({})
+  const [shapeSelections, setShapeSelections] = useState<{[key: string]: number}>({})
   const [manualQuantity, setManualQuantity] = useState(1) // للمنتجات بدون ألوان
   const [isFirstDigitInput, setIsFirstDigitInput] = useState(true) // تتبع حالة أول رقم يدخل
   const [editingColorQuantity, setEditingColorQuantity] = useState<string | null>(null)
@@ -255,9 +256,38 @@ export default function ColorSelectionModal({
 
   const colors = getProductColors()
 
-  // حساب الكمية الإجمالية: إذا كان هناك ألوان، نحسب من selections، وإلا نستخدم manualQuantity
-  const totalQuantity = colors.length > 0
-    ? Object.values(selections).reduce((sum, qty) => sum + qty, 0)
+  // منطق استخراج الأشكال المتاحة
+  const getProductShapes = () => {
+    if (!product || isPurchaseMode) return []
+    const shapes: any[] = []
+
+    const effectiveBranchId = isTransferMode && transferFromLocation
+      ? (transferFromLocation.type === 'branch' ? transferFromLocation.id.toString() : null)
+      : selectedBranchId
+
+    if (product.variantsData && effectiveBranchId && product.variantsData[effectiveBranchId]) {
+      product.variantsData[effectiveBranchId].forEach((variant: any) => {
+        if (variant.variant_type === 'shape') {
+          shapes.push({
+            name: variant.name || 'شكل',
+            color: '#6B7280',
+            availableQuantity: variant.quantity || 0,
+            image: variant.image_url || null
+          })
+        }
+      })
+    }
+    return shapes
+  }
+
+  const shapes = getProductShapes()
+
+  // حساب الكمية الإجمالية: ألوان + أشكال أو manualQuantity
+  const colorTotal = Object.values(selections).reduce((sum, qty) => sum + qty, 0)
+  const shapeTotal = Object.values(shapeSelections).reduce((sum, qty) => sum + qty, 0)
+  const hasVariants = colors.length > 0 || shapes.length > 0
+  const totalQuantity = hasVariants
+    ? colorTotal + shapeTotal
     : manualQuantity
 
   // دوال التعامل مع الكميات
@@ -288,6 +318,27 @@ export default function ColorSelectionModal({
     setManualQuantity(newQuantity)
   }
 
+  // دوال التعامل مع كميات الأشكال
+  const handleShapeQuantityChange = (shapeName: string, change: number) => {
+    setShapeSelections(prev => {
+      const current = prev[shapeName] || 0
+      const shape = shapes.find((s: any) => s.name === shapeName)
+      const maxAvailable = shape?.availableQuantity || 0
+
+      let newValue = Math.max(0, current + change)
+      if (newValue > maxAvailable) {
+        newValue = maxAvailable
+      }
+
+      if (newValue === 0) {
+        const { [shapeName]: removed, ...rest } = prev
+        return rest
+      }
+
+      return { ...prev, [shapeName]: newValue }
+    })
+  }
+
   const selectedQuantity = Object.values(selections).reduce((sum, qty) => sum + qty, 0)
   const totalPrice = isTransferMode ? 0 : totalQuantity * (isPurchaseMode ? purchasePrice : getDisplayPrice(product))
 
@@ -311,6 +362,7 @@ export default function ColorSelectionModal({
 
   const handleAddToCart = useCallback(() => {
     if (totalQuantity > 0 && validationInfo.isValid) {
+      const shapeData = Object.keys(shapeSelections).length > 0 ? shapeSelections : undefined
       if (isPurchaseMode) {
         const pricingData: PurchasePricingData = {
           purchasePrice,
@@ -322,15 +374,16 @@ export default function ColorSelectionModal({
           price4,
           productCode
         }
-        onAddToCart(selections, totalQuantity, pricingData)
+        onAddToCart(selections, totalQuantity, pricingData, shapeData)
       } else {
-        onAddToCart(selections, totalQuantity)
+        onAddToCart(selections, totalQuantity, undefined, shapeData)
       }
       onClose()
       setSelections({})
+      setShapeSelections({})
       setManualQuantity(1) // إعادة تعيين الكمية اليدوية
     }
-  }, [totalQuantity, validationInfo.isValid, isPurchaseMode, onAddToCart, selections, purchasePrice, salePrice, wholesalePrice, price1, price2, price3, price4, productCode, onClose])
+  }, [totalQuantity, validationInfo.isValid, isPurchaseMode, onAddToCart, selections, shapeSelections, purchasePrice, salePrice, wholesalePrice, price1, price2, price3, price4, productCode, onClose])
 
   // Enter key shortcut to add to cart
   useEffect(() => {
@@ -426,9 +479,9 @@ export default function ColorSelectionModal({
                   )}
                 </div>
 
-                {/* Quantity Controls - Different based on colors */}
-                {colors.length > 0 ? (
-                  /* Read-only when colors exist */
+                {/* Quantity Controls - Different based on colors/shapes */}
+                {hasVariants ? (
+                  /* Read-only when colors/shapes exist */
                   <div className="flex items-center gap-4 flex-1 justify-center relative">
                     <div className="bg-[#2B3544] text-white font-bold text-xl text-center rounded-lg px-4 py-2 min-w-[80px] border-2 border-gray-600">
                       {totalQuantity}
@@ -711,7 +764,63 @@ export default function ColorSelectionModal({
               </div>
             )}
 
-            {colors.length === 0 && !isPurchaseMode && (
+            {/* Shape Selection */}
+            {shapes.length > 0 && (
+              <div>
+                <h3 className="text-white font-medium mb-3">اختيار الأشكال</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  {shapes.map((shape: any) => (
+                    <div key={shape.name} className="bg-[#374151] rounded-xl p-4 border border-[#4A5568] relative">
+
+                      {/* Shape Display */}
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="w-12 h-12 bg-[#2B3544] rounded-lg flex items-center justify-center overflow-hidden border border-[#4A5568] flex-shrink-0 relative">
+                          {shape.image ? (
+                            <img src={shape.image} alt={shape.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full rounded-lg flex items-center justify-center relative bg-gray-600">
+                              <span className="text-white text-lg">🔷</span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-white font-medium text-sm truncate">{shape.name}</span>
+                          </div>
+                          <p className="text-gray-400 text-xs">متوفر: {shape.availableQuantity}</p>
+                        </div>
+                      </div>
+
+                      {/* Quantity Controls */}
+                      <div className="flex items-center justify-between relative">
+                        <button
+                          onClick={() => handleShapeQuantityChange(shape.name, -1)}
+                          disabled={!shapeSelections[shape.name]}
+                          className="w-8 h-8 bg-[#2B3544] hover:bg-[#4A5568] disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg flex items-center justify-center transition-colors duration-150 flex-shrink-0"
+                        >
+                          <MinusIcon className="h-4 w-4 text-white" />
+                        </button>
+
+                        <div className="bg-[#2B3544] rounded-lg px-3 py-2 min-w-[50px] text-center relative mx-2">
+                          <span className="text-white font-bold">{shapeSelections[shape.name] || 0}</span>
+                        </div>
+
+                        <button
+                          onClick={() => handleShapeQuantityChange(shape.name, 1)}
+                          disabled={(shapeSelections[shape.name] || 0) >= shape.availableQuantity}
+                          className="w-8 h-8 bg-[#2B3544] hover:bg-[#4A5568] disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg flex items-center justify-center transition-colors duration-150 flex-shrink-0"
+                        >
+                          <PlusIcon className="h-4 w-4 text-white" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {!hasVariants && !isPurchaseMode && (
               <div className="block md:hidden py-4">
                 {/* Numeric Keypad for Mobile */}
                 <div className="grid grid-cols-3 gap-2 max-w-[240px] mx-auto">

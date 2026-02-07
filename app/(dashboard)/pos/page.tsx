@@ -2350,6 +2350,7 @@ function POSPageContent() {
       price4: number;
       productCode: string;
     },
+    shapeSelections?: { [key: string]: number },
   ) => {
     if (!modalProduct) return;
 
@@ -2400,21 +2401,39 @@ function POSPageContent() {
         const existingItem = { ...newCartItems[existingItemIndex] };
 
         // إضافة الكمية الجديدة للكمية الموجودة
-        if (Object.keys(selections).length > 0) {
-          // منتج بألوان - دمج الألوان
-          if (!existingItem.selectedColors) {
-            existingItem.selectedColors = {};
+        const hasColors = Object.keys(selections).length > 0;
+        const hasShapes = shapeSelections && Object.keys(shapeSelections).length > 0;
+
+        if (hasColors || hasShapes) {
+          // منتج بألوان/أشكال - دمج
+          if (hasColors) {
+            if (!existingItem.selectedColors) {
+              existingItem.selectedColors = {};
+            }
+            for (const [color, qty] of Object.entries(selections)) {
+              existingItem.selectedColors[color] =
+                (existingItem.selectedColors[color] || 0) + (qty as number);
+            }
           }
-          // إضافة كميات الألوان الجديدة للموجودة
-          for (const [color, qty] of Object.entries(selections)) {
-            existingItem.selectedColors[color] =
-              (existingItem.selectedColors[color] || 0) + (qty as number);
+          if (hasShapes) {
+            if (!existingItem.selectedShapes) {
+              existingItem.selectedShapes = {};
+            }
+            for (const [shape, qty] of Object.entries(shapeSelections!)) {
+              existingItem.selectedShapes[shape] =
+                (existingItem.selectedShapes[shape] || 0) + (qty as number);
+            }
           }
-          // حساب الكمية الإجمالية من مجموع الألوان
-          existingItem.quantity = Object.values(existingItem.selectedColors)
-            .reduce((sum: number, q) => sum + (q as number), 0);
+          // حساب الكمية الإجمالية من مجموع الألوان + الأشكال
+          const colorTotal = existingItem.selectedColors
+            ? Object.values(existingItem.selectedColors).reduce((sum: number, q) => sum + (q as number), 0)
+            : 0;
+          const shapeTotal = existingItem.selectedShapes
+            ? Object.values(existingItem.selectedShapes).reduce((sum: number, q) => sum + (q as number), 0)
+            : 0;
+          existingItem.quantity = colorTotal + shapeTotal;
         } else {
-          // منتج بدون ألوان - إضافة بسيطة
+          // منتج بدون ألوان/أشكال - إضافة بسيطة
           existingItem.quantity += totalQuantity;
         }
         existingItem.total = productWithPrice.price * existingItem.quantity;
@@ -2424,11 +2443,12 @@ function POSPageContent() {
         return newCartItems;
       } else {
         // منتج جديد - إضافته مع الفرع الحالي
-        const newCartItem = {
+        const newCartItem: any = {
           id: productWithPrice.id.toString(),
           product: productWithPrice,
           quantity: totalQuantity,
           selectedColors: Object.keys(selections).length > 0 ? selections : null,
+          selectedShapes: shapeSelections && Object.keys(shapeSelections).length > 0 ? shapeSelections : null,
           price: productWithPrice.price || 0,
           total: (productWithPrice.price || 0) * totalQuantity,
           // إضافة معلومات الفرع للمنتج
@@ -5906,6 +5926,22 @@ function POSPageContent() {
                                                   );
                                                 }
 
+                                                // Handle selected shapes proportionally
+                                                let newSelectedShapes = null;
+                                                if (cartItem.selectedShapes) {
+                                                  newSelectedShapes = Object.fromEntries(
+                                                    Object.entries(
+                                                      cartItem.selectedShapes,
+                                                    ).map(([shape, count]) => [
+                                                      shape,
+                                                      Math.round(
+                                                        (count as number) *
+                                                          pricePerUnit,
+                                                      ),
+                                                    ]),
+                                                  );
+                                                }
+
                                                 // Calculate unit price from totalPrice if custom price was set
                                                 const unitPrice = cartItem.isCustomPrice && cartItem.totalPrice
                                                   ? cartItem.totalPrice / cartItem.quantity
@@ -5914,6 +5950,7 @@ function POSPageContent() {
                                                   ...cartItem,
                                                   quantity: newQuantity,
                                                   selectedColors: newSelectedColors,
+                                                  selectedShapes: newSelectedShapes,
                                                   totalPrice: unitPrice * newQuantity,
                                                 };
                                               }
@@ -6383,6 +6420,27 @@ function POSPageContent() {
                                         );
                                       }
 
+                                      // If we have selected shapes, update them proportionally
+                                      let updatedShapes: {
+                                        [key: string]: number;
+                                      } | null = null;
+                                      if (cartItem.selectedShapes) {
+                                        updatedShapes = {};
+                                        Object.entries(
+                                          cartItem.selectedShapes,
+                                        ).forEach(
+                                          ([shape, quantity]: [
+                                            string,
+                                            any,
+                                          ]) => {
+                                            updatedShapes![shape] = Math.max(
+                                              1,
+                                              Math.round(quantity * ratio),
+                                            );
+                                          },
+                                        );
+                                      }
+
                                       const newTotal = isTransferMode
                                         ? 0
                                         : cartItem.price * newQuantity;
@@ -6390,6 +6448,7 @@ function POSPageContent() {
                                         ...cartItem,
                                         quantity: newQuantity,
                                         selectedColors: updatedColors,
+                                        selectedShapes: updatedShapes,
                                         total: newTotal,
                                         totalPrice: newTotal,
                                       };
@@ -6454,6 +6513,25 @@ function POSPageContent() {
                                       className="bg-gray-600 px-2 py-1 rounded text-xs text-white"
                                     >
                                       {color}: {quantity}
+                                    </span>
+                                  ),
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                        {/* Shapes Display */}
+                        {item.selectedShapes &&
+                          Object.keys(item.selectedShapes).length > 0 && (
+                            <div className="mt-2 pt-2 border-t border-gray-600">
+                              <div className="flex flex-wrap gap-1">
+                                {Object.entries(item.selectedShapes).map(
+                                  ([shape, quantity]: [string, any]) => (
+                                    <span
+                                      key={shape}
+                                      className="bg-purple-600/40 px-2 py-1 rounded text-xs text-white"
+                                    >
+                                      🔷 {shape}: {quantity}
                                     </span>
                                   ),
                                 )}

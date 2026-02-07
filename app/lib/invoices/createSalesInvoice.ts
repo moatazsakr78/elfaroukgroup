@@ -14,6 +14,7 @@ export interface CartItem {
   product: any
   quantity: number
   selectedColors?: { [key: string]: number } | null
+  selectedShapes?: { [key: string]: number } | null
   price: number
   total: number
   branch_id?: string      // الفرع اللي اتباع منه المنتج (مطلوب للبيع، اختياري للشراء)
@@ -85,7 +86,8 @@ export async function createSalesInvoice({
       total: item.total,
       branch_id: item.branch_id || selections.branch?.id || '',
       branch_name: item.branch_name,
-      selectedColors: item.selectedColors
+      selectedColors: item.selectedColors,
+      selectedShapes: item.selectedShapes
     }))
 
     const offlineSelections: OfflineInvoiceSelections = {
@@ -278,6 +280,15 @@ export async function createSalesInvoice({
           notesText = `الألوان المحددة: ${colorEntries}`
         }
       }
+      if (item.selectedShapes && Object.keys(item.selectedShapes).length > 0) {
+        const shapeEntries = Object.entries(item.selectedShapes as Record<string, number>)
+          .filter(([shape, qty]) => qty > 0)
+          .map(([shape, qty]) => `${shape}: ${qty}`)
+          .join(', ')
+        if (shapeEntries) {
+          notesText += (notesText ? ' | ' : '') + `الأشكال المحددة: ${shapeEntries}`
+        }
+      }
 
       return {
         product_id: item.product.id,
@@ -417,8 +428,65 @@ export async function createSalesInvoice({
           })
       })
 
+    // Update shape variant quantities in parallel (same logic as colors but variant_type='shape')
+    const shapeUpdatePromises = cartItems
+      .filter(item => item.selectedShapes && Object.keys(item.selectedShapes).length > 0)
+      .flatMap(item => {
+        const itemBranchId = item.branch_id || selections.branch.id
+        return Object.entries(item.selectedShapes as Record<string, number>)
+          .filter(([_, shapeQuantity]) => shapeQuantity > 0)
+          .map(async ([shapeName, shapeQuantity]) => {
+            try {
+              const { data: variantDefinition, error: defError } = await supabase
+                .from('product_color_shape_definitions')
+                .select('id')
+                .eq('product_id', item.product.id)
+                .eq('name', shapeName)
+                .eq('variant_type', 'shape')
+                .single()
+
+              if (defError || !variantDefinition) {
+                console.warn(`Failed to get variant definition for product ${item.product.id}, shape ${shapeName}:`, defError?.message)
+                return
+              }
+
+              const { data: currentQuantity, error: qtyGetError } = await supabase
+                .from('product_variant_quantities')
+                .select('quantity')
+                .eq('variant_definition_id', variantDefinition.id)
+                .eq('branch_id', itemBranchId)
+                .single()
+
+              if (qtyGetError && qtyGetError.code !== 'PGRST116') {
+                console.warn(`Failed to get current quantity for shape variant ${variantDefinition.id}:`, qtyGetError.message)
+                return
+              }
+
+              const variantQuantityChange = isReturn ? shapeQuantity : -shapeQuantity
+              const newVariantQuantity = Math.max(0, (currentQuantity?.quantity || 0) + variantQuantityChange)
+
+              const { error: qtyUpdateError } = await supabase
+                .from('product_variant_quantities')
+                .upsert({
+                  variant_definition_id: variantDefinition.id,
+                  branch_id: itemBranchId,
+                  quantity: newVariantQuantity,
+                  updated_at: new Date().toISOString()
+                }, {
+                  onConflict: 'variant_definition_id,branch_id'
+                })
+
+              if (qtyUpdateError) {
+                console.warn(`Failed to update shape variant quantity for variant ${variantDefinition.id}:`, qtyUpdateError.message)
+              }
+            } catch (err) {
+              console.warn(`Error updating shape variant for product ${item.product.id}, shape ${shapeName}:`, err)
+            }
+          })
+      })
+
     // Execute all inventory and variant updates in parallel
-    await Promise.all([...inventoryUpdatePromises, ...variantUpdatePromises])
+    await Promise.all([...inventoryUpdatePromises, ...variantUpdatePromises, ...shapeUpdatePromises])
 
     // Fetch all payment methods at once (optimization: single query instead of loop)
     const paymentMethodIds = paymentSplitData?.filter(p => p.paymentMethodId).map(p => p.paymentMethodId) || []

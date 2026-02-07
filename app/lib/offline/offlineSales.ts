@@ -34,6 +34,7 @@ export interface OfflineCartItem {
   branch_id: string
   branch_name?: string
   selectedColors?: { [key: string]: number } | null
+  selectedShapes?: { [key: string]: number } | null
 }
 
 export interface OfflineInvoiceSelections {
