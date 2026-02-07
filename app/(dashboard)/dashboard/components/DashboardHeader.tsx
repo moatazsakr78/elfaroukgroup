@@ -5,16 +5,21 @@ import {
   ArrowPathIcon,
   PlusIcon,
   ChartBarIcon,
+  CalendarDaysIcon,
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
+import { DateFilter } from '../../reports/types/reports';
+import { getDateFilterLabel } from '@/app/lib/utils/dateFilters';
 
 interface DashboardHeaderProps {
   onRefresh: () => void;
   lastUpdated: Date | null;
   isRefreshing: boolean;
+  dateFilter: DateFilter;
+  onDateFilterClick: () => void;
 }
 
-export default function DashboardHeader({ onRefresh, lastUpdated, isRefreshing }: DashboardHeaderProps) {
+export default function DashboardHeader({ onRefresh, lastUpdated, isRefreshing, dateFilter, onDateFilterClick }: DashboardHeaderProps) {
   const { profile, loading } = useUserProfile();
 
   // Format current date in Arabic
@@ -77,6 +82,15 @@ export default function DashboardHeader({ onRefresh, lastUpdated, isRefreshing }
           >
             <ArrowPathIcon className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
             <span className="hidden sm:inline">تحديث</span>
+          </button>
+
+          {/* Date Filter Button */}
+          <button
+            onClick={onDateFilterClick}
+            className="flex items-center gap-2 px-4 py-2 bg-[#2B3544] border border-gray-600 text-gray-300 rounded-lg hover:text-white hover:bg-gray-600 transition-colors"
+          >
+            <CalendarDaysIcon className="w-5 h-5 text-blue-400" />
+            <span className="hidden sm:inline">{getDateFilterLabel(dateFilter)}</span>
           </button>
 
           {/* New Sale Button */}

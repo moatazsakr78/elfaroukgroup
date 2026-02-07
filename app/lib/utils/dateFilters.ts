@@ -1,4 +1,4 @@
-import { DateFilter } from '../../components/SimpleDateFilterModal'
+import { DateFilter } from '@/app/(dashboard)/reports/types/reports'
 
 /**
  * Calculates the date range based on the filter type

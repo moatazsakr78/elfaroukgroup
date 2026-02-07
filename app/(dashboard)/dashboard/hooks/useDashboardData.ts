@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { supabase } from '@/app/lib/supabase/client';
-import { cache, CacheKeys, CacheTTL } from '@/app/lib/cache/memoryCache';
+import { cache, CacheTTL } from '@/app/lib/cache/memoryCache';
 import {
   fetchKPIs,
   fetchSalesTrend,
@@ -10,6 +10,7 @@ import {
   fetchTopCustomers,
 } from '../../reports/services/reportsService';
 import { KPIData, SalesTrendPoint, TopProductData, TopCustomerData, DateFilter } from '../../reports/types/reports';
+import { getDateRangeFromFilter } from '@/app/lib/utils/dateFilters';
 
 // Recent Order interface
 export interface RecentOrder {
@@ -51,12 +52,22 @@ const initialData: DashboardData = {
 };
 
 // Fetch recent orders
-const fetchRecentOrders = async (limit: number = 5): Promise<RecentOrder[]> => {
-  const { data, error } = await supabase
+const fetchRecentOrders = async (dateFilter: DateFilter, limit: number = 5): Promise<RecentOrder[]> => {
+  let query = supabase
     .from('orders')
     .select('id, order_number, customer_name, total_amount, status, created_at')
     .order('created_at', { ascending: false })
     .limit(limit);
+
+  const { startDate, endDate } = getDateRangeFromFilter(dateFilter);
+  if (startDate) {
+    query = query.gte('created_at', startDate.toISOString());
+  }
+  if (endDate) {
+    query = query.lte('created_at', endDate.toISOString());
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     console.error('Error fetching recent orders:', error);
@@ -115,16 +126,22 @@ const fetchLowStockProducts = async (limit: number = 10): Promise<LowStockProduc
 // Auto-refresh interval (30 seconds)
 const AUTO_REFRESH_INTERVAL = 30 * 1000;
 
-export function useDashboardData() {
+export function useDashboardData(dateFilter: DateFilter = { type: 'today' }) {
   const [data, setData] = useState<DashboardData>(initialData);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const isFetchingRef = useRef(false);
 
-  const todayFilter: DateFilter = { type: 'today' };
-  const weekFilter: DateFilter = { type: 'current_week' };
-  const monthFilter: DateFilter = { type: 'current_month' };
+  // Stable filter key for cache and dependency tracking
+  const filterKey = useMemo(() => {
+    if (dateFilter.type === 'custom') {
+      return `custom:${dateFilter.startDate?.toISOString() || ''}:${dateFilter.endDate?.toISOString() || ''}`;
+    }
+    return dateFilter.type;
+  }, [dateFilter.type, dateFilter.startDate, dateFilter.endDate]);
+
+  const cacheKey = `dashboard:all:${filterKey}`;
 
   const fetchAllData = useCallback(async (forceRefresh = false) => {
     // Prevent concurrent fetches
@@ -134,7 +151,7 @@ export function useDashboardData() {
 
     // 1. Stale-While-Revalidate: Show cached data immediately
     if (!forceRefresh) {
-      const cachedData = cache.get<DashboardData>(CacheKeys.dashboardAll());
+      const cachedData = cache.get<DashboardData>(cacheKey);
       if (cachedData) {
         setData(cachedData);
         setLoading(false);
@@ -145,7 +162,7 @@ export function useDashboardData() {
     isFetchingRef.current = true;
 
     // Only show loading spinner if no cached data
-    if (!cache.has(CacheKeys.dashboardAll()) || forceRefresh) {
+    if (!cache.has(cacheKey) || forceRefresh) {
       setLoading(true);
     }
 
@@ -161,11 +178,11 @@ export function useDashboardData() {
         recentOrdersResult,
         lowStockResult,
       ] = await Promise.allSettled([
-        fetchKPIs(todayFilter),
-        fetchSalesTrend(weekFilter, 7),
-        fetchTopProducts(monthFilter, 5),
-        fetchTopCustomers(monthFilter, 5),
-        fetchRecentOrders(5),
+        fetchKPIs(dateFilter),
+        fetchSalesTrend(dateFilter, 30),
+        fetchTopProducts(dateFilter, 5),
+        fetchTopCustomers(dateFilter, 5),
+        fetchRecentOrders(dateFilter, 5),
         fetchLowStockProducts(10),
       ]);
 
@@ -179,7 +196,7 @@ export function useDashboardData() {
       };
 
       // 3. Save to cache
-      cache.set(CacheKeys.dashboardAll(), newData, CacheTTL.dashboardAll);
+      cache.set(cacheKey, newData, CacheTTL.dashboardAll);
 
       setData(newData);
       setLastUpdated(new Date());
@@ -190,7 +207,7 @@ export function useDashboardData() {
       setLoading(false);
       isFetchingRef.current = false;
     }
-  }, []);
+  }, [dateFilter, cacheKey]);
 
   // Initial fetch
   useEffect(() => {

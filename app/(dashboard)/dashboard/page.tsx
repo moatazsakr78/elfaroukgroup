@@ -26,23 +26,43 @@ import SalesTrendChart from '../reports/components/charts/SalesTrendChart';
 import CategoryPieChart from '../reports/components/charts/CategoryPieChart';
 import TopProductsBarChart from '../reports/components/charts/TopProductsBarChart';
 
+// Date Filter Modal
+import SimpleDateFilterModal from '@/app/components/SimpleDateFilterModal';
+
 // Custom Hook
 import { useDashboardData } from './hooks/useDashboardData';
 
 // Types
 import { DateFilter } from '../reports/types/reports';
 
+// Utils
+import { getDateFilterLabel } from '@/app/lib/utils/dateFilters';
+
+// Helper to get period label for stats card titles
+function getPeriodLabel(filter: DateFilter): string {
+  switch (filter.type) {
+    case 'today': return 'اليوم';
+    case 'current_week': return 'هذا الأسبوع';
+    case 'current_month': return 'هذا الشهر';
+    case 'last_week': return 'الأسبوع الماضي';
+    case 'last_month': return 'الشهر الماضي';
+    case 'custom': return getDateFilterLabel(filter);
+    case 'all': return 'الكل';
+    default: return 'اليوم';
+  }
+}
+
 export default function DashboardPage() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const { data, loading, error, lastUpdated, refresh } = useDashboardData();
+  const [dateFilter, setDateFilter] = useState<DateFilter>({ type: 'today' });
+  const [isDateFilterOpen, setIsDateFilterOpen] = useState(false);
+  const { data, loading, error, lastUpdated, refresh } = useDashboardData(dateFilter);
 
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);
   };
 
-  // Date filters for charts
-  const weekFilter: DateFilter = { type: 'current_week' };
-  const monthFilter: DateFilter = { type: 'current_month' };
+  const periodLabel = getPeriodLabel(dateFilter);
 
   // Calculate percentage change helper
   const calcChange = (current: number, previous: number): number | undefined => {
@@ -61,6 +81,8 @@ export default function DashboardPage() {
           onRefresh={refresh}
           lastUpdated={lastUpdated}
           isRefreshing={loading}
+          dateFilter={dateFilter}
+          onDateFilterClick={() => setIsDateFilterOpen(true)}
         />
 
         {/* Main Content */}
@@ -85,7 +107,7 @@ export default function DashboardPage() {
               {/* Stats Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <StatsCard
-                  title="مبيعات اليوم"
+                  title={`مبيعات ${periodLabel}`}
                   value={data.kpis?.totalSales || 0}
                   previousValue={calcChange(data.kpis?.totalSales || 0, data.kpis?.previousPeriod?.totalSales || 0)}
                   icon={CurrencyDollarIcon}
@@ -94,7 +116,7 @@ export default function DashboardPage() {
                   loading={loading}
                 />
                 <StatsCard
-                  title="طلبات اليوم"
+                  title={`طلبات ${periodLabel}`}
                   value={data.kpis?.orderCount || 0}
                   previousValue={calcChange(data.kpis?.orderCount || 0, data.kpis?.previousPeriod?.orderCount || 0)}
                   icon={ShoppingCartIcon}
@@ -103,7 +125,7 @@ export default function DashboardPage() {
                   loading={loading}
                 />
                 <StatsCard
-                  title="عملاء اليوم"
+                  title={`عملاء ${periodLabel}`}
                   value={data.kpis?.customerCount || 0}
                   previousValue={calcChange(data.kpis?.customerCount || 0, data.kpis?.previousPeriod?.customerCount || 0)}
                   icon={UsersIcon}
@@ -126,15 +148,15 @@ export default function DashboardPage() {
 
               {/* Charts Row */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Sales Trend Chart - Last 7 days */}
-                <SalesTrendChart dateFilter={weekFilter} height={280} />
+                {/* Sales Trend Chart */}
+                <SalesTrendChart dateFilter={dateFilter} height={280} />
 
                 {/* Category Distribution Pie Chart */}
-                <CategoryPieChart dateFilter={monthFilter} height={280} />
+                <CategoryPieChart dateFilter={dateFilter} height={280} />
               </div>
 
               {/* Top Products Bar Chart */}
-              <TopProductsBarChart dateFilter={monthFilter} height={250} limit={5} />
+              <TopProductsBarChart dateFilter={dateFilter} height={250} limit={5} />
 
               {/* Orders and Customers Row */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -162,6 +184,14 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      {/* Date Filter Modal */}
+      <SimpleDateFilterModal
+        isOpen={isDateFilterOpen}
+        onClose={() => setIsDateFilterOpen(false)}
+        onDateFilterChange={setDateFilter}
+        currentFilter={dateFilter}
+      />
     </div>
   );
 }

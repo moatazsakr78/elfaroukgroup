@@ -352,7 +352,8 @@
       "mcp__supabase__get_advisors",
       "Bash(xargs:*)",
       "Bash(npx next build:*)",
-      "Bash(Select-String \"BarcodePrintModal\")"
+      "Bash(Select-String \"BarcodePrintModal\")",
+      "Bash(head:*)"
     ],
     "deny": [],
     "additionalDirectories": [
