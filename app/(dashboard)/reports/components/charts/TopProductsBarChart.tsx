@@ -19,9 +19,10 @@ interface TopProductsBarChartProps {
   dateFilter: DateFilter;
   height?: number;
   limit?: number;
+  externalData?: TopProductData[];
 }
 
-export default function TopProductsBarChart({ dateFilter, height = 300, limit = 10 }: TopProductsBarChartProps) {
+export default function TopProductsBarChart({ dateFilter, height = 300, limit = 10, externalData }: TopProductsBarChartProps) {
   const [data, setData] = useState<TopProductData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -29,6 +30,13 @@ export default function TopProductsBarChart({ dateFilter, height = 300, limit = 
   const chartConfig = getChartConfig();
 
   useEffect(() => {
+    if (externalData) {
+      setData(externalData);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     const fetchData = async () => {
       setLoading(true);
       setError(null);
@@ -44,7 +52,7 @@ export default function TopProductsBarChart({ dateFilter, height = 300, limit = 
     };
 
     fetchData();
-  }, [dateFilter, limit]);
+  }, [dateFilter, limit, externalData]);
 
   if (loading) {
     return (

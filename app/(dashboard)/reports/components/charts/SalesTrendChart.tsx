@@ -18,9 +18,10 @@ import { CHART_COLORS, DARK_THEME, getChartConfig, formatCurrencyAr } from '../.
 interface SalesTrendChartProps {
   dateFilter: DateFilter;
   height?: number;
+  externalData?: SalesTrendPoint[];
 }
 
-export default function SalesTrendChart({ dateFilter, height = 300 }: SalesTrendChartProps) {
+export default function SalesTrendChart({ dateFilter, height = 300, externalData }: SalesTrendChartProps) {
   const [data, setData] = useState<SalesTrendPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -28,6 +29,13 @@ export default function SalesTrendChart({ dateFilter, height = 300 }: SalesTrend
   const chartConfig = getChartConfig();
 
   useEffect(() => {
+    if (externalData) {
+      setData(externalData);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     const fetchData = async () => {
       setLoading(true);
       setError(null);
@@ -43,7 +51,7 @@ export default function SalesTrendChart({ dateFilter, height = 300 }: SalesTrend
     };
 
     fetchData();
-  }, [dateFilter]);
+  }, [dateFilter, externalData]);
 
   if (loading) {
     return (

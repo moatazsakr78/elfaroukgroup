@@ -6,10 +6,12 @@ import {
   PlusIcon,
   ChartBarIcon,
   CalendarDaysIcon,
+  FunnelIcon,
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import { DateFilter } from '../../reports/types/reports';
 import { getDateFilterLabel } from '@/app/lib/utils/dateFilters';
+import { ActiveFilterType } from '@/app/types/filters';
 
 interface DashboardHeaderProps {
   onRefresh: () => void;
@@ -17,9 +19,14 @@ interface DashboardHeaderProps {
   isRefreshing: boolean;
   dateFilter: DateFilter;
   onDateFilterClick: () => void;
+  onSimpleFilterClick?: () => void;
+  onMultiFilterClick?: () => void;
+  activeFilterType?: ActiveFilterType;
+  simpleFiltersCount?: number;
+  multiFiltersCount?: number;
 }
 
-export default function DashboardHeader({ onRefresh, lastUpdated, isRefreshing, dateFilter, onDateFilterClick }: DashboardHeaderProps) {
+export default function DashboardHeader({ onRefresh, lastUpdated, isRefreshing, dateFilter, onDateFilterClick, onSimpleFilterClick, onMultiFilterClick, activeFilterType, simpleFiltersCount = 0, multiFiltersCount = 0 }: DashboardHeaderProps) {
   const { profile, loading } = useUserProfile();
 
   // Format current date in Arabic
@@ -92,6 +99,46 @@ export default function DashboardHeader({ onRefresh, lastUpdated, isRefreshing, 
             <CalendarDaysIcon className="w-5 h-5 text-blue-400" />
             <span className="hidden sm:inline">{getDateFilterLabel(dateFilter)}</span>
           </button>
+
+          {/* Simple Filter Button */}
+          {onSimpleFilterClick && (
+            <button
+              onClick={onSimpleFilterClick}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors relative ${
+                activeFilterType === 'simple'
+                  ? 'bg-blue-600 text-white border border-blue-500'
+                  : 'bg-[#2B3544] border border-gray-600 text-gray-300 hover:text-white hover:bg-gray-600'
+              }`}
+            >
+              <FunnelIcon className="w-5 h-5" />
+              <span className="hidden sm:inline">فلتر</span>
+              {simpleFiltersCount > 0 && (
+                <span className="absolute -top-2 -right-2 bg-blue-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">
+                  {simpleFiltersCount}
+                </span>
+              )}
+            </button>
+          )}
+
+          {/* Multi Filter Button */}
+          {onMultiFilterClick && (
+            <button
+              onClick={onMultiFilterClick}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors relative ${
+                activeFilterType === 'multi'
+                  ? 'bg-green-600 text-white border border-green-500'
+                  : 'bg-[#2B3544] border border-gray-600 text-gray-300 hover:text-white hover:bg-gray-600'
+              }`}
+            >
+              <FunnelIcon className="w-5 h-5" />
+              <span className="hidden sm:inline">فلتر متعدد</span>
+              {multiFiltersCount > 0 && (
+                <span className="absolute -top-2 -right-2 bg-green-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">
+                  {multiFiltersCount}
+                </span>
+              )}
+            </button>
+          )}
 
           {/* New Sale Button */}
           <Link

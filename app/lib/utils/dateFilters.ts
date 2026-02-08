@@ -108,6 +108,13 @@ export function getDateFilterLabel(filter: DateFilter): string {
     case 'last_month':
       return 'الشهر الماضي'
     case 'custom':
+      if (filter.startDate && filter.endDate) {
+        const formatDate = (d: Date) => `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
+        if (filter.startDate.toDateString() === filter.endDate.toDateString()) {
+          return formatDate(filter.startDate);
+        }
+        return `${formatDate(filter.startDate)} - ${formatDate(filter.endDate)}`;
+      }
       return 'فترة مخصصة'
     case 'all':
       return 'جميع الفترات'

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import TopHeader from '@/app/components/layout/TopHeader';
 import Sidebar from '@/app/components/layout/Sidebar';
 import {
@@ -29,11 +29,24 @@ import TopProductsBarChart from '../reports/components/charts/TopProductsBarChar
 // Date Filter Modal
 import SimpleDateFilterModal from '@/app/components/SimpleDateFilterModal';
 
+// Filter Modals
+import SimpleFilterModal from '@/app/components/SimpleFilterModal';
+import MultiFilterModal from '@/app/components/MultiFilterModal';
+
 // Custom Hook
 import { useDashboardData } from './hooks/useDashboardData';
 
 // Types
 import { DateFilter } from '../reports/types/reports';
+import {
+  SimpleFiltersResult,
+  MultiFiltersResult,
+  ActiveFilterType,
+  initialSimpleFilters,
+  initialMultiFilters,
+  getSimpleFiltersCount,
+  getMultiFiltersCount,
+} from '@/app/types/filters';
 
 // Utils
 import { getDateFilterLabel } from '@/app/lib/utils/dateFilters';
@@ -56,10 +69,45 @@ export default function DashboardPage() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [dateFilter, setDateFilter] = useState<DateFilter>({ type: 'today' });
   const [isDateFilterOpen, setIsDateFilterOpen] = useState(false);
-  const { data, loading, error, lastUpdated, refresh } = useDashboardData(dateFilter);
+
+  // Entity filter state
+  const [simpleFilters, setSimpleFilters] = useState<SimpleFiltersResult>(initialSimpleFilters);
+  const [multiFilters, setMultiFilters] = useState<MultiFiltersResult>(initialMultiFilters);
+  const [activeFilterType, setActiveFilterType] = useState<ActiveFilterType>(null);
+  const [showSimpleFilter, setShowSimpleFilter] = useState(false);
+  const [showMultiFilter, setShowMultiFilter] = useState(false);
+
+  const simpleFiltersCount = useMemo(() => getSimpleFiltersCount(simpleFilters), [simpleFilters]);
+  const multiFiltersCount = useMemo(() => getMultiFiltersCount(multiFilters), [multiFilters]);
+
+  const { data, loading, error, lastUpdated, refresh } = useDashboardData(dateFilter, {
+    activeFilterType,
+    simpleFilters,
+    multiFilters,
+  });
+
+  // Check if entity filters are active (for passing externalData to charts)
+  const filtersActive = (activeFilterType === 'simple' && simpleFiltersCount > 0) ||
+    (activeFilterType === 'multi' && multiFiltersCount > 0);
 
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);
+  };
+
+  // Handle simple filter apply - clears multi filter
+  const handleSimpleFilterApply = (filters: SimpleFiltersResult) => {
+    setSimpleFilters(filters);
+    setMultiFilters(initialMultiFilters);
+    const count = getSimpleFiltersCount(filters);
+    setActiveFilterType(count > 0 ? 'simple' : null);
+  };
+
+  // Handle multi filter apply - clears simple filter
+  const handleMultiFilterApply = (filters: MultiFiltersResult) => {
+    setMultiFilters(filters);
+    setSimpleFilters(initialSimpleFilters);
+    const count = getMultiFiltersCount(filters);
+    setActiveFilterType(count > 0 ? 'multi' : null);
   };
 
   const periodLabel = getPeriodLabel(dateFilter);
@@ -83,6 +131,11 @@ export default function DashboardPage() {
           isRefreshing={loading}
           dateFilter={dateFilter}
           onDateFilterClick={() => setIsDateFilterOpen(true)}
+          onSimpleFilterClick={() => setShowSimpleFilter(true)}
+          onMultiFilterClick={() => setShowMultiFilter(true)}
+          activeFilterType={activeFilterType}
+          simpleFiltersCount={simpleFiltersCount}
+          multiFiltersCount={multiFiltersCount}
         />
 
         {/* Main Content */}
@@ -149,14 +202,27 @@ export default function DashboardPage() {
               {/* Charts Row */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Sales Trend Chart */}
-                <SalesTrendChart dateFilter={dateFilter} height={280} />
+                <SalesTrendChart
+                  dateFilter={dateFilter}
+                  height={280}
+                  externalData={filtersActive ? data.salesTrend : undefined}
+                />
 
                 {/* Category Distribution Pie Chart */}
-                <CategoryPieChart dateFilter={dateFilter} height={280} />
+                <CategoryPieChart
+                  dateFilter={dateFilter}
+                  height={280}
+                  externalData={filtersActive ? data.categoryDistribution : undefined}
+                />
               </div>
 
               {/* Top Products Bar Chart */}
-              <TopProductsBarChart dateFilter={dateFilter} height={250} limit={5} />
+              <TopProductsBarChart
+                dateFilter={dateFilter}
+                height={250}
+                limit={5}
+                externalData={filtersActive ? data.topProducts : undefined}
+              />
 
               {/* Orders and Customers Row */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -191,6 +257,22 @@ export default function DashboardPage() {
         onClose={() => setIsDateFilterOpen(false)}
         onDateFilterChange={setDateFilter}
         currentFilter={dateFilter}
+      />
+
+      {/* Simple Filter Modal */}
+      <SimpleFilterModal
+        isOpen={showSimpleFilter}
+        onClose={() => setShowSimpleFilter(false)}
+        onApply={handleSimpleFilterApply}
+        initialFilters={simpleFilters}
+      />
+
+      {/* Multi Filter Modal */}
+      <MultiFilterModal
+        isOpen={showMultiFilter}
+        onClose={() => setShowMultiFilter(false)}
+        onApply={handleMultiFilterApply}
+        initialFilters={multiFilters}
       />
     </div>
   );

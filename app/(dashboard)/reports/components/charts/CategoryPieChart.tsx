@@ -16,38 +16,49 @@ import { CATEGORY_COLORS, DARK_THEME, formatCurrencyAr, formatPercentage } from 
 interface CategoryPieChartProps {
   dateFilter: DateFilter;
   height?: number;
+  externalData?: CategoryDistribution[];
 }
 
-export default function CategoryPieChart({ dateFilter, height = 300 }: CategoryPieChartProps) {
+export default function CategoryPieChart({ dateFilter, height = 300, externalData }: CategoryPieChartProps) {
   const [data, setData] = useState<CategoryDistribution[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const processCategories = (categories: CategoryDistribution[]) => {
+      if (categories.length > 8) {
+        const top7 = categories.slice(0, 7);
+        const others = categories.slice(7);
+        const othersTotal = others.reduce((sum, c) => sum + c.totalRevenue, 0);
+        const othersPercentage = others.reduce((sum, c) => sum + c.percentage, 0);
+        setData([
+          ...top7,
+          {
+            id: 'others',
+            categoryName: 'أخرى',
+            totalRevenue: othersTotal,
+            percentage: othersPercentage,
+            invoiceCount: others.reduce((sum, c) => sum + c.invoiceCount, 0),
+          },
+        ]);
+      } else {
+        setData(categories);
+      }
+    };
+
+    if (externalData) {
+      processCategories(externalData);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     const fetchData = async () => {
       setLoading(true);
       setError(null);
       try {
         const categories = await reportsService.fetchCategoryDistribution(dateFilter);
-        // Take top 8 categories, group rest as "أخرى"
-        if (categories.length > 8) {
-          const top7 = categories.slice(0, 7);
-          const others = categories.slice(7);
-          const othersTotal = others.reduce((sum, c) => sum + c.totalRevenue, 0);
-          const othersPercentage = others.reduce((sum, c) => sum + c.percentage, 0);
-          setData([
-            ...top7,
-            {
-              id: 'others',
-              categoryName: 'أخرى',
-              totalRevenue: othersTotal,
-              percentage: othersPercentage,
-              invoiceCount: others.reduce((sum, c) => sum + c.invoiceCount, 0),
-            },
-          ]);
-        } else {
-          setData(categories);
-        }
+        processCategories(categories);
       } catch (err) {
         console.error('Error fetching category distribution:', err);
         setError('خطأ في تحميل البيانات');
@@ -57,7 +68,7 @@ export default function CategoryPieChart({ dateFilter, height = 300 }: CategoryP
     };
 
     fetchData();
-  }, [dateFilter]);
+  }, [dateFilter, externalData]);
 
   if (loading) {
     return (

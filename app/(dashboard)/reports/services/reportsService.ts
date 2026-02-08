@@ -51,8 +51,10 @@ const getDateRange = (filter: DateFilter): { startDate: string; endDate: string 
       endDate = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
       break;
     case 'custom':
-      startDate = filter.startDate || new Date(2024, 0, 1);
-      endDate = filter.endDate || now;
+      startDate = filter.startDate ? new Date(filter.startDate) : new Date(2024, 0, 1);
+      startDate.setHours(0, 0, 0, 0);
+      endDate = filter.endDate ? new Date(filter.endDate) : now;
+      endDate.setHours(23, 59, 59, 999);
       break;
     default: // 'all'
       startDate = new Date(2024, 0, 1); // Default start from 2024
