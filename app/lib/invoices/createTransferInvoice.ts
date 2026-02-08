@@ -152,82 +152,76 @@ export async function createTransferInvoice({
         
       } else {
         // Manual inventory updates for warehouse transfers or mixed transfers
-        console.log(`نقل يشمل مخازن - تحديث يدوي للمخزون`)
-        
-        // Decrease inventory from source
+        // Use atomic functions to prevent race conditions
+        console.log(`نقل يشمل مخازن - تحديث ذري للمخزون`)
+
+        // Decrease inventory from source (transfers don't allow negative)
         if (transferFromLocation.type === 'branch') {
-          // Get current inventory first
-          const { data: currentInventory, error: getError } = await supabase
-            .from('inventory')
-            .select('quantity')
-            .eq('product_id', item.product.id)
-            .eq('branch_id', transferFromLocation.id.toString())
-            .single()
-
-          if (getError || !currentInventory) {
-            console.error(`خطأ في الحصول على المخزون الحالي للمنتج ${item.product.name}:`, getError)
-            throw new Error(`خطأ في الحصول على المخزون الحالي للمنتج ${item.product.name}`)
-          }
-
-          const newQuantity = Math.max(0, currentInventory.quantity - item.quantity)
-
-          const { error: decreaseError } = await supabase
-            .from('inventory')
-            .update({ 
-              quantity: newQuantity,
-              last_updated: new Date().toISOString()
-            })
-            .eq('product_id', item.product.id)
-            .eq('branch_id', transferFromLocation.id.toString())
+          const { error: decreaseError } = await (supabase as any).rpc(
+            'atomic_adjust_inventory',
+            {
+              p_product_id: item.product.id,
+              p_branch_id: transferFromLocation.id.toString(),
+              p_warehouse_id: null,
+              p_change: -item.quantity,
+              p_allow_negative: false
+            }
+          )
 
           if (decreaseError) {
             console.error(`خطأ في تقليل المخزون من الفرع للمنتج ${item.product.name}:`, decreaseError)
             throw new Error(`خطأ في تقليل المخزون من الفرع للمنتج ${item.product.name}`)
           }
+        } else if (transferFromLocation.type === 'warehouse') {
+          const { error: decreaseError } = await (supabase as any).rpc(
+            'atomic_adjust_inventory',
+            {
+              p_product_id: item.product.id,
+              p_branch_id: null,
+              p_warehouse_id: transferFromLocation.id.toString(),
+              p_change: -item.quantity,
+              p_allow_negative: false
+            }
+          )
+
+          if (decreaseError) {
+            console.error(`خطأ في تقليل المخزون من المخزن للمنتج ${item.product.name}:`, decreaseError)
+            throw new Error(`خطأ في تقليل المخزون من المخزن للمنتج ${item.product.name}`)
+          }
         }
 
-        // Increase inventory at destination
+        // Increase inventory at destination (atomic, auto-creates if missing)
         if (transferToLocation.type === 'branch') {
-          // Check if inventory record exists
-          const { data: existingInventory } = await supabase
-            .from('inventory')
-            .select('*')
-            .eq('product_id', item.product.id)
-            .eq('branch_id', transferToLocation.id.toString())
-            .single()
-
-          if (existingInventory) {
-            // Update existing record
-            const newQuantity = existingInventory.quantity + item.quantity
-            const { error: increaseError } = await supabase
-              .from('inventory')
-              .update({ 
-                quantity: newQuantity,
-                last_updated: new Date().toISOString()
-              })
-              .eq('product_id', item.product.id)
-              .eq('branch_id', transferToLocation.id.toString())
-
-            if (increaseError) {
-              console.error(`خطأ في زيادة المخزون في الفرع للمنتج ${item.product.name}:`, increaseError)
-              throw new Error(`خطأ في زيادة المخزون في الفرع للمنتج ${item.product.name}`)
+          const { error: increaseError } = await (supabase as any).rpc(
+            'atomic_adjust_inventory',
+            {
+              p_product_id: item.product.id,
+              p_branch_id: transferToLocation.id.toString(),
+              p_warehouse_id: null,
+              p_change: item.quantity,
+              p_allow_negative: false
             }
-          } else {
-            // Create new inventory record
-            const { error: createError } = await supabase
-              .from('inventory')
-              .insert({
-                product_id: item.product.id,
-                branch_id: transferToLocation.id.toString(),
-                quantity: item.quantity,
-                min_stock: 0,
-                last_updated: new Date().toISOString()
-              })
+          )
 
-            if (createError) {
-              console.error(`خطأ في إنشاء سجل مخزون جديد للمنتج ${item.product.name}:`, createError)
-              throw new Error(`خطأ في إنشاء سجل مخزون جديد للمنتج ${item.product.name}`)
+          if (increaseError) {
+            console.error(`خطأ في زيادة المخزون في الفرع للمنتج ${item.product.name}:`, increaseError)
+            throw new Error(`خطأ في زيادة المخزون في الفرع للمنتج ${item.product.name}`)
+          }
+        } else if (transferToLocation.type === 'warehouse') {
+          const { error: increaseError } = await (supabase as any).rpc(
+            'atomic_adjust_inventory',
+            {
+              p_product_id: item.product.id,
+              p_branch_id: null,
+              p_warehouse_id: transferToLocation.id.toString(),
+              p_change: item.quantity,
+              p_allow_negative: false
             }
+          )
+
+          if (increaseError) {
+            console.error(`خطأ في زيادة المخزون في المخزن للمنتج ${item.product.name}:`, increaseError)
+            throw new Error(`خطأ في زيادة المخزون في المخزن للمنتج ${item.product.name}`)
           }
         }
 

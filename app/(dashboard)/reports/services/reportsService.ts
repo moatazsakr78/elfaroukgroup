@@ -2,6 +2,7 @@
 // All queries use elfaroukgroup schema
 
 import { supabase } from '@/app/lib/supabase/client';
+import { toEgyptDateString, toEgyptHour, toEgyptDayOfWeek } from '@/app/lib/utils/date-utils';
 import {
   DateFilter,
   KPIData,
@@ -156,7 +157,7 @@ export const fetchSalesTrend = async (filter: DateFilter, days: number = 30, bra
 
   (data || []).forEach(sale => {
     if (!sale.created_at) return;
-    const date = new Date(sale.created_at).toISOString().split('T')[0];
+    const date = toEgyptDateString(new Date(sale.created_at));
     const existing = dailyMap.get(date) || { sales: 0, profit: 0, orderCount: 0 };
     existing.sales += parseFloat(String(sale.total_amount)) || 0;
     existing.profit += parseFloat(String(sale.profit ?? 0)) || 0;
@@ -419,7 +420,7 @@ export const fetchHourlySales = async (filter: DateFilter, brandId?: string | nu
 
   (data || []).forEach(sale => {
     if (!sale.created_at) return;
-    const hour = new Date(sale.created_at).getHours();
+    const hour = toEgyptHour(new Date(sale.created_at));
     const amount = parseFloat(String(sale.total_amount)) || 0;
     totalSales += amount;
 
@@ -471,7 +472,7 @@ export const fetchDayOfWeekSales = async (filter: DateFilter, brandId?: string |
 
   (data || []).forEach(sale => {
     if (!sale.created_at) return;
-    const dayOfWeek = new Date(sale.created_at).getDay();
+    const dayOfWeek = toEgyptDayOfWeek(new Date(sale.created_at));
     const amount = parseFloat(String(sale.total_amount)) || 0;
     totalSales += amount;
 
@@ -601,7 +602,7 @@ export const fetchRevenueVsProfit = async (filter: DateFilter, brandId?: string 
 
   (data || []).forEach(sale => {
     if (!sale.created_at) return;
-    const date = new Date(sale.created_at).toISOString().split('T')[0];
+    const date = toEgyptDateString(new Date(sale.created_at));
     const existing = dailyMap.get(date) || { revenue: 0, profit: 0 };
     existing.revenue += parseFloat(String(sale.total_amount)) || 0;
     existing.profit += parseFloat(String(sale.profit ?? 0)) || 0;

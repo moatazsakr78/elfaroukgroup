@@ -353,7 +353,8 @@
       "Bash(xargs:*)",
       "Bash(npx next build:*)",
       "Bash(Select-String \"BarcodePrintModal\")",
-      "Bash(head:*)"
+      "Bash(head:*)",
+      "Bash(git stash:*)"
     ],
     "deny": [],
     "additionalDirectories": [

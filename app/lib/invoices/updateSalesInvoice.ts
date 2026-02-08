@@ -1,6 +1,7 @@
 'use client'
 
 import { supabase } from '../supabase/client'
+import { roundMoney } from '../utils/money'
 
 export interface UpdateSalesInvoiceParams {
   saleId: string
@@ -79,7 +80,7 @@ export async function updateSalesInvoice({
           .single()
 
         if (oldDrawer) {
-          const newOldBalance = (oldDrawer.current_balance || 0) - transactionAmount
+          const newOldBalance = roundMoney((oldDrawer.current_balance || 0) - transactionAmount)
           await supabase
             .from('cash_drawers')
             .update({
@@ -117,7 +118,7 @@ export async function updateSalesInvoice({
         }
 
         if (newDrawer) {
-          newBalance = (newDrawer.current_balance || 0) + transactionAmount
+          newBalance = roundMoney((newDrawer.current_balance || 0) + transactionAmount)
           await supabase
             .from('cash_drawers')
             .update({

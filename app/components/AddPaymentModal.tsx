@@ -5,6 +5,7 @@ import { XMarkIcon } from '@heroicons/react/24/outline'
 import { supabase } from '../lib/supabase/client'
 import { useFormatPrice } from '@/lib/hooks/useCurrency'
 import { useAuth } from '@/lib/useAuth'
+import { roundMoney } from '../lib/utils/money'
 
 interface AddPaymentModalProps {
   isOpen: boolean
@@ -200,7 +201,7 @@ export default function AddPaymentModal({
             if (drawer) {
               // للدفعة: إضافة للخزنة / للسلفة: خصم من الخزنة
               const drawerChange = paymentType === 'loan' ? -paymentAmount : paymentAmount
-              const newBalance = (drawer.current_balance || 0) + drawerChange
+              const newBalance = roundMoney((drawer.current_balance || 0) + drawerChange)
 
               // Update drawer balance
               await supabase
@@ -289,7 +290,7 @@ export default function AddPaymentModal({
             if (drawer) {
               // للدفعة: خصم من الخزنة / للسلفة: إضافة للخزنة
               const drawerChange = paymentType === 'loan' ? paymentAmount : -paymentAmount
-              const newBalance = (drawer.current_balance || 0) + drawerChange
+              const newBalance = roundMoney((drawer.current_balance || 0) + drawerChange)
 
               // Update drawer balance
               await supabase

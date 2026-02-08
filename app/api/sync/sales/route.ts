@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { CLIENT_CONFIG } from '@/client.config'
+import { roundMoney } from '@/app/lib/utils/money'
 
 // Create Supabase client with service role for admin operations
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -174,24 +175,22 @@ async function processSingleSale(sale: PendingSale): Promise<SyncResult> {
 
   const salesData = rpcResult as { id: string; invoice_number: string }
 
-  // Update inventory
+  // Update inventory atomically
   for (const item of sale.items) {
     try {
-      const { data: currentInventory } = await supabase
-        .from('inventory')
-        .select('quantity')
-        .eq('product_id', item.product_id)
-        .eq('branch_id', item.branch_id)
-        .single()
+      // For sales subtract, for returns add back
+      const quantityChange = isReturn ? Math.abs(item.quantity) : -Math.abs(item.quantity)
 
-      // Quantity already has correct sign from offline (negative for sales, positive for returns)
-      const newQuantity = Math.max(0, (currentInventory?.quantity || 0) - Math.abs(item.quantity) * (isReturn ? -1 : 1))
-
-      await supabase
-        .from('inventory')
-        .update({ quantity: newQuantity })
-        .eq('product_id', item.product_id)
-        .eq('branch_id', item.branch_id)
+      await supabase.rpc(
+        'atomic_adjust_inventory',
+        {
+          p_product_id: item.product_id,
+          p_branch_id: item.branch_id,
+          p_warehouse_id: null,
+          p_change: quantityChange,
+          p_allow_negative: true
+        }
+      )
     } catch (err) {
       console.warn(`Failed to update inventory for ${item.product_id}:`, err)
     }
@@ -280,7 +279,7 @@ async function processSingleSale(sale: PendingSale): Promise<SyncResult> {
       }
 
       if (drawer) {
-        newBalance = (drawer.current_balance || 0) + cashToDrawer
+        newBalance = roundMoney((drawer.current_balance || 0) + cashToDrawer)
         await supabase
           .from('cash_drawers')
           .update({

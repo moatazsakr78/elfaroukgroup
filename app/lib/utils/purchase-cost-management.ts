@@ -98,13 +98,14 @@ export async function checkProductPurchaseHistory(productId: string): Promise<Pu
  * حساب وتحديث تكلفة المنتج بعد شراء جديد
  * Calculate and update product cost after new purchase
  *
- * ✨ ملاحظة مهمة: المخزون يتم تحديثه قبل استدعاء هذه الدالة،
- * لذلك نطرح كمية الشراء الجديدة للحصول على المخزون قبل الشراء
+ * @param preUpdateStockQuantity - إذا تم تمريره، يتم استخدامه مباشرة بدلاً من
+ *   قراءة المخزون وطرح كمية الشراء (يحل مشكلة التوقيت إذا حصل بيع بينهما)
  */
 export async function updateProductCostAfterPurchase(
   productId: string,
   newPurchaseQuantity: number,
-  newPurchaseUnitCost: number
+  newPurchaseUnitCost: number,
+  preUpdateStockQuantity?: number
 ): Promise<ProductCostUpdate | null> {
   try {
     // الحصول على بيانات التكلفة الحالية من product_cost_tracking
@@ -119,21 +120,27 @@ export async function updateProductCostAfterPurchase(
       return null
     }
 
-    // الحصول على المخزون الحالي من الفروع
-    const { data: inventory, error: invError } = await supabase
-      .from('inventory')
-      .select('quantity')
-      .eq('product_id', productId)
+    let currentStockQuantity: number
 
-    if (invError) {
-      console.error('Error fetching inventory:', invError)
-      return null
+    if (preUpdateStockQuantity !== undefined) {
+      // Use the pre-update quantity passed by the caller (accurate, no timing issues)
+      currentStockQuantity = Math.max(0, preUpdateStockQuantity)
+    } else {
+      // Fallback: read current inventory and subtract purchase quantity
+      // (less accurate if a sale happened between inventory update and this call)
+      const { data: inventory, error: invError } = await supabase
+        .from('inventory')
+        .select('quantity')
+        .eq('product_id', productId)
+
+      if (invError) {
+        console.error('Error fetching inventory:', invError)
+        return null
+      }
+
+      const inventoryAfterPurchase = inventory?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0
+      currentStockQuantity = Math.max(0, inventoryAfterPurchase - newPurchaseQuantity)
     }
-
-    // ✨ المخزون الحالي يشمل الكمية الجديدة (لأن المخزون يتحدث قبل هذه الدالة)
-    // لذلك نطرح كمية الشراء الجديدة للحصول على المخزون قبل الشراء
-    const inventoryAfterPurchase = inventory?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0
-    const currentStockQuantity = Math.max(0, inventoryAfterPurchase - newPurchaseQuantity)
 
     // ✨ سعر الشراء الحالي: نحاول من cost_tracking أولاً، ثم من products table
     let currentCostPerUnit = costTracking?.average_cost || 0
@@ -151,11 +158,11 @@ export async function updateProductCostAfterPurchase(
 
     console.log('📊 Cost calculation inputs:', {
       productId,
-      inventoryAfterPurchase,
       currentStockQuantity,
       currentCostPerUnit,
       newPurchaseQuantity,
-      newPurchaseUnitCost
+      newPurchaseUnitCost,
+      usedPreUpdateQty: preUpdateStockQuantity !== undefined
     })
 
     // حساب متوسط التكلفة المرجح الجديد

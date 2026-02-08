@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { MagnifyingGlassIcon, XMarkIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon, ChevronUpIcon, PlusIcon, PencilSquareIcon, TrashIcon, TableCellsIcon, CalendarDaysIcon, PrinterIcon, EllipsisVerticalIcon } from '@heroicons/react/24/outline'
 import ResizableTable from './tables/ResizableTable'
 import { supabase } from '../lib/supabase/client'
+import { roundMoney } from '../lib/utils/money'
 import ConfirmDeleteModal from './ConfirmDeleteModal'
 import SimpleDateFilterModal, { DateFilter } from './SimpleDateFilterModal'
 import ContextMenu, { createEditContextMenuItems } from './ContextMenu'
@@ -1690,13 +1691,13 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
 
       if (withdrawType === 'deposit') {
         // إيداع: إضافة للرصيد
-        newSourceBalance = (sourceDrawer.current_balance || 0) + amount
+        newSourceBalance = roundMoney((sourceDrawer.current_balance || 0) + amount)
         transactionAmount = amount
         transactionType = 'deposit'
         transactionNotes = `إيداع في الخزنة${withdrawNotes ? ` - ${withdrawNotes}` : ''}`
       } else {
         // سحب أو تحويل: خصم من الرصيد
-        newSourceBalance = (sourceDrawer.current_balance || 0) - amount
+        newSourceBalance = roundMoney((sourceDrawer.current_balance || 0) - amount)
         transactionAmount = -amount
         transactionType = withdrawType === 'transfer' ? 'transfer_out' : 'withdrawal'
         transactionNotes = withdrawType === 'transfer'
@@ -1754,7 +1755,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
         }
 
         if (targetDrawer) {
-          const newTargetBalance = (targetDrawer.current_balance || 0) + amount
+          const newTargetBalance = roundMoney((targetDrawer.current_balance || 0) + amount)
 
           await supabase
             .from('cash_drawers')

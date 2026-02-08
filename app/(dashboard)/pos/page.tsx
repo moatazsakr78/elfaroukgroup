@@ -92,6 +92,7 @@ function EditableField({
 }
 
 import { supabase } from "../../lib/supabase/client";
+import { roundMoney } from "../../lib/utils/money";
 import { useAuth } from "@/lib/useAuth";
 import { Category } from "../../types";
 import ResizableTable from "../../components/tables/ResizableTable";
@@ -2739,7 +2740,7 @@ function POSPageContent() {
 
             if (drawer) {
               // تحديث رصيد الخزنة بالفرق
-              const newDrawerBalance = (drawer.current_balance || 0) + totalDifference;
+              const newDrawerBalance = roundMoney((drawer.current_balance || 0) + totalDifference);
 
               await supabase
                 .from('cash_drawers')

@@ -2,6 +2,7 @@
 
 import { supabase } from '../supabase/client'
 import { getOrCreateCustomerForSupplier } from '../services/partyLinkingService'
+import { roundMoney } from '../utils/money'
 import {
   createOfflineSalesInvoice,
   shouldUseOfflineMode,
@@ -324,59 +325,52 @@ export async function createSalesInvoice({
     // Note: Invoices are only assigned to the selected safe - no duplication to main safe
     // Each safe shows only its own invoices
 
-    // Update inventory quantities (parallel execution for better performance)
+    // Update inventory quantities atomically (parallel execution for better performance)
     // كل منتج يتم خصمه من فرعه المحدد (item.branch_id)
+    const inventoryWarnings: string[] = []
     const inventoryUpdatePromises = cartItems.map(async (item) => {
       try {
-        // استخدام branch_id الخاص بكل منتج
-        // استخدم branch_id من المنتج أو من الفرع المحدد في الفاتورة كـ fallback
         const itemBranchId = item.branch_id || selections.branch.id
-
-        // First get current quantity, then update
-        const { data: currentInventory, error: getError } = await supabase
-          .from('inventory')
-          .select('quantity')
-          .eq('product_id', item.product.id)
-          .eq('branch_id', itemBranchId)
-          .single()
-
-        if (getError) {
-          console.warn(`Failed to get current inventory for product ${item.product.id} in branch ${itemBranchId}:`, getError.message)
-          return
-        }
 
         // For returns, add quantity back; for sales, subtract
         const quantityChange = isReturn ? item.quantity : -item.quantity
-        const newQuantity = Math.max(0, (currentInventory?.quantity || 0) + quantityChange)
 
-        const { error: inventoryError } = await supabase
-          .from('inventory')
-          .update({
-            quantity: newQuantity
-          })
-          .eq('product_id', item.product.id)
-          .eq('branch_id', itemBranchId)
+        // Atomic update: quantity = quantity + change (no read-modify-write race)
+        const { data: invResult, error: invError } = await supabase.rpc(
+          'atomic_adjust_inventory' as any,
+          {
+            p_product_id: item.product.id,
+            p_branch_id: itemBranchId,
+            p_warehouse_id: null,
+            p_change: quantityChange,
+            p_allow_negative: true
+          }
+        )
 
-        if (inventoryError) {
-          console.warn(`Failed to update inventory for product ${item.product.id} in branch ${itemBranchId}:`, inventoryError.message)
+        if (invError) {
+          console.warn(`Failed to update inventory for product ${item.product.id} in branch ${itemBranchId}:`, invError.message)
+          return
+        }
+
+        // Track negative inventory warnings
+        if (invResult && invResult[0]?.went_negative) {
+          inventoryWarnings.push(`المنتج "${item.product.name}" أصبح المخزون سالب (${invResult[0].new_quantity})`)
         }
       } catch (err) {
         console.warn(`Error updating inventory for product ${item.product.id}:`, err)
       }
     })
 
-    // Update product variant quantities in parallel
+    // Update product variant quantities atomically in parallel
     // كل variant يتم خصمه من فرع المنتج المحدد (item.branch_id)
     const variantUpdatePromises = cartItems
       .filter(item => item.selectedColors && Object.keys(item.selectedColors).length > 0)
       .flatMap(item => {
-        // استخدم branch_id من المنتج أو من الفرع المحدد في الفاتورة كـ fallback
         const itemBranchId = item.branch_id || selections.branch.id
         return Object.entries(item.selectedColors as Record<string, number>)
           .filter(([_, colorQuantity]) => colorQuantity > 0)
           .map(async ([colorName, colorQuantity]) => {
             try {
-              // First, get the variant definition ID from product_color_shape_definitions
               const { data: variantDefinition, error: defError } = await supabase
                 .from('product_color_shape_definitions')
                 .select('id')
@@ -390,34 +384,17 @@ export async function createSalesInvoice({
                 return
               }
 
-              // Get current quantity from product_variant_quantities
-              const { data: currentQuantity, error: qtyGetError } = await supabase
-                .from('product_variant_quantities')
-                .select('quantity')
-                .eq('variant_definition_id', variantDefinition.id)
-                .eq('branch_id', itemBranchId)
-                .single()
-
-              if (qtyGetError && qtyGetError.code !== 'PGRST116') {
-                console.warn(`Failed to get current quantity for variant ${variantDefinition.id}:`, qtyGetError.message)
-                return
-              }
-
-              // For returns, add quantity back; for sales, subtract
               const variantQuantityChange = isReturn ? colorQuantity : -colorQuantity
-              const newVariantQuantity = Math.max(0, (currentQuantity?.quantity || 0) + variantQuantityChange)
 
-              // Update or insert quantity in product_variant_quantities
-              const { error: qtyUpdateError } = await supabase
-                .from('product_variant_quantities')
-                .upsert({
-                  variant_definition_id: variantDefinition.id,
-                  branch_id: itemBranchId,
-                  quantity: newVariantQuantity,
-                  updated_at: new Date().toISOString()
-                }, {
-                  onConflict: 'variant_definition_id,branch_id'
-                })
+              const { error: qtyUpdateError } = await supabase.rpc(
+                'atomic_adjust_variant_quantity' as any,
+                {
+                  p_variant_definition_id: variantDefinition.id,
+                  p_branch_id: itemBranchId,
+                  p_change: variantQuantityChange,
+                  p_allow_negative: true
+                }
+              )
 
               if (qtyUpdateError) {
                 console.warn(`Failed to update variant quantity for variant ${variantDefinition.id}:`, qtyUpdateError.message)
@@ -428,7 +405,7 @@ export async function createSalesInvoice({
           })
       })
 
-    // Update shape variant quantities in parallel (same logic as colors but variant_type='shape')
+    // Update shape variant quantities atomically in parallel (same logic as colors but variant_type='shape')
     const shapeUpdatePromises = cartItems
       .filter(item => item.selectedShapes && Object.keys(item.selectedShapes).length > 0)
       .flatMap(item => {
@@ -450,31 +427,17 @@ export async function createSalesInvoice({
                 return
               }
 
-              const { data: currentQuantity, error: qtyGetError } = await supabase
-                .from('product_variant_quantities')
-                .select('quantity')
-                .eq('variant_definition_id', variantDefinition.id)
-                .eq('branch_id', itemBranchId)
-                .single()
-
-              if (qtyGetError && qtyGetError.code !== 'PGRST116') {
-                console.warn(`Failed to get current quantity for shape variant ${variantDefinition.id}:`, qtyGetError.message)
-                return
-              }
-
               const variantQuantityChange = isReturn ? shapeQuantity : -shapeQuantity
-              const newVariantQuantity = Math.max(0, (currentQuantity?.quantity || 0) + variantQuantityChange)
 
-              const { error: qtyUpdateError } = await supabase
-                .from('product_variant_quantities')
-                .upsert({
-                  variant_definition_id: variantDefinition.id,
-                  branch_id: itemBranchId,
-                  quantity: newVariantQuantity,
-                  updated_at: new Date().toISOString()
-                }, {
-                  onConflict: 'variant_definition_id,branch_id'
-                })
+              const { error: qtyUpdateError } = await supabase.rpc(
+                'atomic_adjust_variant_quantity' as any,
+                {
+                  p_variant_definition_id: variantDefinition.id,
+                  p_branch_id: itemBranchId,
+                  p_change: variantQuantityChange,
+                  p_allow_negative: true
+                }
+              )
 
               if (qtyUpdateError) {
                 console.warn(`Failed to update shape variant quantity for variant ${variantDefinition.id}:`, qtyUpdateError.message)
@@ -599,7 +562,7 @@ export async function createSalesInvoice({
 
         if (drawer) {
           // Calculate new balance (for returns, cashToDrawer is negative)
-          newBalance = (drawer.current_balance || 0) + transactionAmount
+          newBalance = roundMoney((drawer.current_balance || 0) + transactionAmount)
 
           // Update drawer balance
           await supabase
@@ -650,7 +613,8 @@ export async function createSalesInvoice({
       invoiceId: salesData.id,
       invoiceNumber: invoiceNumber,
       totalAmount: totalAmount,
-      message: 'تم إنشاء الفاتورة بنجاح'
+      message: 'تم إنشاء الفاتورة بنجاح',
+      inventoryWarnings: inventoryWarnings.length > 0 ? inventoryWarnings : undefined
     }
 
   } catch (error: any) {

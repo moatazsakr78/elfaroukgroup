@@ -3,6 +3,7 @@
 import { supabase } from '../supabase/client'
 import { CartItem } from './createSalesInvoice'
 import { updateProductCostAfterPurchase } from '../utils/purchase-cost-management'
+import { roundMoney } from '../utils/money'
 
 export interface PurchaseInvoiceSelections {
   supplier: any
@@ -175,68 +176,37 @@ export async function createPurchaseInvoice({
     // Now purchase invoices only appear in the explicitly selected safe
     // If "no safe" is selected (hasNoSafe = true), record_id will be null and won't appear in any safe
 
-    // Update inventory quantities (increase for purchases)
-    const locationId = branchId || warehouseId
+    // Update inventory quantities atomically (increase for purchases)
+    // Track pre-update quantities for cost calculation (Bug 7 fix)
+    const preUpdateQuantities = new Map<string, number>()
 
     for (const item of finalCartItems) {
-      // Check if inventory record exists for this product and location
-      const { data: existingInventory, error: getInventoryError } = await supabase
+      // Read current quantity BEFORE atomic update (for cost calculation)
+      const { data: preInventory } = await supabase
         .from('inventory')
         .select('quantity')
         .eq('product_id', item.product.id)
-        .eq(branchId ? 'branch_id' : 'warehouse_id', locationId)
-        .single()
 
-      if (getInventoryError && getInventoryError.code !== 'PGRST116') {
-        console.warn(`Failed to get current inventory for product ${item.product.id}:`, getInventoryError.message)
-        continue
-      }
+      const currentTotal = preInventory?.reduce((sum, inv) => sum + (inv.quantity || 0), 0) || 0
+      preUpdateQuantities.set(item.product.id, currentTotal)
 
-      if (existingInventory) {
-        // Update existing inventory (for returns, subtract; for purchases, add)
-        const quantityChange = isReturn ? -item.quantity : item.quantity
-        const newQuantity = Math.max(0, (existingInventory.quantity || 0) + quantityChange)
+      // For returns, subtract; for purchases, add
+      const quantityChange = isReturn ? -item.quantity : item.quantity
 
-        const updateData: any = { quantity: newQuantity }
-        if (branchId) {
-          updateData.branch_id = branchId
-        } else {
-          updateData.warehouse_id = warehouseId
+      // Atomic update: quantity = quantity + change (no read-modify-write race)
+      const { error: invError } = await supabase.rpc(
+        'atomic_adjust_inventory' as any,
+        {
+          p_product_id: item.product.id,
+          p_branch_id: branchId,
+          p_warehouse_id: warehouseId,
+          p_change: quantityChange,
+          p_allow_negative: true
         }
+      )
 
-        const { error: inventoryError } = await supabase
-          .from('inventory')
-          .update(updateData)
-          .eq('product_id', item.product.id)
-          .eq(branchId ? 'branch_id' : 'warehouse_id', locationId)
-
-        if (inventoryError) {
-          console.warn(`Failed to update inventory for product ${item.product.id}:`, inventoryError.message)
-        }
-      } else {
-        // Create new inventory record (only if not a return or return quantity is positive)
-        const effectiveQuantity = isReturn ? 0 : item.quantity // Don't create inventory for returns
-        if (effectiveQuantity > 0) {
-          const insertData: any = {
-            product_id: item.product.id,
-            quantity: effectiveQuantity,
-            min_stock: 0 // Default minimum stock
-          }
-        
-          if (branchId) {
-            insertData.branch_id = branchId
-          } else {
-            insertData.warehouse_id = warehouseId
-          }
-
-          const { error: inventoryError } = await supabase
-            .from('inventory')
-            .insert(insertData)
-
-          if (inventoryError) {
-            console.warn(`Failed to create inventory for product ${item.product.id}:`, inventoryError.message)
-          }
-        }
+      if (invError) {
+        console.warn(`Failed to update inventory for product ${item.product.id}:`, invError.message)
       }
 
       // In purchase mode, we store quantities as "unspecified" variant
@@ -262,7 +232,7 @@ export async function createPurchaseInvoice({
               variant_type: 'color',
               name: 'غير محدد',
               color_hex: '#6B7280',
-              sort_order: 9999 // Put it at the end
+              sort_order: 9999
             })
             .select('id')
             .single()
@@ -276,34 +246,17 @@ export async function createPurchaseInvoice({
           unspecifiedDefId = unspecifiedDef.id
         }
 
-        // Now manage the quantity in product_variant_quantities
-        const { data: currentQty, error: qtyGetError } = await supabase
-          .from('product_variant_quantities')
-          .select('quantity')
-          .eq('variant_definition_id', unspecifiedDefId)
-          .eq('branch_id', branchId)
-          .single()
+        const variantQuantityChange = isReturn ? -item.quantity : item.quantity
 
-        if (qtyGetError && qtyGetError.code !== 'PGRST116') {
-          console.warn(`Failed to get current quantity for unspecified variant:`, qtyGetError.message)
-          continue
-        }
-
-        // Calculate new quantity (for returns, subtract; for purchases, add)
-        const quantityChange = isReturn ? -item.quantity : item.quantity
-        const newVariantQuantity = Math.max(0, (currentQty?.quantity || 0) + quantityChange)
-
-        // Upsert the quantity
-        const { error: qtyUpsertError } = await supabase
-          .from('product_variant_quantities')
-          .upsert({
-            variant_definition_id: unspecifiedDefId,
-            branch_id: branchId,
-            quantity: newVariantQuantity,
-            updated_at: new Date().toISOString()
-          }, {
-            onConflict: 'variant_definition_id,branch_id'
-          })
+        const { error: qtyUpsertError } = await supabase.rpc(
+          'atomic_adjust_variant_quantity' as any,
+          {
+            p_variant_definition_id: unspecifiedDefId,
+            p_branch_id: branchId,
+            p_change: variantQuantityChange,
+            p_allow_negative: true
+          }
+        )
 
         if (qtyUpsertError) {
           console.warn(`Failed to upsert quantity for unspecified variant:`, qtyUpsertError.message)
@@ -312,13 +265,18 @@ export async function createPurchaseInvoice({
     }
 
     // Update product costs using weighted average cost method
+    // Track failures to return as warnings (Bug 6 fix)
     console.log('🔄 Updating product costs after purchase...')
+    const costUpdateWarnings: string[] = []
     for (const item of finalCartItems) {
       try {
+        // Pass pre-update quantity to avoid timing issues (Bug 7 fix)
+        const preQty = preUpdateQuantities.get(item.product.id) ?? undefined
         const costUpdate = await updateProductCostAfterPurchase(
           item.product.id,
           item.quantity,
-          item.price
+          item.price,
+          preQty
         )
 
         if (costUpdate) {
@@ -329,9 +287,13 @@ export async function createPurchaseInvoice({
             unitPrice: item.price
           })
         } else {
+          const productName = item.product.name || item.product.id
+          costUpdateWarnings.push(`فشل تحديث تكلفة المنتج: ${productName}`)
           console.warn(`⚠️  Failed to update cost for product ${item.product.id}`)
         }
       } catch (costError: any) {
+        const productName = item.product.name || item.product.id
+        costUpdateWarnings.push(`خطأ في تحديث تكلفة المنتج: ${productName}`)
         console.error(`❌ Error updating cost for product ${item.product.id}:`, costError.message)
         // Don't fail the entire invoice creation if cost update fails
       }
@@ -388,7 +350,7 @@ export async function createPurchaseInvoice({
 
           if (!safeGetError && safeData) {
             const currentBalance = safeData.balance || 0
-            const newBalance = currentBalance - paidAmount
+            const newBalance = roundMoney(currentBalance - paidAmount)
 
             const { error: safeUpdateError } = await supabase
               .from('records')
@@ -413,7 +375,10 @@ export async function createPurchaseInvoice({
       paidAmount: paidAmount,
       paymentCreated: paymentCreated,
       paymentError: paymentErrorMsg,
-      message: 'تم إنشاء فاتورة الشراء وتحديث تكاليف المنتجات بنجاح'
+      costUpdateWarnings: costUpdateWarnings.length > 0 ? costUpdateWarnings : undefined,
+      message: costUpdateWarnings.length > 0
+        ? `تم إنشاء فاتورة الشراء بنجاح، لكن فشل تحديث تكلفة ${costUpdateWarnings.length} منتج`
+        : 'تم إنشاء فاتورة الشراء وتحديث تكاليف المنتجات بنجاح'
     }
 
   } catch (error: any) {
