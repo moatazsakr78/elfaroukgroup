@@ -5,7 +5,6 @@ import TopHeader from '@/app/components/layout/TopHeader';
 import Sidebar from '@/app/components/layout/Sidebar';
 import {
   CurrencyDollarIcon,
-  ShoppingCartIcon,
   UsersIcon,
   ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
@@ -14,6 +13,8 @@ import {
 import {
   DashboardHeader,
   StatsCard,
+  InvoiceStatsCard,
+  SaleTypeCard,
   RecentOrdersCard,
   LowStockCard,
   TopCustomersCard,
@@ -158,7 +159,7 @@ export default function DashboardPage() {
           ) : (
             <div className="p-6 space-y-6">
               {/* Stats Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                 <StatsCard
                   title={`مبيعات ${periodLabel}`}
                   value={data.kpis?.totalSales || 0}
@@ -168,13 +169,23 @@ export default function DashboardPage() {
                   format="currency"
                   loading={loading}
                 />
-                <StatsCard
-                  title={`طلبات ${periodLabel}`}
-                  value={data.kpis?.orderCount || 0}
-                  previousValue={calcChange(data.kpis?.orderCount || 0, data.kpis?.previousPeriod?.orderCount || 0)}
-                  icon={ShoppingCartIcon}
-                  color="green"
-                  format="number"
+                <InvoiceStatsCard
+                  periodLabel={periodLabel}
+                  invoiceCount={data.kpis?.invoiceCount || 0}
+                  invoiceTotal={data.kpis?.invoiceTotal || 0}
+                  returnCount={data.kpis?.returnCount || 0}
+                  returnTotal={data.kpis?.returnTotal || 0}
+                  loading={loading}
+                />
+                <SaleTypeCard
+                  periodLabel={periodLabel}
+                  groundCount={data.saleTypeBreakdown?.ground.count || 0}
+                  groundTotal={data.saleTypeBreakdown?.ground.total || 0}
+                  groundPercentage={data.saleTypeBreakdown?.ground.percentage || 0}
+                  onlineCount={data.saleTypeBreakdown?.online.count || 0}
+                  onlineTotal={data.saleTypeBreakdown?.online.total || 0}
+                  onlinePercentage={data.saleTypeBreakdown?.online.percentage || 0}
+                  onlineShippingTotal={data.saleTypeBreakdown?.online.shippingTotal || 0}
                   loading={loading}
                 />
                 <StatsCard

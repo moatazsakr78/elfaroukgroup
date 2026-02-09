@@ -9,8 +9,9 @@ import {
   fetchTopProducts,
   fetchTopCustomers,
   fetchCategoryDistribution,
+  fetchSaleTypeBreakdown,
 } from '../../reports/services/reportsService';
-import { KPIData, SalesTrendPoint, TopProductData, TopCustomerData, CategoryDistribution, DateFilter } from '../../reports/types/reports';
+import { KPIData, SalesTrendPoint, TopProductData, TopCustomerData, CategoryDistribution, DateFilter, SaleTypeBreakdownData } from '../../reports/types/reports';
 import { getDateRangeFromFilter } from '@/app/lib/utils/dateFilters';
 import { toEgyptDateString } from '@/app/lib/utils/date-utils';
 import {
@@ -51,6 +52,7 @@ export interface DashboardData {
   categoryDistribution: CategoryDistribution[];
   recentOrders: RecentOrder[];
   lowStockProducts: LowStockProduct[];
+  saleTypeBreakdown: SaleTypeBreakdownData | null;
 }
 
 // Initial empty state
@@ -62,6 +64,7 @@ const initialData: DashboardData = {
   categoryDistribution: [],
   recentOrders: [],
   lowStockProducts: [],
+  saleTypeBreakdown: null,
 };
 
 // Fetch recent orders
@@ -149,7 +152,7 @@ async function fetchRawSalesData(dateFilter: DateFilter) {
 
   let salesQuery = supabase
     .from('sales')
-    .select('id, total_amount, profit, customer_id, cashier_id, branch_id, record_id, created_at');
+    .select('id, total_amount, profit, customer_id, cashier_id, branch_id, record_id, created_at, invoice_type, sale_type, shipping_amount');
 
   if (startDate) salesQuery = salesQuery.gte('created_at', startDate.toISOString());
   if (endDate) salesQuery = salesQuery.lte('created_at', endDate.toISOString());
@@ -279,18 +282,33 @@ function computeFilteredDashboardData(
   const customerCount = uniqueCustomers.size;
   const avgOrderValue = orderCount > 0 ? totalSales / orderCount : 0;
 
+  const invoices = filteredSales.filter(s => s.invoice_type !== 'Sale Return');
+  const returns = filteredSales.filter(s => s.invoice_type === 'Sale Return');
+  const invoiceCount = invoices.length;
+  const invoiceTotal = invoices.reduce((sum, s) => sum + (parseFloat(String(s.total_amount)) || 0), 0);
+  const returnCount = returns.length;
+  const returnTotal = Math.abs(returns.reduce((sum, s) => sum + (parseFloat(String(s.total_amount)) || 0), 0));
+
   const kpis: KPIData = {
     totalSales,
     totalProfit,
     orderCount,
     customerCount,
     avgOrderValue,
+    invoiceCount,
+    invoiceTotal,
+    returnCount,
+    returnTotal,
     previousPeriod: {
       totalSales: 0,
       totalProfit: 0,
       orderCount: 0,
       customerCount: 0,
       avgOrderValue: 0,
+      invoiceCount: 0,
+      invoiceTotal: 0,
+      returnCount: 0,
+      returnTotal: 0,
     },
   };
 
@@ -406,12 +424,39 @@ function computeFilteredDashboardData(
     }))
     .sort((a, b) => b.totalRevenue - a.totalRevenue);
 
+  // Sale Type Breakdown
+  const groundSales = filteredSales.filter(s => s.sale_type !== 'online');
+  const onlineSalesArr = filteredSales.filter(s => s.sale_type === 'online');
+
+  const groundTotal = groundSales.reduce((sum, s) => sum + (parseFloat(String(s.total_amount)) || 0), 0);
+  const groundProfit = groundSales.reduce((sum, s) => sum + (parseFloat(String(s.profit ?? 0)) || 0), 0);
+  const onlineTotal2 = onlineSalesArr.reduce((sum, s) => sum + (parseFloat(String(s.total_amount)) || 0), 0);
+  const onlineProfit = onlineSalesArr.reduce((sum, s) => sum + (parseFloat(String(s.profit ?? 0)) || 0), 0);
+  const onlineShipping = onlineSalesArr.reduce((sum, s) => sum + (parseFloat(String(s.shipping_amount ?? 0)) || 0), 0);
+
+  const saleTypeBreakdown: SaleTypeBreakdownData = {
+    ground: {
+      count: groundSales.length,
+      total: groundTotal,
+      profit: groundProfit,
+      percentage: orderCount > 0 ? (groundSales.length / orderCount) * 100 : 0,
+    },
+    online: {
+      count: onlineSalesArr.length,
+      total: onlineTotal2,
+      profit: onlineProfit,
+      percentage: orderCount > 0 ? (onlineSalesArr.length / orderCount) * 100 : 0,
+      shippingTotal: onlineShipping,
+    },
+  };
+
   return {
     kpis,
     salesTrend,
     topProducts,
     topCustomers,
     categoryDistribution,
+    saleTypeBreakdown,
   };
 }
 
@@ -525,7 +570,12 @@ export function useDashboardData(
         const computed = computeFilteredDashboardData(filteredSales, filteredItems);
 
         newData = {
-          ...computed,
+          kpis: computed.kpis,
+          salesTrend: computed.salesTrend,
+          topProducts: computed.topProducts,
+          topCustomers: computed.topCustomers,
+          categoryDistribution: computed.categoryDistribution,
+          saleTypeBreakdown: computed.saleTypeBreakdown,
           recentOrders: recentOrdersResult.status === 'fulfilled' ? recentOrdersResult.value : [],
           lowStockProducts: lowStockResult.status === 'fulfilled' ? lowStockResult.value : [],
         };
@@ -539,6 +589,7 @@ export function useDashboardData(
           categoryDistResult,
           recentOrdersResult,
           lowStockResult,
+          saleTypeResult,
         ] = await Promise.allSettled([
           fetchKPIs(dateFilter),
           fetchSalesTrend(dateFilter, 30),
@@ -547,6 +598,7 @@ export function useDashboardData(
           fetchCategoryDistribution(dateFilter),
           fetchRecentOrders(dateFilter, 5),
           fetchLowStockProducts(10),
+          fetchSaleTypeBreakdown(dateFilter),
         ]);
 
         newData = {
@@ -557,6 +609,7 @@ export function useDashboardData(
           categoryDistribution: categoryDistResult.status === 'fulfilled' ? categoryDistResult.value : [],
           recentOrders: recentOrdersResult.status === 'fulfilled' ? recentOrdersResult.value : [],
           lowStockProducts: lowStockResult.status === 'fulfilled' ? lowStockResult.value : [],
+          saleTypeBreakdown: saleTypeResult.status === 'fulfilled' ? saleTypeResult.value : null,
         };
       }
 

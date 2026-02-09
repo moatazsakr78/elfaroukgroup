@@ -50,6 +50,10 @@ export interface CreateSalesInvoiceParams {
   supplierName?: string | null
   // Brand support
   brandId?: string | null
+  // Sale type (ground = أرضي, online = أون لاين)
+  saleType?: 'ground' | 'online'
+  shippingAmount?: number
+  orderId?: string | null
 }
 
 export async function createSalesInvoice({
@@ -65,7 +69,10 @@ export async function createSalesInvoice({
   partyType = 'customer',
   supplierId = null,
   supplierName = null,
-  brandId = null
+  brandId = null,
+  saleType = 'ground',
+  shippingAmount = 0,
+  orderId = null
 }: CreateSalesInvoiceParams) {
   if (!selections.branch) {
     throw new Error('يجب تحديد الفرع قبل إنشاء الفاتورة')
@@ -266,7 +273,10 @@ export async function createSalesInvoice({
       notes: finalNotes || '',
       time: timeString,
       invoice_type: (isReturn ? 'Sale Return' : 'Sale Invoice'),
-      brand_id: brandId || ''
+      brand_id: brandId || '',
+      sale_type: saleType,
+      shipping_amount: shippingAmount || 0,
+      order_id: orderId || ''
     }
 
     // Prepare sale items for atomic insertion (negative quantities for returns)

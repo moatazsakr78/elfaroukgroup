@@ -12,12 +12,20 @@ export interface KPIData {
   orderCount: number;
   customerCount: number;
   avgOrderValue: number;
+  invoiceCount: number;
+  invoiceTotal: number;
+  returnCount: number;
+  returnTotal: number;
   previousPeriod: {
     totalSales: number;
     totalProfit: number;
     orderCount: number;
     customerCount: number;
     avgOrderValue: number;
+    invoiceCount: number;
+    invoiceTotal: number;
+    returnCount: number;
+    returnTotal: number;
   };
 }
 
@@ -138,6 +146,21 @@ export interface ReportConfig {
   category: 'sales' | 'purchases' | 'financial' | 'inventory';
   hasChart: boolean;
   chartType?: 'bar' | 'line' | 'pie' | 'area';
+}
+
+// Sale Type Breakdown (ground vs online)
+export interface SaleTypeBreakdownData {
+  ground: { count: number; total: number; profit: number; percentage: number };
+  online: { count: number; total: number; profit: number; percentage: number; shippingTotal: number };
+}
+
+export interface SaleTypeTrendPoint {
+  date: string;
+  displayDate: string;
+  groundSales: number;
+  onlineSales: number;
+  groundCount: number;
+  onlineCount: number;
 }
 
 // Helper type for chart data

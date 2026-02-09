@@ -17,6 +17,7 @@ import {
   PayableData,
   ExpenseData,
   RevenueVsProfitData,
+  SaleTypeBreakdownData,
 } from '../types/reports';
 import { getArabicDayName, formatHourRange, getPaymentMethodAr } from '../utils/chartConfig';
 
@@ -91,7 +92,7 @@ export const fetchKPIs = async (filter: DateFilter, brandId?: string | null): Pr
   // Current period
   let currentQuery = supabase
     .from('sales')
-    .select('id, total_amount, profit, customer_id')
+    .select('id, total_amount, profit, customer_id, invoice_type')
     .gte('created_at', startDate)
     .lte('created_at', endDate);
 
@@ -104,7 +105,7 @@ export const fetchKPIs = async (filter: DateFilter, brandId?: string | null): Pr
   // Previous period
   let prevQuery = supabase
     .from('sales')
-    .select('id, total_amount, profit, customer_id')
+    .select('id, total_amount, profit, customer_id, invoice_type')
     .gte('created_at', prevPeriod.startDate)
     .lte('created_at', prevPeriod.endDate);
 
@@ -125,7 +126,14 @@ export const fetchKPIs = async (filter: DateFilter, brandId?: string | null): Pr
     const customerCount = uniqueCustomers.size;
     const avgOrderValue = orderCount > 0 ? totalSales / orderCount : 0;
 
-    return { totalSales, totalProfit, orderCount, customerCount, avgOrderValue };
+    const invoices = sales.filter(s => s.invoice_type !== 'Sale Return');
+    const returns = sales.filter(s => s.invoice_type === 'Sale Return');
+    const invoiceCount = invoices.length;
+    const invoiceTotal = invoices.reduce((sum, s) => sum + (parseFloat(String(s.total_amount)) || 0), 0);
+    const returnCount = returns.length;
+    const returnTotal = Math.abs(returns.reduce((sum, s) => sum + (parseFloat(String(s.total_amount)) || 0), 0));
+
+    return { totalSales, totalProfit, orderCount, customerCount, avgOrderValue, invoiceCount, invoiceTotal, returnCount, returnTotal };
   };
 
   const current = calcKPIs(currentSales);
@@ -622,6 +630,52 @@ export const fetchRevenueVsProfit = async (filter: DateFilter, brandId?: string 
     .sort((a, b) => a.date.localeCompare(b.date));
 };
 
+// Fetch Sale Type Breakdown (ground vs online)
+export const fetchSaleTypeBreakdown = async (filter: DateFilter, brandId?: string | null): Promise<SaleTypeBreakdownData> => {
+  const { startDate, endDate } = getDateRange(filter);
+
+  let query = supabase
+    .from('sales')
+    .select('id, total_amount, profit, sale_type, shipping_amount')
+    .gte('created_at', startDate)
+    .lte('created_at', endDate);
+
+  if (brandId) query = query.eq('brand_id', brandId);
+
+  const { data, error } = await query;
+
+  if (error) throw error;
+
+  const sales = data || [];
+  const totalCount = sales.length;
+
+  const groundSales = sales.filter(s => s.sale_type !== 'online');
+  const onlineSales = sales.filter(s => s.sale_type === 'online');
+
+  const groundTotal = groundSales.reduce((sum, s) => sum + (parseFloat(String(s.total_amount)) || 0), 0);
+  const groundProfit = groundSales.reduce((sum, s) => sum + (parseFloat(String(s.profit ?? 0)) || 0), 0);
+
+  const onlineTotal = onlineSales.reduce((sum, s) => sum + (parseFloat(String(s.total_amount)) || 0), 0);
+  const onlineProfit = onlineSales.reduce((sum, s) => sum + (parseFloat(String(s.profit ?? 0)) || 0), 0);
+  const onlineShipping = onlineSales.reduce((sum, s) => sum + (parseFloat(String(s.shipping_amount ?? 0)) || 0), 0);
+
+  return {
+    ground: {
+      count: groundSales.length,
+      total: groundTotal,
+      profit: groundProfit,
+      percentage: totalCount > 0 ? (groundSales.length / totalCount) * 100 : 0,
+    },
+    online: {
+      count: onlineSales.length,
+      total: onlineTotal,
+      profit: onlineProfit,
+      percentage: totalCount > 0 ? (onlineSales.length / totalCount) * 100 : 0,
+      shippingTotal: onlineShipping,
+    },
+  };
+};
+
 // Export all functions as a service object
 export const reportsService = {
   fetchKPIs,
@@ -636,6 +690,7 @@ export const reportsService = {
   fetchPayables,
   fetchExpenses,
   fetchRevenueVsProfit,
+  fetchSaleTypeBreakdown,
 };
 
 export default reportsService;
