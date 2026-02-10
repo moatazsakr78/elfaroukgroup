@@ -173,13 +173,13 @@ export default function PaymentSplit({ totalAmount, onPaymentsChange, isDefaultC
               <input
                 type="number"
                 value={payment.amount}
-                onChange={(e) => !isDefaultCustomer ? handleAmountChange(payment.id, e.target.value) : undefined}
-                readOnly={isDefaultCustomer}
+                onChange={(e) => !(isDefaultCustomer && payments.length === 1) ? handleAmountChange(payment.id, e.target.value) : undefined}
+                readOnly={isDefaultCustomer && payments.length === 1}
                 onFocus={(e) => e.target.select()}
-                onKeyDown={(e) => !isDefaultCustomer ? handleKeyDown(e, payment.id) : undefined}
+                onKeyDown={(e) => !(isDefaultCustomer && payments.length === 1) ? handleKeyDown(e, payment.id) : undefined}
                 placeholder={isReturnMode ? "مبلغ المرتجع" : isPurchaseMode ? "المبلغ المدفوع للمورد" : "المبلغ"}
                 className={`w-full px-2 py-1 text-white rounded border focus:outline-none focus:ring-1 text-xs h-[26px] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${
-                  isDefaultCustomer
+                  isDefaultCustomer && payments.length === 1
                     ? "bg-gray-800 border-gray-700 cursor-not-allowed opacity-75"
                     : isReturnMode
                     ? "bg-gray-700 border-red-500 focus:ring-red-500 text-red-400"
@@ -210,38 +210,36 @@ export default function PaymentSplit({ totalAmount, onPaymentsChange, isDefaultC
               </select>
             </div>
 
-            {/* Action Buttons - مخفية للعميل الافتراضي */}
-            {!isDefaultCustomer && (
-              <div className="flex items-center gap-0.5">
-                {/* Add Button (only show on last row) */}
-                {index === payments.length - 1 && (
-                  <button
-                    onClick={addPaymentRow}
-                    className="p-1 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
-                    title="إضافة"
-                  >
-                    <PlusIcon className="h-3 w-3" />
-                  </button>
-                )}
+            {/* Action Buttons */}
+            <div className="flex items-center gap-0.5">
+              {/* Add Button (only show on last row) */}
+              {index === payments.length - 1 && (
+                <button
+                  onClick={addPaymentRow}
+                  className="p-1 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+                  title="إضافة"
+                >
+                  <PlusIcon className="h-3 w-3" />
+                </button>
+              )}
 
-                {/* Remove Button (only show if more than one payment) */}
-                {payments.length > 1 && (
-                  <button
-                    onClick={() => removePaymentRow(payment.id)}
-                    className="p-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
-                    title="حذف"
-                  >
-                    <XMarkIcon className="h-3 w-3" />
-                  </button>
-                )}
-              </div>
-            )}
+              {/* Remove Button (only show if more than one payment) */}
+              {payments.length > 1 && (
+                <button
+                  onClick={() => removePaymentRow(payment.id)}
+                  className="p-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+                  title="حذف"
+                >
+                  <XMarkIcon className="h-3 w-3" />
+                </button>
+              )}
+            </div>
           </div>
         ))}
       </div>
 
       {/* Compact Summary - Only show if there's credit or multiple payments */}
-      {(creditAmount > 0 || payments.length > 1) && !isDefaultCustomer && (
+      {(creditAmount > 0 || payments.length > 1) && (!isDefaultCustomer || payments.length > 1) && (
         <div className="mt-2 pt-2 border-t border-gray-600 flex items-center justify-between text-xs">
           <div className="flex items-center gap-3">
             <span className="text-gray-400">

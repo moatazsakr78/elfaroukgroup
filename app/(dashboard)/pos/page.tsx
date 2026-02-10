@@ -5760,17 +5760,6 @@ function POSPageContent() {
                     </div>
                   )}
 
-                  {/* عرض الباقي */}
-                  <div className="flex flex-col items-end">
-                    <span className="text-xs text-gray-400">الباقي:</span>
-                    <span className="text-sm font-bold text-orange-400" dir="ltr">
-                      {paidAmount && parseFloat(paidAmount) > 0
-                        ? isPurchaseMode
-                          ? (calculateTotalWithDiscounts() - parseFloat(paidAmount)).toFixed(0)
-                          : (parseFloat(paidAmount) - calculateTotalWithDiscounts()).toFixed(0)
-                        : '---'}
-                    </span>
-                  </div>
                 </div>
               )}
             </div>
@@ -6200,16 +6189,25 @@ function POSPageContent() {
                             onChange={(e) => setPaidAmount(e.target.value)}
                             placeholder="المدفوع"
                             disabled={cartItems.length === 0 || !hasAllRequiredSelections() || isProcessingInvoice}
-                            className="flex-1 min-w-0 px-3 py-2 bg-[#1F2937] text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 text-left border-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                            className="w-24 min-w-0 px-3 py-2 bg-[#1F2937] text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 text-left border-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                             style={{ MozAppearance: 'textfield' }}
                             dir="ltr"
                           />
                           <button
                             disabled={cartItems.length === 0 || !hasAllRequiredSelections() || isProcessingInvoice}
-                            className="flex items-center gap-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed"
+                            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed"
                             onClick={handleCreateInvoice}
                           >
-                            {isProcessingInvoice ? '...' : `(${cartItems.length})`}
+                            {isProcessingInvoice ? '...' : (
+                              <>
+                                {paidAmount && parseFloat(paidAmount) > 0 && (
+                                  <span className="text-orange-300 font-bold">
+                                    الباقي: {(parseFloat(paidAmount) - calculateTotalWithDiscounts()).toFixed(0)}
+                                  </span>
+                                )}
+                                <span>({cartItems.length})</span>
+                              </>
+                            )}
                             <ChevronLeftIcon className="w-4 h-4" />
                           </button>
                         </div>
@@ -6783,16 +6781,25 @@ function POSPageContent() {
                       onChange={(e) => setPaidAmount(e.target.value)}
                       placeholder="المدفوع"
                       disabled={cartItems.length === 0 || !hasAllRequiredSelections() || isProcessingInvoice}
-                      className="flex-1 min-w-0 px-3 py-2 bg-[#1F2937] text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 text-left border-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                      className="w-24 min-w-0 px-3 py-2 bg-[#1F2937] text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 text-left border-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                       style={{ MozAppearance: 'textfield' }}
                       dir="ltr"
                     />
                     <button
                       disabled={cartItems.length === 0 || !hasAllRequiredSelections() || isProcessingInvoice}
-                      className="flex items-center gap-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed"
+                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed"
                       onClick={handleCreateInvoice}
                     >
-                      {isProcessingInvoice ? '...' : `(${cartItems.length})`}
+                      {isProcessingInvoice ? '...' : (
+                        <>
+                          {paidAmount && parseFloat(paidAmount) > 0 && (
+                            <span className="text-orange-300 font-bold">
+                              الباقي: {(parseFloat(paidAmount) - calculateTotalWithDiscounts()).toFixed(0)}
+                            </span>
+                          )}
+                          <span>({cartItems.length})</span>
+                        </>
+                      )}
                       <ChevronLeftIcon className="w-4 h-4" />
                     </button>
                   </div>
