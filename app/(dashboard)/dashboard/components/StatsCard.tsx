@@ -74,9 +74,9 @@ export default function StatsCard({
 
   if (loading) {
     return (
-      <div className="bg-[#374151] rounded-xl border border-gray-600 p-5">
+      <div className="bg-[#374151] rounded-xl border border-gray-600 p-5 pb-6">
         <div className="animate-pulse">
-          <div className="flex items-center justify-between">
+          <div className="flex items-start justify-between">
             <div className="flex-1">
               <div className="h-4 bg-gray-600 rounded w-1/2 mb-3"></div>
               <div className="h-8 bg-gray-600 rounded w-3/4 mb-2"></div>
@@ -90,25 +90,10 @@ export default function StatsCard({
   }
 
   return (
-    <div className={`bg-[#374151] rounded-xl border border-gray-600 p-5 ${colors.bg} hover:border-gray-500 transition-colors`}>
-      <div className="flex items-center justify-between">
+    <div className={`bg-[#374151] rounded-xl border border-gray-600 p-5 pb-6 ${colors.bg} hover:border-gray-500 transition-colors`}>
+      <div className="flex items-start justify-between">
         <div className="flex-1">
-          <div className="flex items-center justify-between mb-1">
-            <p className="text-gray-400 text-sm font-medium">{title}</p>
-            {change !== null && (
-              <div className="flex items-center gap-1">
-                {isPositive ? (
-                  <ArrowTrendingUpIcon className="w-4 h-4 text-green-400" />
-                ) : (
-                  <ArrowTrendingDownIcon className="w-4 h-4 text-red-400" />
-                )}
-                <span className={`text-sm font-medium ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
-                  {isPositive ? '+' : ''}{change.toFixed(1)}%
-                </span>
-                <span className="text-gray-500 text-xs mr-1">من السابق</span>
-              </div>
-            )}
-          </div>
+          <p className="text-gray-400 text-sm font-medium mb-1">{title}</p>
           <p className="text-2xl font-bold text-white mb-2">
             {formatValue(value)}
           </p>
@@ -122,8 +107,23 @@ export default function StatsCard({
             </div>
           )}
         </div>
-        <div className={`p-3 rounded-xl ${colors.iconBg}`}>
-          <Icon className={`w-8 h-8 ${colors.text}`} />
+        <div className="flex flex-col items-center gap-2">
+          {change !== null && (
+            <div className="flex items-center gap-1">
+              {isPositive ? (
+                <ArrowTrendingUpIcon className="w-4 h-4 text-green-400" />
+              ) : (
+                <ArrowTrendingDownIcon className="w-4 h-4 text-red-400" />
+              )}
+              <span className={`text-sm font-medium ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+                {isPositive ? '+' : ''}{change.toFixed(1)}%
+              </span>
+              <span className="text-gray-500 text-xs">من السابق</span>
+            </div>
+          )}
+          <div className={`p-3 rounded-xl ${colors.iconBg}`}>
+            <Icon className={`w-8 h-8 ${colors.text}`} />
+          </div>
         </div>
       </div>
     </div>
