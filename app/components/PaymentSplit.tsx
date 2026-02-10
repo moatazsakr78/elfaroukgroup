@@ -173,16 +173,19 @@ export default function PaymentSplit({ totalAmount, onPaymentsChange, isDefaultC
               <input
                 type="number"
                 value={payment.amount}
-                onChange={(e) => handleAmountChange(payment.id, e.target.value)}
+                onChange={(e) => !isDefaultCustomer ? handleAmountChange(payment.id, e.target.value) : undefined}
+                readOnly={isDefaultCustomer}
                 onFocus={(e) => e.target.select()}
-                onKeyDown={(e) => handleKeyDown(e, payment.id)}
+                onKeyDown={(e) => !isDefaultCustomer ? handleKeyDown(e, payment.id) : undefined}
                 placeholder={isReturnMode ? "مبلغ المرتجع" : isPurchaseMode ? "المبلغ المدفوع للمورد" : "المبلغ"}
-                className={`w-full px-2 py-1 bg-gray-700 text-white rounded border focus:outline-none focus:ring-1 text-xs h-[26px] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${
-                  isReturnMode
-                    ? "border-red-500 focus:ring-red-500 text-red-400"
+                className={`w-full px-2 py-1 text-white rounded border focus:outline-none focus:ring-1 text-xs h-[26px] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${
+                  isDefaultCustomer
+                    ? "bg-gray-800 border-gray-700 cursor-not-allowed opacity-75"
+                    : isReturnMode
+                    ? "bg-gray-700 border-red-500 focus:ring-red-500 text-red-400"
                     : isPurchaseMode
-                    ? "border-purple-500 focus:ring-purple-500"
-                    : "border-gray-600 focus:ring-blue-500"
+                    ? "bg-gray-700 border-purple-500 focus:ring-purple-500"
+                    : "bg-gray-700 border-gray-600 focus:ring-blue-500"
                 }`}
                 style={{ MozAppearance: 'textfield' }}
                 min="0"

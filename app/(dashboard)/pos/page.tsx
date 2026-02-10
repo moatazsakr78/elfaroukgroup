@@ -151,6 +151,7 @@ import {
   FolderIcon,
   MinusIcon,
   ChevronRightIcon,
+  ChevronLeftIcon,
   ExclamationTriangleIcon,
   PencilIcon,
   TruckIcon,
@@ -2278,23 +2279,12 @@ function POSPageContent() {
     }, 0)
   }, [cartItems])
 
-  // Auto-fill paid amount based on customer type and cart total
+  // Reset paid amount when customer changes (not auto-fill - cashier types actual amount)
   useEffect(() => {
-    // لا تفعل شيء في وضع الشراء - المستخدم يدخل المبلغ يدوياً
     if (isPurchaseMode) return;
-
-    const currentCustomer = selections.customer;
-    const isDefaultCustomer = currentCustomer?.id === defaultCustomer?.id;
-
-    if (isDefaultCustomer && cartItems.length > 0) {
-      // Default customer always pays full amount - update with cart changes
-      const total = calculateTotalWithDiscounts();
-      setPaidAmount(total > 0 ? total.toString() : "");
-    } else if (!isDefaultCustomer) {
-      // Non-default customers (credit) - leave empty for manual entry
-      setPaidAmount("");
-    }
-  }, [isPurchaseMode, selections.customer?.id, defaultCustomer?.id, cartItems, cartDiscount, cartDiscountType, calculateTotalWithDiscounts]);
+    // Clear paid amount when switching customers
+    setPaidAmount("");
+  }, [isPurchaseMode, selections.customer?.id]);
 
   // Auto-scroll السلة لآخر منتج عند الإضافة
   useEffect(() => {
@@ -2909,6 +2899,8 @@ function POSPageContent() {
           supplier: selectedSupplier,
           warehouse: selectedWarehouse,
           record: selections.record,
+          cashTendered: parseFloat(paidAmount) || 0,
+          primaryPaymentMethod: 'كاش',
         });
 
         // Show print confirmation modal
@@ -3038,6 +3030,9 @@ function POSPageContent() {
           paymentSplitData: paymentSplitData,
           creditAmount: creditAmount,
           paymentMethodNames: paymentMethodNames,
+          cashTendered: parseFloat(paidAmount) || 0,
+          primaryPaymentMethod: paymentSplitData[0]?.paymentMethodName || 'كاش',
+          isDefaultCustomer: selections.customer?.id === defaultCustomer?.id,
         });
 
         // Show print confirmation modal
@@ -3627,21 +3622,27 @@ function POSPageContent() {
           ${(() => {
             const pmNames = dataToUse.paymentMethodNames || {}
             const pmKeys = Object.keys(pmNames)
-            const hasMultipleMethods = pmKeys.length > 1
             const hasCreditAmount = (dataToUse.creditAmount || 0) > 0
             const isNonDefaultCustomer = dataToUse.customer && dataToUse.customer.id !== '00000000-0000-0000-0000-000000000001'
-            const showPaymentDetails = hasMultipleMethods || hasCreditAmount
-
-            if (!showPaymentDetails) return ''
+            const cashTendered = dataToUse.cashTendered || 0
+            const changeAmount = cashTendered - dataToUse.totalAmount
 
             let paymentRows = ''
             if (pmKeys.length > 0) {
               paymentRows = pmKeys.map(name =>
                 `<tr><td style="text-align: right; padding: 4px 8px;">${name}</td><td style="text-align: left; padding: 4px 8px;">${pmNames[name].toFixed(0)}</td></tr>`
               ).join('')
+            } else {
+              paymentRows = `<tr><td style="text-align: right; padding: 4px 8px;">${dataToUse.primaryPaymentMethod || 'كاش'}</td><td style="text-align: left; padding: 4px 8px;">${dataToUse.totalAmount.toFixed(0)}</td></tr>`
             }
             if (hasCreditAmount) {
               paymentRows += `<tr><td style="text-align: right; padding: 4px 8px; color: #c00;">آجل</td><td style="text-align: left; padding: 4px 8px; color: #c00;">${(dataToUse.creditAmount || 0).toFixed(0)}</td></tr>`
+            }
+            if (dataToUse.isDefaultCustomer && cashTendered > 0) {
+              paymentRows += `<tr><td style="text-align: right; padding: 4px 8px; font-weight: bold;">المدفوع</td><td style="text-align: left; padding: 4px 8px; font-weight: bold;">${cashTendered.toFixed(0)}</td></tr>`
+            }
+            if (dataToUse.isDefaultCustomer && cashTendered > 0 && changeAmount > 0) {
+              paymentRows += `<tr><td style="text-align: right; padding: 4px 8px; font-weight: bold;">الباقي</td><td style="text-align: left; padding: 4px 8px; font-weight: bold;">${changeAmount.toFixed(0)}</td></tr>`
             }
 
             return `
@@ -5739,24 +5740,16 @@ function POSPageContent() {
                     </div>
                   )}
 
-                  {/* حاسبة الباقي / المدفوع */}
+                  {/* عرض الباقي */}
                   <div className="flex flex-col items-end">
-                    <input
-                      type="number"
-                      value={paidAmount}
-                      onChange={(e) => setPaidAmount(e.target.value)}
-                      placeholder={isPurchaseMode ? "المدفوع للمورد" : "المدفوع"}
-                      className="w-28 px-2 py-1 bg-[#2B3544] border border-gray-600 rounded text-white text-xs placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 text-left"
-                      dir="ltr"
-                    />
-                    {paidAmount && parseFloat(paidAmount) > 0 && (
-                      <span className={`text-xs font-medium mt-1 ${isPurchaseMode ? 'text-green-400' : 'text-orange-400'}`}>
-                        {isPurchaseMode
-                          ? `المتبقي: ${(calculateTotalWithDiscounts() - parseFloat(paidAmount)).toFixed(0)}`
-                          : `الباقي: ${(parseFloat(paidAmount) - calculateTotalWithDiscounts()).toFixed(0)}`
-                        }
-                      </span>
-                    )}
+                    <span className="text-xs text-gray-400">الباقي:</span>
+                    <span className="text-sm font-bold text-orange-400" dir="ltr">
+                      {paidAmount && parseFloat(paidAmount) > 0
+                        ? isPurchaseMode
+                          ? (calculateTotalWithDiscounts() - parseFloat(paidAmount)).toFixed(0)
+                          : (parseFloat(paidAmount) - calculateTotalWithDiscounts()).toFixed(0)
+                        : '---'}
+                    </span>
                   </div>
                 </div>
               )}
@@ -6175,44 +6168,81 @@ function POSPageContent() {
                       </div>
 
                       {/* Button section */}
-                      <button
-                        disabled={
-                          // In edit mode, allow empty cart (user might delete all items)
-                          (cartItems.length === 0 && !activePOSTab?.isEditMode) ||
-                          !hasAllRequiredSelections() ||
-                          isProcessingInvoice
-                        }
-                        className={`flex-1 py-2 px-4 rounded-lg font-medium text-sm transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed text-white ${
-                          activePOSTab?.isEditMode
-                            ? "bg-amber-600 hover:bg-amber-700"
-                            : isTransferMode
-                              ? "bg-orange-600 hover:bg-orange-700"
-                              : isReturnMode
-                                ? "bg-red-600 hover:bg-red-700"
-                                : isPurchaseMode
-                                  ? "bg-purple-600 hover:bg-purple-700"
-                                  : "bg-blue-600 hover:bg-blue-700"
-                        }`}
-                        onClick={handleCreateInvoice}
-                      >
-                        {isProcessingInvoice
-                          ? "جاري المعالجة..."
-                          : cartItems.length === 0 && !activePOSTab?.isEditMode
-                            ? "السلة فارغة"
-                            : !hasAllRequiredSelections()
-                              ? "يجب إكمال التحديدات"
-                              : activePOSTab?.isEditMode
-                                ? `تعديل الفاتورة (${cartItems.length}) [Y]`
-                                : isTransferMode
-                                  ? `تأكيد النقل (${cartItems.length}) [Y]`
-                                  : isReturnMode
-                                    ? isPurchaseMode
-                                      ? `مرتجع شراء (${cartItems.length}) [Y]`
-                                      : `مرتجع بيع (${cartItems.length}) [Y]`
-                                    : isPurchaseMode
-                                      ? `تأكيد الشراء (${cartItems.length}) [Y]`
-                                      : `تأكيد الطلب (${cartItems.length}) [Y]`}
-                      </button>
+                      {!isTransferMode && !isReturnMode && !isPurchaseMode && !activePOSTab?.isEditMode && selections.customer?.id === defaultCustomer?.id ? (
+                        /* Split button: [paid input | confirm arrow] for default customer only */
+                        <div className={`flex-1 flex rounded-lg overflow-hidden ${
+                          (cartItems.length === 0 || !hasAllRequiredSelections() || isProcessingInvoice)
+                            ? 'opacity-50' : ''
+                        }`}>
+                          <input
+                            type="number"
+                            value={paidAmount}
+                            onChange={(e) => setPaidAmount(e.target.value)}
+                            placeholder="المدفوع"
+                            disabled={cartItems.length === 0 || !hasAllRequiredSelections() || isProcessingInvoice}
+                            className="flex-1 min-w-0 px-3 py-2 bg-[#1F2937] text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 text-left border-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                            style={{ MozAppearance: 'textfield' }}
+                            dir="ltr"
+                          />
+                          <button
+                            disabled={cartItems.length === 0 || !hasAllRequiredSelections() || isProcessingInvoice}
+                            className="flex items-center gap-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed"
+                            onClick={handleCreateInvoice}
+                          >
+                            {isProcessingInvoice ? '...' : `(${cartItems.length})`}
+                            <ChevronLeftIcon className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ) : !isTransferMode && !isReturnMode && !isPurchaseMode && !activePOSTab?.isEditMode ? (
+                        /* Normal confirm button for regular customers */
+                        <button
+                          disabled={cartItems.length === 0 || !hasAllRequiredSelections() || isProcessingInvoice}
+                          className="flex-1 py-2 px-4 rounded-lg font-medium text-sm transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed text-white bg-blue-600 hover:bg-blue-700"
+                          onClick={handleCreateInvoice}
+                        >
+                          {isProcessingInvoice
+                            ? "جاري المعالجة..."
+                            : cartItems.length === 0
+                              ? "السلة فارغة"
+                              : !hasAllRequiredSelections()
+                                ? "يجب إكمال التحديدات"
+                                : `تأكيد الطلب (${cartItems.length}) [Y]`}
+                        </button>
+                      ) : (
+                        <button
+                          disabled={
+                            (cartItems.length === 0 && !activePOSTab?.isEditMode) ||
+                            !hasAllRequiredSelections() ||
+                            isProcessingInvoice
+                          }
+                          className={`flex-1 py-2 px-4 rounded-lg font-medium text-sm transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed text-white ${
+                            activePOSTab?.isEditMode
+                              ? "bg-amber-600 hover:bg-amber-700"
+                              : isTransferMode
+                                ? "bg-orange-600 hover:bg-orange-700"
+                                : isReturnMode
+                                  ? "bg-red-600 hover:bg-red-700"
+                                  : "bg-purple-600 hover:bg-purple-700"
+                          }`}
+                          onClick={handleCreateInvoice}
+                        >
+                          {isProcessingInvoice
+                            ? "جاري المعالجة..."
+                            : cartItems.length === 0 && !activePOSTab?.isEditMode
+                              ? "السلة فارغة"
+                              : !hasAllRequiredSelections()
+                                ? "يجب إكمال التحديدات"
+                                : activePOSTab?.isEditMode
+                                  ? `تعديل الفاتورة (${cartItems.length}) [Y]`
+                                  : isTransferMode
+                                    ? `تأكيد النقل (${cartItems.length}) [Y]`
+                                    : isReturnMode
+                                      ? isPurchaseMode
+                                        ? `مرتجع شراء (${cartItems.length}) [Y]`
+                                        : `مرتجع بيع (${cartItems.length}) [Y]`
+                                      : `تأكيد الشراء (${cartItems.length}) [Y]`}
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -6721,44 +6751,81 @@ function POSPageContent() {
                 </div>
 
                 {/* Button section */}
-                <button
-                disabled={
-                  // In edit mode, allow empty cart (user might delete all items)
-                  (cartItems.length === 0 && !activePOSTab?.isEditMode) ||
-                  !hasAllRequiredSelections() ||
-                  isProcessingInvoice
-                }
-                className={`flex-1 py-2 px-4 rounded-lg font-medium text-sm transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed text-white ${
-                  activePOSTab?.isEditMode
-                    ? "bg-amber-600 hover:bg-amber-700"
-                    : isTransferMode
-                      ? "bg-orange-600 hover:bg-orange-700"
-                      : isReturnMode
-                        ? "bg-red-600 hover:bg-red-700"
-                        : isPurchaseMode
-                          ? "bg-purple-600 hover:bg-purple-700"
-                          : "bg-blue-600 hover:bg-blue-700"
-                }`}
-                onClick={handleCreateInvoice}
-              >
-                {isProcessingInvoice
-                  ? "جاري المعالجة..."
-                  : cartItems.length === 0 && !activePOSTab?.isEditMode
-                    ? "السلة فارغة"
-                    : !hasAllRequiredSelections()
-                      ? "يجب إكمال التحديدات"
-                      : activePOSTab?.isEditMode
-                        ? `تعديل الفاتورة (${cartItems.length}) [Y]`
+                {!isTransferMode && !isReturnMode && !isPurchaseMode && !activePOSTab?.isEditMode && selections.customer?.id === defaultCustomer?.id ? (
+                  /* Split button: [paid input | confirm arrow] for default customer only */
+                  <div className={`flex-1 flex rounded-lg overflow-hidden ${
+                    (cartItems.length === 0 || !hasAllRequiredSelections() || isProcessingInvoice)
+                      ? 'opacity-50' : ''
+                  }`}>
+                    <input
+                      type="number"
+                      value={paidAmount}
+                      onChange={(e) => setPaidAmount(e.target.value)}
+                      placeholder="المدفوع"
+                      disabled={cartItems.length === 0 || !hasAllRequiredSelections() || isProcessingInvoice}
+                      className="flex-1 min-w-0 px-3 py-2 bg-[#1F2937] text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 text-left border-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                      style={{ MozAppearance: 'textfield' }}
+                      dir="ltr"
+                    />
+                    <button
+                      disabled={cartItems.length === 0 || !hasAllRequiredSelections() || isProcessingInvoice}
+                      className="flex items-center gap-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed"
+                      onClick={handleCreateInvoice}
+                    >
+                      {isProcessingInvoice ? '...' : `(${cartItems.length})`}
+                      <ChevronLeftIcon className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : !isTransferMode && !isReturnMode && !isPurchaseMode && !activePOSTab?.isEditMode ? (
+                  /* Normal confirm button for regular customers */
+                  <button
+                    disabled={cartItems.length === 0 || !hasAllRequiredSelections() || isProcessingInvoice}
+                    className="flex-1 py-2 px-4 rounded-lg font-medium text-sm transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed text-white bg-blue-600 hover:bg-blue-700"
+                    onClick={handleCreateInvoice}
+                  >
+                    {isProcessingInvoice
+                      ? "جاري المعالجة..."
+                      : cartItems.length === 0
+                        ? "السلة فارغة"
+                        : !hasAllRequiredSelections()
+                          ? "يجب إكمال التحديدات"
+                          : `تأكيد الطلب (${cartItems.length}) [Y]`}
+                  </button>
+                ) : (
+                  <button
+                    disabled={
+                      (cartItems.length === 0 && !activePOSTab?.isEditMode) ||
+                      !hasAllRequiredSelections() ||
+                      isProcessingInvoice
+                    }
+                    className={`flex-1 py-2 px-4 rounded-lg font-medium text-sm transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed text-white ${
+                      activePOSTab?.isEditMode
+                        ? "bg-amber-600 hover:bg-amber-700"
                         : isTransferMode
-                          ? `تأكيد النقل (${cartItems.length}) [Y]`
+                          ? "bg-orange-600 hover:bg-orange-700"
                           : isReturnMode
-                            ? isPurchaseMode
-                              ? `مرتجع شراء (${cartItems.length}) [Y]`
-                              : `مرتجع بيع (${cartItems.length}) [Y]`
-                            : isPurchaseMode
-                              ? `تأكيد الشراء (${cartItems.length}) [Y]`
-                              : `تأكيد الطلب (${cartItems.length}) [Y]`}
-              </button>
+                            ? "bg-red-600 hover:bg-red-700"
+                            : "bg-purple-600 hover:bg-purple-700"
+                    }`}
+                    onClick={handleCreateInvoice}
+                  >
+                    {isProcessingInvoice
+                      ? "جاري المعالجة..."
+                      : cartItems.length === 0 && !activePOSTab?.isEditMode
+                        ? "السلة فارغة"
+                        : !hasAllRequiredSelections()
+                          ? "يجب إكمال التحديدات"
+                          : activePOSTab?.isEditMode
+                            ? `تعديل الفاتورة (${cartItems.length}) [Y]`
+                            : isTransferMode
+                              ? `تأكيد النقل (${cartItems.length}) [Y]`
+                              : isReturnMode
+                                ? isPurchaseMode
+                                  ? `مرتجع شراء (${cartItems.length}) [Y]`
+                                  : `مرتجع بيع (${cartItems.length}) [Y]`
+                                : `تأكيد الشراء (${cartItems.length}) [Y]`}
+                  </button>
+                )}
               </div>
             </div>
 
