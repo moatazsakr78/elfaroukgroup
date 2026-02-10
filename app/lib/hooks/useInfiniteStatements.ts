@@ -19,6 +19,7 @@ export interface StatementItem {
   created_at: string
   isPositive: boolean
   employee_name?: string | null
+  payment_method?: string | null
   index?: number
 }
 
@@ -128,6 +129,10 @@ export function useInfiniteStatements(
     const saleData = tx.sale_id ? salesMap.get(tx.sale_id) : null
     const employeeName = saleData?.cashier?.full_name || tx.performed_by || null
 
+    // Get payment method - prefer from transaction, fallback to sale
+    const salePaymentMethod = saleData?.payment_method || null
+    const paymentMethod = tx.payment_method || salePaymentMethod || null
+
     return {
       id: tx.id,
       sale_id: tx.sale_id || null,
@@ -141,6 +146,7 @@ export function useInfiniteStatements(
       created_at: tx.created_at || new Date().toISOString(),
       isPositive,
       employee_name: employeeName,
+      payment_method: paymentMethod,
       index: index + 1
     }
   }, [])
@@ -153,7 +159,7 @@ export function useInfiniteStatements(
     const { data: salesData } = await supabase
       .from('sales')
       .select(`
-        id, invoice_number, total_amount, invoice_type, created_at, time, notes,
+        id, invoice_number, total_amount, payment_method, invoice_type, created_at, time, notes,
         cashier:user_profiles(full_name)
       `)
       .in('id', saleIds)
@@ -178,7 +184,7 @@ export function useInfiniteStatements(
 
     let query = supabase
       .from('cash_drawer_transactions')
-      .select('id, sale_id, amount, balance_after, transaction_type, notes, created_at, performed_by')
+      .select('id, sale_id, amount, balance_after, transaction_type, notes, created_at, performed_by, payment_method')
       .eq('record_id', currentRecordId)
 
     // Apply date filter at database level - THIS IS THE KEY FIX!

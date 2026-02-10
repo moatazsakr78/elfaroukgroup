@@ -1898,6 +1898,7 @@ export default function SupplierDetailsModal({ isOpen, onClose, supplier }: Supp
     { id: 'supplier_name', label: 'المورد', required: false },
     { id: 'supplier_phone', label: 'الهاتف', required: false },
     { id: 'total_amount', label: 'المبلغ الإجمالي', required: true },
+    { id: 'payment_method', label: 'طريقة الدفع', required: false },
     { id: 'notes', label: 'البيان', required: false },
     { id: 'safe_name', label: 'الخزنة', required: false },
     { id: 'employee_name', label: 'الموظف', required: false }
@@ -1934,6 +1935,7 @@ export default function SupplierDetailsModal({ isOpen, onClose, supplier }: Supp
     { id: 'type', label: 'نوع العملية', required: false },
     { id: 'invoiceValue', label: 'قيمة الفاتورة', required: false },
     { id: 'paidAmount', label: 'المبلغ المدفوع', required: false },
+    { id: 'payment_method', label: 'طريقة الدفع', required: false },
     { id: 'netAmount', label: 'الصافي', required: false },
     { id: 'balance', label: 'الرصيد', required: true },
     { id: 'safe_name', label: 'الخزنة', required: false },
@@ -2078,6 +2080,13 @@ export default function SupplierDetailsModal({ isOpen, onClose, supplier }: Supp
           </span>
         )
       }
+    },
+    {
+      id: 'payment_method',
+      header: 'طريقة الدفع',
+      accessor: 'payment_method',
+      width: 120,
+      render: (value: string) => <span className="text-blue-400">{value || '-'}</span>
     },
     {
       id: 'netAmount',
@@ -2316,6 +2325,13 @@ export default function SupplierDetailsModal({ isOpen, onClose, supplier }: Supp
       accessor: 'total_amount', 
       width: 150,
       render: (value: number) => <span className="text-green-400 font-medium">{formatPrice(value)}</span>
+    },
+    {
+      id: 'payment_method',
+      header: 'طريقة الدفع',
+      accessor: 'payment_method',
+      width: 120,
+      render: (value: string) => <span className="text-blue-400">{value || '-'}</span>
     },
     {
       id: 'notes',

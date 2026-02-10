@@ -7,3 +7,4 @@ export { default as TopCustomersCard } from './TopCustomersCard';
 export { default as QuickActions } from './QuickActions';
 export { default as DashboardSkeleton } from './DashboardSkeleton';
 export { default as SaleTypeCard } from './SaleTypeCard';
+export { default as PurchasesStatsCard } from './PurchasesStatsCard';

@@ -22,6 +22,7 @@ export interface CustomerStatementItem {
   isNegative: boolean
   safe_name?: string | null
   employee_name?: string | null
+  payment_method?: string | null
   userNotes?: string | null
   index?: number
 }
@@ -114,7 +115,7 @@ export function useInfiniteCustomerStatement(
     let salesQuery = supabase
       .from('sales')
       .select(`
-        id, invoice_number, total_amount, invoice_type, created_at, time,
+        id, invoice_number, total_amount, payment_method, invoice_type, created_at, time,
         record:records(name),
         cashier:user_profiles(full_name)
       `)
@@ -143,7 +144,7 @@ export function useInfiniteCustomerStatement(
     let paymentsQuery = supabase
       .from('customer_payments')
       .select(`
-        id, amount, notes, created_at, payment_date, safe_id, sale_id,
+        id, amount, payment_method, notes, created_at, payment_date, safe_id, sale_id,
         creator:user_profiles(full_name)
       `)
       .eq('customer_id', currentCustomerId)
@@ -213,7 +214,7 @@ export function useInfiniteCustomerStatement(
       const { data: transactionsData } = await supabase
         .from('cash_drawer_transactions')
         .select(`
-          sale_id, amount, performed_by,
+          sale_id, amount, payment_method, performed_by,
           record:records(name)
         `)
         .in('sale_id', saleIds)
@@ -325,7 +326,8 @@ export function useInfiniteCustomerStatement(
           balance: balanceAfter,
           isNegative: isReturn,
           safe_name: (sale as any).record?.name || saleTx?.record?.name || null,
-          employee_name: (sale as any).cashier?.full_name || saleTx?.performed_by || null
+          employee_name: (sale as any).cashier?.full_name || saleTx?.performed_by || null,
+          payment_method: sale.payment_method || saleTx?.payment_method || null
         })
       } else if (item.type === 'payment') {
         const payment = item.item
@@ -352,6 +354,7 @@ export function useInfiniteCustomerStatement(
           isNegative: !isLoan,
           safe_name: payment.safe_id ? safesMap.get(payment.safe_id) || null : null,
           employee_name: (payment as any).creator?.full_name || null,
+          payment_method: payment.payment_method || null,
           userNotes: payment.notes || null
         })
       } else if (item.type === 'purchase') {
@@ -380,7 +383,8 @@ export function useInfiniteCustomerStatement(
           balance: balanceAfter,
           isNegative: !isReturn,
           safe_name: (purchase as any).record?.name || null,
-          employee_name: (purchase as any).creator?.full_name || null
+          employee_name: (purchase as any).creator?.full_name || null,
+          payment_method: null
         })
       }
     })

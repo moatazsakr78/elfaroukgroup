@@ -7,7 +7,6 @@ import {
   CurrencyDollarIcon,
   UsersIcon,
   ExclamationTriangleIcon,
-  BanknotesIcon,
 } from '@heroicons/react/24/outline';
 
 // Dashboard Components
@@ -16,6 +15,7 @@ import {
   StatsCard,
   InvoiceStatsCard,
   SaleTypeCard,
+  PurchasesStatsCard,
   RecentOrdersCard,
   CapitalCard,
   TopCustomersCard,
@@ -202,12 +202,8 @@ export default function DashboardPage() {
                   format="number"
                   loading={loading}
                 />
-                <StatsCard
-                  title="رأس المال"
-                  value={data.capitalData?.totalCapital || 0}
-                  icon={BanknotesIcon}
-                  color="green"
-                  format="currency"
+                <PurchasesStatsCard
+                  data={data.capitalData}
                   loading={loading}
                 />
               </div>

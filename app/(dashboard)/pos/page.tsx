@@ -2951,7 +2951,6 @@ function POSPageContent() {
             branch: selections.branch,
             record: selections.record,
           },
-          paymentMethod: "cash",
           notes: isReturnMode
             ? `مرتجع بيع - ${cartItems.length} منتج`
             : selectedPartyType === 'supplier'
@@ -3016,6 +3015,15 @@ function POSPageContent() {
           }
         }
 
+        // Build payment method names map for the receipt
+        const paymentMethodNames: Record<string, number> = {}
+        if (paymentSplitData && paymentSplitData.length > 0) {
+          paymentSplitData.filter(p => p.amount > 0).forEach(p => {
+            const name = (p as any).paymentMethodName || 'cash'
+            paymentMethodNames[name] = (paymentMethodNames[name] || 0) + p.amount
+          })
+        }
+
         // Store invoice data for printing
         setLastInvoiceData({
           invoiceNumber: result.invoiceNumber,
@@ -3029,6 +3037,7 @@ function POSPageContent() {
           record: selections.record,
           paymentSplitData: paymentSplitData,
           creditAmount: creditAmount,
+          paymentMethodNames: paymentMethodNames,
         });
 
         // Show print confirmation modal
@@ -3615,31 +3624,44 @@ function POSPageContent() {
             </tbody>
           </table>
 
-          ${
-            // Only show payment section for customers with accounts (not default cash customer) AND if there is credit amount
-            dataToUse.customer &&
-            dataToUse.customer.id !== '00000000-0000-0000-0000-000000000001' &&
-            (dataToUse.creditAmount || 0) > 0
-              ? `
+          ${(() => {
+            const pmNames = dataToUse.paymentMethodNames || {}
+            const pmKeys = Object.keys(pmNames)
+            const hasMultipleMethods = pmKeys.length > 1
+            const hasCreditAmount = (dataToUse.creditAmount || 0) > 0
+            const isNonDefaultCustomer = dataToUse.customer && dataToUse.customer.id !== '00000000-0000-0000-0000-000000000001'
+            const showPaymentDetails = hasMultipleMethods || hasCreditAmount
+
+            if (!showPaymentDetails) return ''
+
+            let paymentRows = ''
+            if (pmKeys.length > 0) {
+              paymentRows = pmKeys.map(name =>
+                `<tr><td style="text-align: right; padding: 4px 8px;">${name}</td><td style="text-align: left; padding: 4px 8px;">${pmNames[name].toFixed(0)}</td></tr>`
+              ).join('')
+            }
+            if (hasCreditAmount) {
+              paymentRows += `<tr><td style="text-align: right; padding: 4px 8px; color: #c00;">آجل</td><td style="text-align: left; padding: 4px 8px; color: #c00;">${(dataToUse.creditAmount || 0).toFixed(0)}</td></tr>`
+            }
+
+            return `
           <div class="payment-section">
             ${numberToArabicWords(dataToUse.totalAmount)} جنيهاً
 
             <table class="payment-table">
               <tr>
-                <th>مدفوع</th>
-                <th>مدين من الفاتورة</th>
-                <th>إجمالي الدين</th>
+                <th>طريقة الدفع</th>
+                <th>المبلغ</th>
               </tr>
-              <tr>
-                <td>${(dataToUse.totalAmount - (dataToUse.creditAmount || 0)).toFixed(0)}</td>
-                <td>${(dataToUse.creditAmount || 0).toFixed(0)}</td>
-                <td>${(dataToUse.customer?.calculatedBalance || 0).toFixed(0)}</td>
-              </tr>
+              ${paymentRows}
             </table>
-          </div>
-              `
-              : ''
-          }
+            ${isNonDefaultCustomer && hasCreditAmount ? `
+            <div style="margin-top: 4px; font-size: 11px;">
+              إجمالي الدين: <strong>${(dataToUse.customer?.calculatedBalance || 0).toFixed(0)}</strong>
+            </div>
+            ` : ''}
+          </div>`
+          })()}
 
           <div class="footer">
             ${new Date().toLocaleDateString("en-GB")} ${new Date().toLocaleTimeString("en-GB", { hour12: false })} by: ${selections.record?.name || "kassem"}

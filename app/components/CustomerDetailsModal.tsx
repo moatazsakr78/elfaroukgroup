@@ -321,6 +321,7 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
     { id: 'type', label: 'نوع العملية', required: false },
     { id: 'invoiceValue', label: 'قيمة الفاتورة', required: false },
     { id: 'paidAmount', label: 'المبلغ المدفوع', required: false },
+    { id: 'payment_method', label: 'طريقة الدفع', required: false },
     { id: 'netAmount', label: 'الصافي', required: false },
     { id: 'balance', label: 'الرصيد', required: true },
     { id: 'safe_name', label: 'الخزنة', required: false },
@@ -2487,6 +2488,13 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
           </span>
         )
       }
+    },
+    {
+      id: 'payment_method',
+      header: 'طريقة الدفع',
+      accessor: 'payment_method',
+      width: 120,
+      render: (value: string) => <span className="text-blue-400">{value || '-'}</span>
     },
     {
       id: 'netAmount',

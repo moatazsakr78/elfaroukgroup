@@ -24,6 +24,7 @@ export interface SupplierStatementItem {
   isNegative: boolean
   safe_name?: string | null
   employee_name?: string | null
+  payment_method?: string | null
   userNotes?: string | null
   notes?: string | null  // Alias for userNotes (for backwards compatibility)
   index?: number
@@ -145,12 +146,13 @@ export function useInfiniteSupplierStatement(
     // Get purchase IDs and fetch linked payments
     const purchaseIds = purchasesData?.map(p => p.id) || []
     let paidAmountsMap = new Map<string, number>()
+    const purchasePaymentMethodMap = new Map<string, string>()
 
     if (purchaseIds.length > 0) {
       // Fetch payments linked to purchase invoices
       const { data: linkedPayments } = await supabase
         .from('supplier_payments')
-        .select('purchase_invoice_id, amount')
+        .select('purchase_invoice_id, amount, payment_method')
         .in('purchase_invoice_id', purchaseIds)
 
       if (linkedPayments) {
@@ -158,6 +160,9 @@ export function useInfiniteSupplierStatement(
           if (payment.purchase_invoice_id) {
             const existing = paidAmountsMap.get(payment.purchase_invoice_id) || 0
             paidAmountsMap.set(payment.purchase_invoice_id, existing + Number(payment.amount || 0))
+            if (payment.payment_method) {
+              purchasePaymentMethodMap.set(payment.purchase_invoice_id, payment.payment_method)
+            }
           }
         })
       }
@@ -167,7 +172,7 @@ export function useInfiniteSupplierStatement(
     let paymentsQuery = supabase
       .from('supplier_payments')
       .select(`
-        id, amount, notes, created_at, payment_date, safe_id,
+        id, amount, payment_method, notes, created_at, payment_date, safe_id,
         creator:user_profiles(full_name)
       `)
       .eq('supplier_id', currentSupplierId)
@@ -198,7 +203,7 @@ export function useInfiniteSupplierStatement(
       let salesQuery = supabase
         .from('sales')
         .select(`
-          id, invoice_number, total_amount, invoice_type, created_at, time,
+          id, invoice_number, total_amount, payment_method, invoice_type, created_at, time,
           record:records(name),
           cashier:user_profiles(full_name)
         `)
@@ -230,7 +235,7 @@ export function useInfiniteSupplierStatement(
       let customerPaymentsQuery = supabase
         .from('customer_payments')
         .select(`
-          id, amount, notes, created_at, payment_date, safe_id,
+          id, amount, payment_method, notes, created_at, payment_date, safe_id,
           creator:user_profiles(full_name)
         `)
         .eq('customer_id', linkedCustomerId)
@@ -354,6 +359,7 @@ export function useInfiniteSupplierStatement(
           isNegative: isReturn,
           safe_name: (purchase as any).record?.name || null,
           employee_name: (purchase as any).creator?.full_name || null,
+          payment_method: purchasePaymentMethodMap.get(purchase.id) || null,
           notes: (purchase as any).notes || null
         })
       } else if (item.type === 'payment') {
@@ -379,6 +385,7 @@ export function useInfiniteSupplierStatement(
           isNegative: true,
           safe_name: payment.safe_id ? safesMap.get(payment.safe_id) || null : null,
           employee_name: (payment as any).creator?.full_name || null,
+          payment_method: payment.payment_method || null,
           userNotes: payment.notes || null,
           notes: payment.notes || null
         })
@@ -408,7 +415,8 @@ export function useInfiniteSupplierStatement(
           balance: balanceAfter,
           isNegative: !isReturn,
           safe_name: (sale as any).record?.name || null,
-          employee_name: (sale as any).cashier?.full_name || null
+          employee_name: (sale as any).cashier?.full_name || null,
+          payment_method: sale.payment_method || null
         })
       } else if (item.type === 'customerPayment') {
         const payment = item.item
@@ -453,6 +461,7 @@ export function useInfiniteSupplierStatement(
           isNegative: isLoan,
           safe_name: payment.safe_id ? safesMap.get(payment.safe_id) || null : null,
           employee_name: (payment as any).creator?.full_name || null,
+          payment_method: payment.payment_method || null,
           userNotes: payment.notes || null,
           notes: payment.notes || null
         })

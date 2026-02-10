@@ -17,6 +17,7 @@ export interface CashDrawerTransaction {
   notes: string | null
   performed_by: string | null
   created_at: string | null
+  payment_method?: string | null
   safe_name?: string
   customer_name?: string
 }
@@ -31,6 +32,7 @@ interface Cursor {
 export interface UseInfiniteTransactionsOptions {
   recordId?: string | null // Filter by safe/record ID
   transactionType?: string // Transaction type filter
+  paymentMethod?: string // Payment method filter (e.g. 'cash', 'InstaPay')
   dateFilter?: DateFilter // Date range filter
   enabled?: boolean // Enable/disable fetching
   pageSize?: number // Number of records per page (default 200)
@@ -59,6 +61,7 @@ export function useInfiniteTransactions(
   const {
     recordId,
     transactionType = 'all',
+    paymentMethod: paymentMethodFilter,
     dateFilter = { type: 'all' },
     enabled = true,
     pageSize = 200,
@@ -110,6 +113,11 @@ export function useInfiniteTransactions(
     // Filter for non-sale transactions only (transfers, deposits, withdrawals)
     if (currentOptions.excludeSales) {
       query = query.is('sale_id', null)
+    }
+
+    // Apply payment method filter
+    if (currentOptions.paymentMethod && currentOptions.paymentMethod !== 'all') {
+      query = query.eq('payment_method', currentOptions.paymentMethod)
     }
 
     // Apply date filter - this is the key fix!
@@ -253,6 +261,11 @@ export function useInfiniteTransactions(
         query = query.is('sale_id', null)
       }
 
+      // Apply payment method filter
+      if (optionsRef.current.paymentMethod && optionsRef.current.paymentMethod !== 'all') {
+        query = query.eq('payment_method', optionsRef.current.paymentMethod)
+      }
+
       // Apply date filter
       if (startDate) {
         query = query.gte('created_at', startDate.toISOString())
@@ -323,6 +336,7 @@ export function useInfiniteTransactions(
     enabled,
     recordId,
     transactionType,
+    paymentMethodFilter,
     excludeSales,
     dateFilter?.type,
     dateFilter?.startDate?.toString(),

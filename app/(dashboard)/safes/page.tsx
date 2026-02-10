@@ -86,12 +86,17 @@ export default function SafesPage() {
   const [transactionFilters, setTransactionFilters] = useState<{
     safeId: string
     transactionType: TransactionType
+    paymentMethod: string
     dateFilter: DateFilter
   }>({
     safeId: 'all',
     transactionType: 'all',
+    paymentMethod: 'all',
     dateFilter: { type: 'all' }
   })
+
+  // Payment method breakdown for safes tab
+  const [paymentMethodBreakdown, setPaymentMethodBreakdown] = useState<Record<string, number>>({})
   const [showDateFilterModal, setShowDateFilterModal] = useState(false)
   const [transactionSearchTerm, setTransactionSearchTerm] = useState('')
 
@@ -106,6 +111,7 @@ export default function SafesPage() {
   } = useInfiniteTransactions({
     recordId: transactionFilters.safeId,
     transactionType: transactionFilters.transactionType,
+    paymentMethod: transactionFilters.paymentMethod,
     dateFilter: transactionFilters.dateFilter,
     enabled: activeTab === 'records',
     pageSize: 200,
@@ -240,6 +246,24 @@ export default function SafesPage() {
       if (!drawersError && drawers) {
         const total = drawers.reduce((sum, d) => sum + (d.current_balance || 0), 0)
         setTotalBalance(total)
+      }
+
+      // Fetch payment method breakdown from today's transactions
+      const todayStart = new Date()
+      todayStart.setHours(0, 0, 0, 0)
+      const { data: todayTxs } = await supabase
+        .from('cash_drawer_transactions')
+        .select('payment_method, amount')
+        .gte('created_at', todayStart.toISOString())
+        .in('transaction_type', ['sale'])
+
+      if (todayTxs) {
+        const breakdown: Record<string, number> = {}
+        todayTxs.forEach((tx: any) => {
+          const method = tx.payment_method || 'cash'
+          breakdown[method] = (breakdown[method] || 0) + (tx.amount || 0)
+        })
+        setPaymentMethodBreakdown(breakdown)
       }
     } catch (error) {
       console.error('Error fetching safes:', error)
@@ -667,6 +691,16 @@ export default function SafesPage() {
                   <option value="adjustment">تسوية</option>
                   <option value="transfer">تحويل</option>
                 </select>
+                <select
+                  value={transactionFilters.paymentMethod}
+                  onChange={(e) => setTransactionFilters(prev => ({ ...prev, paymentMethod: e.target.value }))}
+                  className="bg-gray-700 text-white px-3 py-2 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                >
+                  <option value="all">جميع طرق الدفع</option>
+                  {paymentMethods.map(method => (
+                    <option key={method.id} value={method.name}>{method.name}</option>
+                  ))}
+                </select>
                 <button
                   onClick={() => setShowDateFilterModal(true)}
                   className="px-3 py-2 bg-gray-700 text-gray-300 rounded-lg flex items-center gap-2 hover:bg-gray-600 border border-gray-600 transition-colors text-sm"
@@ -744,6 +778,23 @@ export default function SafesPage() {
                 </div>
               </div>
             </div>
+
+            {/* Payment Method Breakdown - Today */}
+            {Object.keys(paymentMethodBreakdown).length > 0 && (
+              <div className="px-3 sm:px-6 pb-4">
+                <div className="bg-pos-darker rounded-lg p-4 border border-gray-700">
+                  <p className="text-gray-400 text-sm mb-3">تفاصيل المدفوعات اليوم</p>
+                  <div className="flex flex-wrap gap-4">
+                    {Object.entries(paymentMethodBreakdown).map(([method, amount]) => (
+                      <div key={method} className="flex items-center gap-2 bg-gray-700/50 px-3 py-2 rounded-lg">
+                        <span className="text-gray-300 text-sm">{method}:</span>
+                        <span className="text-white font-medium text-sm">{formatPrice(amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Controls */}
             <div className="px-3 sm:px-6 pb-4 sm:pb-6">
@@ -886,6 +937,7 @@ export default function SafesPage() {
                         <tr>
                           <th className="py-2 px-3 text-right font-medium">#</th>
                           <th className="py-2 px-3 text-right font-medium">نوع العملية</th>
+                          <th className="py-2 px-3 text-right font-medium">طريقة الدفع</th>
                           <th className="py-2 px-3 text-right font-medium">الخزنة</th>
                           <th className="py-2 px-3 text-right font-medium">المبلغ</th>
                           <th className="py-2 px-3 text-right font-medium">الرصيد بعد</th>
@@ -916,6 +968,9 @@ export default function SafesPage() {
                                     )}
                                   </div>
                                 </td>
+                                <td className="py-2 px-3">
+                                  <span className="text-blue-400 text-xs">{tx.payment_method || 'cash'}</span>
+                                </td>
                                 <td className="py-2 px-3 text-white">{tx.safe_name}</td>
                                 <td className="py-2 px-3">{formatAmount(tx.amount)}</td>
                                 <td className="py-2 px-3 text-gray-300">
@@ -932,7 +987,7 @@ export default function SafesPage() {
                           })
                         ) : (
                           <tr>
-                            <td colSpan={9} className="p-8 text-center text-gray-400">
+                            <td colSpan={10} className="p-8 text-center text-gray-400">
                               {isUsingOfflineData ? 'لا توجد سجلات محفوظة للعرض في وضع عدم الاتصال' : 'لا توجد سجلات متاحة'}
                             </td>
                           </tr>

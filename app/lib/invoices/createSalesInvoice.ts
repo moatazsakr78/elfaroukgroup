@@ -34,6 +34,7 @@ export interface PaymentEntry {
   id: string
   amount: number
   paymentMethodId: string
+  paymentMethodName?: string
 }
 
 export interface CreateSalesInvoiceParams {
@@ -261,6 +262,29 @@ export async function createSalesInvoice({
       partyType: partyType
     })
 
+    // Fetch all payment methods at once (needed before saleData to compute payment_method summary)
+    const paymentMethodIds = paymentSplitData?.filter(p => p.paymentMethodId).map(p => p.paymentMethodId) || []
+    let methodMap = new Map<string, string>()
+
+    if (paymentMethodIds.length > 0) {
+      const { data: allPaymentMethods } = await supabase
+        .from('payment_methods')
+        .select('id, name')
+        .in('id', paymentMethodIds)
+
+      methodMap = new Map(allPaymentMethods?.map(m => [m.id, m.name]) || [])
+    }
+
+    // Compute payment method summary from split data
+    let paymentMethodSummary = paymentMethod // fallback
+    const validPayments = (paymentSplitData || []).filter(p => p.amount > 0 && p.paymentMethodId)
+    if (validPayments.length > 0) {
+      const methodNames = Array.from(new Set(
+        validPayments.map(p => methodMap.get(p.paymentMethodId) || 'cash')
+      ))
+      paymentMethodSummary = methodNames.join(', ')
+    }
+
     // Prepare sale data for atomic insertion
     const saleData: any = {
       invoice_number: invoiceNumber,
@@ -268,7 +292,7 @@ export async function createSalesInvoice({
       tax_amount: taxAmount,
       discount_amount: discountAmount,
       profit: profit,
-      payment_method: paymentMethod,
+      payment_method: paymentMethodSummary,
       branch_id: selections.branch.id,
       customer_id: customerId,
       supplier_id: effectiveSupplierId || '',
@@ -464,23 +488,8 @@ export async function createSalesInvoice({
     // Execute all inventory and variant updates in parallel
     await Promise.all([...inventoryUpdatePromises, ...variantUpdatePromises, ...shapeUpdatePromises])
 
-    // Fetch all payment methods at once (optimization: single query instead of loop)
-    const paymentMethodIds = paymentSplitData?.filter(p => p.paymentMethodId).map(p => p.paymentMethodId) || []
-    let methodMap = new Map<string, string>()
-
-    if (paymentMethodIds.length > 0) {
-      const { data: allPaymentMethods } = await supabase
-        .from('payment_methods')
-        .select('id, name')
-        .in('id', paymentMethodIds)
-
-      methodMap = new Map(allPaymentMethods?.map(m => [m.id, m.name]) || [])
-    }
-
     // Save payment split data to customer_payments table (batch insert instead of loop)
-    if (!isReturn && paymentSplitData && paymentSplitData.length > 0) {
-      const validPayments = paymentSplitData.filter(p => p.amount > 0 && p.paymentMethodId)
-
+    if (!isReturn && validPayments.length > 0) {
       if (validPayments.length > 0) {
         const allPayments = validPayments.map(payment => ({
           customer_id: customerId,
@@ -541,17 +550,14 @@ export async function createSalesInvoice({
       }
     }
 
-    // Always create a transaction record in cash_drawer_transactions
-    // This allows all sales (including "لا يوجد") to appear in the records
-    // But only update cash drawer balance when there IS a safe selected
+    // Create transaction records in cash_drawer_transactions - one per payment method
+    // Cash payments update the drawer balance, non-cash payments are recorded without affecting balance
     try {
-      const transactionAmount = cashToDrawer
       let drawer: any = null
-      let newBalance: number | null = null
+      let currentBalance: number = 0
 
-      // Only get/create drawer and update balance if there's a safe selected
+      // Only get/create drawer if there's a safe selected
       if (!hasNoSafe) {
-        // Get or create drawer for this record
         const { data: existingDrawer, error: drawerError } = await supabase
           .from('cash_drawers')
           .select('*')
@@ -559,7 +565,6 @@ export async function createSalesInvoice({
           .single()
 
         if (drawerError && drawerError.code === 'PGRST116') {
-          // Drawer doesn't exist, create it
           const { data: newDrawer, error: createError } = await supabase
             .from('cash_drawers')
             .insert({ record_id: selections.record.id, current_balance: 0 })
@@ -574,47 +579,95 @@ export async function createSalesInvoice({
         }
 
         if (drawer) {
-          // Calculate new balance (for returns, cashToDrawer is negative)
-          newBalance = roundMoney((drawer.current_balance || 0) + transactionAmount)
-
-          // Update drawer balance
-          await supabase
-            .from('cash_drawers')
-            .update({
-              current_balance: newBalance,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', drawer.id)
-
-          console.log(`✅ Cash drawer updated: ${transactionAmount >= 0 ? '+' : ''}${transactionAmount}, new balance: ${newBalance}`)
+          currentBalance = drawer.current_balance || 0
         }
       }
 
-      // Always create transaction record (even for "لا يوجد" sales)
-      // This ensures all sales appear in the general records
-      const transactionData: any = {
-        transaction_type: isReturn ? 'return' : 'sale',
-        amount: transactionAmount,
-        sale_id: salesData.id,
-        notes: isReturn
-          ? `مرتجع - فاتورة رقم ${invoiceNumber}`
-          : `بيع - فاتورة رقم ${invoiceNumber}`,
-        performed_by: userName || 'system'
+      // Build per-payment-method transactions
+      const cashPaymentMethods = ['cash', 'نقدي', 'كاش']
+      const transactionsToInsert: any[] = []
+
+      if (validPayments.length > 0) {
+        // Split payment mode - create one transaction per payment method
+        for (const payment of validPayments) {
+          const methodName = methodMap.get(payment.paymentMethodId) || 'cash'
+          const isCash = cashPaymentMethods.includes(methodName.toLowerCase())
+          let amount = isReturn ? -payment.amount : payment.amount
+
+          const txData: any = {
+            transaction_type: isReturn ? 'return' : 'sale',
+            amount: amount,
+            sale_id: salesData.id,
+            payment_method: methodName,
+            notes: isReturn
+              ? `مرتجع - فاتورة رقم ${invoiceNumber} (${methodName})`
+              : `بيع - فاتورة رقم ${invoiceNumber} (${methodName})`,
+            performed_by: userName || 'system'
+          }
+
+          if (!hasNoSafe && drawer) {
+            txData.drawer_id = drawer.id
+            txData.record_id = selections.record.id
+            if (isCash) {
+              // Cash payments update drawer balance
+              currentBalance = roundMoney(currentBalance + amount)
+              txData.balance_after = currentBalance
+            } else {
+              // Non-cash payments: record but don't affect drawer balance
+              txData.balance_after = null
+            }
+          }
+
+          transactionsToInsert.push(txData)
+        }
+      } else {
+        // Single payment (no split) - single transaction
+        const amount = cashToDrawer
+        const txData: any = {
+          transaction_type: isReturn ? 'return' : 'sale',
+          amount: amount,
+          sale_id: salesData.id,
+          payment_method: paymentMethodSummary,
+          notes: isReturn
+            ? `مرتجع - فاتورة رقم ${invoiceNumber}`
+            : `بيع - فاتورة رقم ${invoiceNumber}`,
+          performed_by: userName || 'system'
+        }
+
+        if (!hasNoSafe && drawer) {
+          txData.drawer_id = drawer.id
+          txData.record_id = selections.record.id
+          currentBalance = roundMoney(currentBalance + amount)
+          txData.balance_after = currentBalance
+        }
+
+        transactionsToInsert.push(txData)
       }
 
-      // Only add drawer_id, record_id, and balance_after if there's a safe
+      // Update drawer balance with only the cash portion
       if (!hasNoSafe && drawer) {
-        transactionData.drawer_id = drawer.id
-        transactionData.record_id = selections.record.id
-        transactionData.balance_after = newBalance
+        await supabase
+          .from('cash_drawers')
+          .update({
+            current_balance: currentBalance,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', drawer.id)
+
+        console.log(`✅ Cash drawer updated: new balance: ${currentBalance}`)
       }
 
-      await supabase
-        .from('cash_drawer_transactions')
-        .insert(transactionData)
+      // Insert all transaction records
+      if (transactionsToInsert.length > 0) {
+        await supabase
+          .from('cash_drawer_transactions')
+          .insert(transactionsToInsert)
+
+        console.log(`✅ ${transactionsToInsert.length} transaction(s) recorded`)
+      }
 
       if (hasNoSafe) {
-        console.log('✅ Sale created without safe - transaction recorded but no drawer balance affected')
+        console.log('✅ Sale created without safe - transaction(s) recorded but no drawer balance affected')
       }
     } catch (drawerError) {
       console.warn('Failed to create cash drawer transaction:', drawerError)

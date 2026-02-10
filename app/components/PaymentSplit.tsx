@@ -15,6 +15,7 @@ interface PaymentEntry {
   id: string
   amount: number
   paymentMethodId: string
+  paymentMethodName?: string
 }
 
 interface PaymentSplitProps {
@@ -54,6 +55,7 @@ export default function PaymentSplit({ totalAmount, onPaymentsChange, isDefaultC
       if (defaultMethod) {
         const updatedPayments = [...payments]
         updatedPayments[0].paymentMethodId = defaultMethod.id
+        updatedPayments[0].paymentMethodName = defaultMethod.name
         setPayments(updatedPayments)
       }
     }
@@ -133,17 +135,20 @@ export default function PaymentSplit({ totalAmount, onPaymentsChange, isDefaultC
   }
 
   const handlePaymentMethodChange = (id: string, methodId: string) => {
+    const methodName = paymentMethods.find(m => m.id === methodId)?.name || ''
     const updatedPayments = payments.map(p =>
-      p.id === id ? { ...p, paymentMethodId: methodId } : p
+      p.id === id ? { ...p, paymentMethodId: methodId, paymentMethodName: methodName } : p
     )
     setPayments(updatedPayments)
   }
 
   const addPaymentRow = () => {
+    const defaultMethod = paymentMethods.find(m => m.name.toLowerCase() === 'cash')
     const newPayment: PaymentEntry = {
       id: Date.now().toString(),
       amount: 0,
-      paymentMethodId: paymentMethods.find(m => m.name.toLowerCase() === 'cash')?.id || ''
+      paymentMethodId: defaultMethod?.id || '',
+      paymentMethodName: defaultMethod?.name || 'cash'
     }
     setPayments([...payments, newPayment])
   }

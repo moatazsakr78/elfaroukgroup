@@ -36,8 +36,9 @@ export interface RecentOrder {
 
 // Branch Capital interface
 export interface BranchCapital {
-  branch_id: string;
-  branch_name: string;
+  id: string;
+  name: string;
+  type: 'branch' | 'warehouse';
   capital: number;
 }
 
@@ -103,43 +104,71 @@ const fetchRecentOrders = async (dateFilter: DateFilter, limit: number = 5): Pro
   }));
 };
 
-// Fetch branch capitals: sum of (quantity × cost_price) per branch
-const fetchBranchCapitals = async (): Promise<CapitalData> => {
-  const { data, error } = await supabase
-    .from('branch_stocks')
+// Fetch period purchases: sum of net_amount from purchase_invoices per branch/warehouse
+const fetchPeriodPurchases = async (dateFilter: DateFilter): Promise<CapitalData> => {
+  const { startDate, endDate } = getDateRangeFromFilter(dateFilter);
+
+  let query = supabase
+    .from('purchase_invoices')
     .select(`
-      quantity,
+      id,
       branch_id,
-      products!inner(cost_price),
-      branches!inner(id, name)
+      warehouse_id,
+      net_amount,
+      branches(id, name),
+      warehouses(id, name)
     `)
-    .gt('quantity', 0);
+    .eq('invoice_type', 'Purchase Invoice');
+
+  if (startDate) {
+    query = query.gte('invoice_date', startDate.toISOString().split('T')[0]);
+  }
+  if (endDate) {
+    query = query.lte('invoice_date', endDate.toISOString().split('T')[0]);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
-    console.error('Error fetching branch capitals:', error);
+    console.error('Error fetching period purchases:', error);
     return { totalCapital: 0, branches: [] };
   }
 
-  // Group by branch and calculate capital
-  const branchMap = new Map<string, { name: string; capital: number }>();
+  // Group by branch/warehouse and calculate totals
+  const locationMap = new Map<string, { name: string; type: 'branch' | 'warehouse'; capital: number }>();
 
   (data || []).forEach((item: any) => {
-    const quantity = parseFloat(item.quantity) || 0;
-    const costPrice = parseFloat(item.products?.cost_price) || 0;
-    const branchId = item.branch_id;
-    const branchName = item.branches?.name || 'فرع غير معروف';
+    const amount = parseFloat(item.net_amount) || 0;
+    if (amount <= 0) return;
 
-    if (quantity > 0 && costPrice > 0) {
-      const existing = branchMap.get(branchId) || { name: branchName, capital: 0 };
-      existing.capital += quantity * costPrice;
-      branchMap.set(branchId, existing);
+    if (item.branch_id) {
+      const key = `branch:${item.branch_id}`;
+      const existing = locationMap.get(key) || {
+        name: item.branches?.name || 'فرع غير معروف',
+        type: 'branch' as const,
+        capital: 0,
+      };
+      existing.capital += amount;
+      locationMap.set(key, existing);
+    }
+
+    if (item.warehouse_id) {
+      const key = `warehouse:${item.warehouse_id}`;
+      const existing = locationMap.get(key) || {
+        name: item.warehouses?.name || 'مخزن غير معروف',
+        type: 'warehouse' as const,
+        capital: 0,
+      };
+      existing.capital += amount;
+      locationMap.set(key, existing);
     }
   });
 
-  const branches: BranchCapital[] = Array.from(branchMap.entries())
-    .map(([branchId, data]) => ({
-      branch_id: branchId,
-      branch_name: data.name,
+  const branches: BranchCapital[] = Array.from(locationMap.entries())
+    .map(([key, data]) => ({
+      id: key.split(':')[1],
+      name: data.name,
+      type: data.type,
       capital: data.capital,
     }))
     .sort((a, b) => b.capital - a.capital);
@@ -568,7 +597,7 @@ export function useDashboardData(
         const [rawResult, recentOrdersResult, capitalResult] = await Promise.allSettled([
           fetchRawSalesData(dateFilter),
           fetchRecentOrders(dateFilter, 5),
-          fetchBranchCapitals(),
+          fetchPeriodPurchases(dateFilter),
         ]);
 
         if (rawResult.status === 'rejected') throw rawResult.reason;
@@ -616,7 +645,7 @@ export function useDashboardData(
           fetchTopCustomers(dateFilter, 5),
           fetchCategoryDistribution(dateFilter),
           fetchRecentOrders(dateFilter, 5),
-          fetchBranchCapitals(),
+          fetchPeriodPurchases(dateFilter),
           fetchSaleTypeBreakdown(dateFilter),
         ]);
 

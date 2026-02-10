@@ -2033,6 +2033,13 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
       }
     },
     {
+      id: 'payment_method',
+      header: 'طريقة الدفع',
+      accessor: 'payment_method',
+      width: 120,
+      render: (value: string) => <span className="text-blue-400">{value || '-'}</span>
+    },
+    {
       id: 'balance',
       header: 'الرصيد',
       accessor: 'balance',
@@ -2289,6 +2296,13 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
           </span>
         )
       }
+    },
+    {
+      id: 'payment_method',
+      header: 'طريقة الدفع',
+      accessor: 'payment_method',
+      width: 120,
+      render: (value: string) => <span className="text-blue-400">{value || '-'}</span>
     },
     {
       id: 'notes',
@@ -2675,36 +2689,40 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
                         </div>
                       </div>
 
-                      {/* Statistics */}
-                      <div className="bg-[#2B3544] rounded-lg p-3">
-                        <h4 className="text-white font-medium mb-2 flex items-center gap-2 text-sm">
-                          <span>📊</span>
-                          <span>إحصائيات الخزنة</span>
-                        </h4>
-                        <div className="space-y-2 text-sm">
-                          <div className="flex justify-between">
-                            <span className="text-white">{allTransactions.length}</span>
-                            <span className="text-gray-400">عدد المعاملات</span>
+                      {/* Payment Method Breakdown */}
+                      {(() => {
+                        const pmStats: Record<string, number> = {}
+                        accountStatementData.forEach((statement: any) => {
+                          if (statement.type === 'فاتورة بيع' || statement.type === 'مرتجع بيع') {
+                            const method = statement.payment_method || 'cash'
+                            pmStats[method] = (pmStats[method] || 0) + statement.paidAmount
+                          }
+                        })
+                        const pmEntries = Object.entries(pmStats).filter(([_, amount]) => amount !== 0)
+                        const totalPm = pmEntries.reduce((sum, [_, amount]) => sum + amount, 0)
+
+                        if (pmEntries.length === 0) return null
+                        return (
+                          <div className="bg-[#2B3544] rounded-lg p-3">
+                            <h4 className="text-white font-medium mb-2 flex items-center gap-2 text-sm">
+                              <span>💳</span>
+                              <span>طرق الدفع</span>
+                            </h4>
+                            <div className="space-y-2 text-sm">
+                              {pmEntries.map(([method, amount]) => (
+                                <div key={method} className="flex justify-between">
+                                  <span className="text-blue-400">{formatPrice(amount)}</span>
+                                  <span className="text-gray-400">{method}</span>
+                                </div>
+                              ))}
+                              <div className="flex justify-between border-t border-gray-600 pt-2">
+                                <span className="text-white font-bold">{formatPrice(totalPm)}</span>
+                                <span className="text-gray-400 font-medium">الإجمالي</span>
+                              </div>
+                            </div>
                           </div>
-                          <div className="flex justify-between">
-                            <span className="text-green-400">{formatPrice(sales.reduce((sum, sale) => sum + (sale.total_amount || 0), 0))}</span>
-                            <span className="text-gray-400">إجمالي المبيعات</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-red-400">{formatPrice(purchaseInvoices.reduce((sum, purchase) => sum + (purchase.total_amount || 0), 0))}</span>
-                            <span className="text-gray-400">إجمالي المشتريات</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-white">
-                              {allTransactions.length > 0
-                                ? new Date(allTransactions[0].created_at).toLocaleDateString('en-GB')
-                                : '-'
-                              }
-                            </span>
-                            <span className="text-gray-400">آخر معاملة</span>
-                          </div>
-                        </div>
-                      </div>
+                        )
+                      })()}
 
                       {/* Date Filter Button */}
                       <button
@@ -3208,36 +3226,40 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
                 </div>
               </div>
 
-              {/* Record Statistics */}
-              <div className="p-4 border-t border-gray-600">
-                <h4 className="text-white font-medium mb-3 text-right flex items-center gap-2">
-                  <span>📊</span>
-                  <span>إحصائيات الخزنة</span>
-                </h4>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-white">{allTransactions.length}</span>
-                    <span className="text-gray-400 text-sm">عدد المعاملات</span>
+              {/* Payment Method Breakdown */}
+              {(() => {
+                const pmStats: Record<string, number> = {}
+                accountStatementData.forEach((statement: any) => {
+                  if (statement.type === 'فاتورة بيع' || statement.type === 'مرتجع بيع') {
+                    const method = statement.payment_method || 'cash'
+                    pmStats[method] = (pmStats[method] || 0) + statement.paidAmount
+                  }
+                })
+                const pmEntries = Object.entries(pmStats).filter(([_, amount]) => amount !== 0)
+                const totalPm = pmEntries.reduce((sum, [_, amount]) => sum + amount, 0)
+
+                if (pmEntries.length === 0) return null
+                return (
+                  <div className="p-4 border-t border-gray-600">
+                    <h4 className="text-white font-medium mb-3 text-right flex items-center gap-2">
+                      <span>💳</span>
+                      <span>طرق الدفع</span>
+                    </h4>
+                    <div className="space-y-2">
+                      {pmEntries.map(([method, amount]) => (
+                        <div key={method} className="flex justify-between items-center">
+                          <span className="text-blue-400">{formatPrice(amount, 'system')}</span>
+                          <span className="text-gray-400 text-sm">{method}</span>
+                        </div>
+                      ))}
+                      <div className="flex justify-between items-center border-t border-gray-600 pt-2">
+                        <span className="text-white font-bold">{formatPrice(totalPm, 'system')}</span>
+                        <span className="text-gray-400 text-sm font-medium">الإجمالي</span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-green-400">{formatPrice(sales.reduce((sum, sale) => sum + (sale.total_amount || 0), 0), 'system')}</span>
-                    <span className="text-gray-400 text-sm">إجمالي المدين</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-red-400">{formatPrice(purchaseInvoices.reduce((sum, purchase) => sum + (purchase.total_amount || 0), 0), 'system')}</span>
-                    <span className="text-gray-400 text-sm">إجمالي الدائن</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-white">
-                      {allTransactions.length > 0
-                        ? new Date(allTransactions[0].created_at).toLocaleDateString('en-GB')
-                        : '-'
-                      }
-                    </span>
-                    <span className="text-gray-400 text-sm">آخر معاملة</span>
-                  </div>
-                </div>
-              </div>
+                )
+              })()}
 
               {/* Date Filter Button */}
               <div className="p-4 border-t border-gray-600">
