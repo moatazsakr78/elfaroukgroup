@@ -2657,10 +2657,32 @@ function POSPageContent() {
 
         const originalTotal = originalSale?.total_amount || 0;
 
-        // Calculate new total from cart
+        // Calculate new total from cart (with discounts)
         const newTotal = cartItems.reduce((sum, item) => {
-          const itemTotal = item.totalPrice || (item.price * item.quantity);
-          return sum + itemTotal;
+          let itemTotal = item.price * item.quantity;
+          if (item.discount) {
+            if (item.discountType === "percentage") {
+              itemTotal -= (itemTotal * item.discount) / 100;
+            } else {
+              itemTotal -= item.discount;
+            }
+          }
+          return sum + Math.max(0, itemTotal);
+        }, 0);
+
+        // حساب الربح الجديد
+        const newProfit = cartItems.reduce((sum, item) => {
+          const costPrice = item.cost_price || item.product?.cost_price || 0;
+          let itemTotal = item.price * item.quantity;
+          if (item.discount) {
+            if (item.discountType === "percentage") {
+              itemTotal -= (itemTotal * item.discount) / 100;
+            } else {
+              itemTotal -= item.discount;
+            }
+          }
+          itemTotal = Math.max(0, itemTotal);
+          return sum + (itemTotal - (costPrice * item.quantity));
         }, 0);
 
         // Fetch old item IDs first (so we only delete these specific items later)
@@ -2704,11 +2726,12 @@ function POSPageContent() {
           }
         }
 
-        // Update sale total
+        // Update sale total and profit
         const { error: updateError } = await supabase
           .from('sales')
           .update({
-            total_amount: newTotal
+            total_amount: newTotal,
+            profit: newProfit
           })
           .eq('id', saleId);
 
@@ -2893,18 +2916,33 @@ function POSPageContent() {
       } else {
         // Handle sales invoice creation (or return)
         // Transform cartItems to match sales invoice CartItem interface
-        const salesCartItems = cartItems.map((item) => ({
-          id: item.id,
-          product: item.product || { name: "Unknown Product" },
-          quantity: item.quantity,
-          selectedColors: item.selected_color
-            ? { [item.selected_color]: item.quantity }
-            : null,
-          price: item.price,
-          total: item.price * item.quantity,
-          branch_id: item.branch_id || selections.branch?.id || '',
-          branch_name: item.branch_name || selections.branch?.name || '',
-        }));
+        const salesCartItems = cartItems.map((item) => {
+          // حساب الإجمالي بعد خصم المنتج
+          let itemTotal = item.price * item.quantity;
+          if (item.discount) {
+            if (item.discountType === "percentage") {
+              itemTotal -= (itemTotal * item.discount) / 100;
+            } else {
+              itemTotal -= item.discount;
+            }
+          }
+          itemTotal = Math.max(0, itemTotal);
+
+          return {
+            id: item.id,
+            product: item.product || { name: "Unknown Product" },
+            quantity: item.quantity,
+            selectedColors: item.selected_color
+              ? { [item.selected_color]: item.quantity }
+              : null,
+            price: item.price,
+            total: itemTotal,
+            discount: item.discount,
+            discountType: item.discountType,
+            branch_id: item.branch_id || selections.branch?.id || '',
+            branch_name: item.branch_name || selections.branch?.name || '',
+          };
+        });
 
         const result = await createSalesInvoice({
           cartItems: salesCartItems,

@@ -150,8 +150,17 @@ export interface ReportConfig {
 
 // Sale Type Breakdown (ground vs online)
 export interface SaleTypeBreakdownData {
-  ground: { count: number; total: number; profit: number; percentage: number };
-  online: { count: number; total: number; profit: number; percentage: number; shippingTotal: number };
+  ground: {
+    invoiceCount: number; invoiceTotal: number;
+    returnCount: number; returnTotal: number;
+    total: number; profit: number; percentage: number;
+  };
+  online: {
+    invoiceCount: number; invoiceTotal: number;
+    returnCount: number; returnTotal: number;
+    total: number; profit: number; percentage: number;
+    shippingTotal: number;
+  };
 }
 
 export interface SaleTypeTrendPoint {

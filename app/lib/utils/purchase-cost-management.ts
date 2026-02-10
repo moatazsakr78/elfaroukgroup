@@ -182,7 +182,7 @@ export async function updateProductCostAfterPurchase(
       product_id: productId,
       average_cost: result.updated_cost_per_unit,
       total_quantity_purchased: (costTracking?.total_quantity_purchased || 0) + newPurchaseQuantity,
-      total_cost: result.total_cost,
+      total_cost: (costTracking?.total_cost || 0) + (newPurchaseQuantity * newPurchaseUnitCost),
       last_purchase_price: newPurchaseUnitCost,
       last_purchase_date: new Date().toISOString(),
       has_purchase_history: true,
@@ -280,6 +280,180 @@ export async function previewCostUpdate(
 
   } catch (error) {
     console.error('Error in previewCostUpdate:', error)
+    return null
+  }
+}
+
+/**
+ * إعادة حساب تكلفة المنتج من التاريخ الكامل لفواتير الشراء
+ * Recalculate product cost from full purchase invoice history
+ *
+ * يُستخدم عند حذف فاتورة شراء أو مرتجع شراء لضمان دقة المتوسط المرجح
+ */
+export async function recalculateProductCostFromHistory(productId: string): Promise<ProductCostUpdate | null> {
+  try {
+    // جلب كل فواتير الشراء النشطة للمنتج (غير المرتجعات) مرتبة بالتاريخ
+    const { data: purchaseItems, error: fetchError } = await supabase
+      .from('purchase_invoice_items')
+      .select(`
+        quantity,
+        unit_purchase_price,
+        total_price,
+        created_at,
+        purchase_invoices!inner (
+          id,
+          invoice_date,
+          is_active,
+          invoice_type
+        )
+      `)
+      .eq('product_id', productId)
+      .eq('purchase_invoices.is_active', true)
+      .order('created_at', { ascending: true })
+
+    if (fetchError) {
+      console.error('Error fetching purchase history for recalculation:', fetchError)
+      return null
+    }
+
+    // فلترة فقط فواتير الشراء العادية (غير المرتجعات)
+    const normalPurchases = (purchaseItems || []).filter((item: any) => {
+      const invoiceType = item.purchase_invoices?.invoice_type || ''
+      return invoiceType !== 'Purchase Return'
+    })
+
+    // فلترة المرتجعات
+    const returnPurchases = (purchaseItems || []).filter((item: any) => {
+      const invoiceType = item.purchase_invoices?.invoice_type || ''
+      return invoiceType === 'Purchase Return'
+    })
+
+    // حساب إجمالي المرتجعات
+    const totalReturnedQuantity = returnPurchases.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0)
+
+    if (normalPurchases.length === 0) {
+      // لا توجد فواتير شراء - نرجع التكلفة للسعر الأصلي من المنتج أو صفر
+      const { data: product } = await supabase
+        .from('products')
+        .select('cost_price')
+        .eq('id', productId)
+        .single()
+
+      // حذف سجل التكلفة إن وجد
+      await supabase
+        .from('product_cost_tracking')
+        .delete()
+        .eq('product_id', productId)
+
+      // لو مفيش فواتير شراء خالص، نحط التكلفة = 0
+      await supabase
+        .from('products')
+        .update({ cost_price: 0, updated_at: new Date().toISOString() })
+        .eq('id', productId)
+
+      return {
+        productId,
+        newAverageCost: 0,
+        totalQuantityPurchased: 0,
+        totalCostAccumulated: 0,
+        lastPurchasePrice: 0,
+        lastPurchaseDate: new Date().toISOString()
+      }
+    }
+
+    // إعادة حساب المتوسط المرجح التراكمي من كل الفواتير
+    let runningQuantity = 0
+    let runningCost = 0
+    let totalQuantityPurchased = 0
+    let totalCostAccumulated = 0
+    let lastPurchasePrice = 0
+    let lastPurchaseDate = ''
+
+    for (const item of normalPurchases) {
+      const qty = item.quantity || 0
+      const unitCost = item.unit_purchase_price || 0
+
+      if (runningQuantity === 0 || runningCost === 0) {
+        // أول شراء أو المخزون صفر - نستخدم السعر الجديد مباشرة
+        runningQuantity = qty
+        runningCost = qty * unitCost
+      } else {
+        // حساب المتوسط المرجح التراكمي
+        runningCost = runningCost + (qty * unitCost)
+        runningQuantity = runningQuantity + qty
+      }
+
+      totalQuantityPurchased += qty
+      totalCostAccumulated += qty * unitCost
+      lastPurchasePrice = unitCost
+      lastPurchaseDate = (item as any).purchase_invoices?.invoice_date || item.created_at
+    }
+
+    // طرح كمية المرتجعات من الكمية الجارية
+    runningQuantity = Math.max(0, runningQuantity - totalReturnedQuantity)
+
+    const averageCost = runningQuantity > 0
+      ? Math.round((runningCost / (totalQuantityPurchased)) * 100) / 100
+      : (totalQuantityPurchased > 0 ? Math.round((totalCostAccumulated / totalQuantityPurchased) * 100) / 100 : 0)
+
+    console.log('📊 Recalculated cost from history:', {
+      productId,
+      normalPurchases: normalPurchases.length,
+      returnPurchases: returnPurchases.length,
+      totalQuantityPurchased,
+      totalCostAccumulated,
+      averageCost
+    })
+
+    // تحديث أو إنشاء سجل product_cost_tracking
+    const { data: existingTracking } = await supabase
+      .from('product_cost_tracking')
+      .select('id')
+      .eq('product_id', productId)
+      .single()
+
+    const trackingData = {
+      product_id: productId,
+      average_cost: averageCost,
+      total_quantity_purchased: totalQuantityPurchased,
+      total_cost: totalCostAccumulated,
+      last_purchase_price: lastPurchasePrice,
+      last_purchase_date: lastPurchaseDate || new Date().toISOString(),
+      has_purchase_history: true,
+      updated_at: new Date().toISOString()
+    }
+
+    if (existingTracking) {
+      await supabase
+        .from('product_cost_tracking')
+        .update(trackingData)
+        .eq('id', existingTracking.id)
+    } else {
+      await supabase
+        .from('product_cost_tracking')
+        .insert(trackingData)
+    }
+
+    // تحديث cost_price في جدول المنتجات
+    await supabase
+      .from('products')
+      .update({
+        cost_price: averageCost,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', productId)
+
+    return {
+      productId,
+      newAverageCost: averageCost,
+      totalQuantityPurchased,
+      totalCostAccumulated,
+      lastPurchasePrice,
+      lastPurchaseDate: lastPurchaseDate || new Date().toISOString()
+    }
+
+  } catch (error) {
+    console.error('Error in recalculateProductCostFromHistory:', error)
     return null
   }
 }

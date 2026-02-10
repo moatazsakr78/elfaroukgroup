@@ -18,6 +18,8 @@ export interface CartItem {
   selectedShapes?: { [key: string]: number } | null
   price: number
   total: number
+  discount?: number
+  discountType?: 'percentage' | 'fixed'
   branch_id?: string      // الفرع اللي اتباع منه المنتج (مطلوب للبيع، اختياري للشراء)
   branch_name?: string   // اسم الفرع للعرض
 }
@@ -216,7 +218,8 @@ export async function createSalesInvoice({
     const discountAmount = 0 // You can add discount calculation here if needed
     const profit = cartItems.reduce((sum, item) => {
       const costPrice = item.product.cost_price || 0
-      const itemProfit = (item.price - costPrice) * item.quantity
+      // حساب الربح بعد الخصم: الربح = إجمالي البيع بعد الخصم - التكلفة
+      const itemProfit = item.total - (costPrice * item.quantity)
       return sum + (isReturn ? -itemProfit : itemProfit)
     }, 0)
 

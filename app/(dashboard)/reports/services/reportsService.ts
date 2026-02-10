@@ -636,7 +636,7 @@ export const fetchSaleTypeBreakdown = async (filter: DateFilter, brandId?: strin
 
   let query = supabase
     .from('sales')
-    .select('id, total_amount, profit, sale_type, shipping_amount')
+    .select('id, total_amount, profit, sale_type, shipping_amount, invoice_type')
     .gte('created_at', startDate)
     .lte('created_at', endDate);
 
@@ -652,26 +652,34 @@ export const fetchSaleTypeBreakdown = async (filter: DateFilter, brandId?: strin
   const groundSales = sales.filter(s => s.sale_type !== 'online');
   const onlineSales = sales.filter(s => s.sale_type === 'online');
 
-  const groundTotal = groundSales.reduce((sum, s) => sum + (parseFloat(String(s.total_amount)) || 0), 0);
-  const groundProfit = groundSales.reduce((sum, s) => sum + (parseFloat(String(s.profit ?? 0)) || 0), 0);
+  const groundInvoices = groundSales.filter(s => s.invoice_type !== 'Sale Return');
+  const groundReturns = groundSales.filter(s => s.invoice_type === 'Sale Return');
+  const onlineInvoices = onlineSales.filter(s => s.invoice_type !== 'Sale Return');
+  const onlineReturns = onlineSales.filter(s => s.invoice_type === 'Sale Return');
 
-  const onlineTotal = onlineSales.reduce((sum, s) => sum + (parseFloat(String(s.total_amount)) || 0), 0);
-  const onlineProfit = onlineSales.reduce((sum, s) => sum + (parseFloat(String(s.profit ?? 0)) || 0), 0);
-  const onlineShipping = onlineSales.reduce((sum, s) => sum + (parseFloat(String(s.shipping_amount ?? 0)) || 0), 0);
+  const sumAmount = (arr: typeof sales) => arr.reduce((sum, s) => sum + (parseFloat(String(s.total_amount)) || 0), 0);
+  const sumProfit = (arr: typeof sales) => arr.reduce((sum, s) => sum + (parseFloat(String(s.profit ?? 0)) || 0), 0);
+  const sumShipping = (arr: typeof sales) => arr.reduce((sum, s) => sum + (parseFloat(String(s.shipping_amount ?? 0)) || 0), 0);
 
   return {
     ground: {
-      count: groundSales.length,
-      total: groundTotal,
-      profit: groundProfit,
+      invoiceCount: groundInvoices.length,
+      invoiceTotal: sumAmount(groundInvoices),
+      returnCount: groundReturns.length,
+      returnTotal: sumAmount(groundReturns),
+      total: sumAmount(groundSales),
+      profit: sumProfit(groundSales),
       percentage: totalCount > 0 ? (groundSales.length / totalCount) * 100 : 0,
     },
     online: {
-      count: onlineSales.length,
-      total: onlineTotal,
-      profit: onlineProfit,
+      invoiceCount: onlineInvoices.length,
+      invoiceTotal: sumAmount(onlineInvoices),
+      returnCount: onlineReturns.length,
+      returnTotal: sumAmount(onlineReturns),
+      total: sumAmount(onlineSales),
+      profit: sumProfit(onlineSales),
       percentage: totalCount > 0 ? (onlineSales.length / totalCount) * 100 : 0,
-      shippingTotal: onlineShipping,
+      shippingTotal: sumShipping(onlineSales),
     },
   };
 };

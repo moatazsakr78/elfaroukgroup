@@ -2,7 +2,7 @@
 
 import { supabase } from '../supabase/client'
 import { CartItem } from './createSalesInvoice'
-import { updateProductCostAfterPurchase } from '../utils/purchase-cost-management'
+import { updateProductCostAfterPurchase, recalculateProductCostFromHistory } from '../utils/purchase-cost-management'
 import { roundMoney } from '../utils/money'
 
 export interface PurchaseInvoiceSelections {
@@ -270,26 +270,33 @@ export async function createPurchaseInvoice({
     const costUpdateWarnings: string[] = []
     for (const item of finalCartItems) {
       try {
-        // Pass pre-update quantity to avoid timing issues (Bug 7 fix)
-        const preQty = preUpdateQuantities.get(item.product.id) ?? undefined
-        const costUpdate = await updateProductCostAfterPurchase(
-          item.product.id,
-          item.quantity,
-          item.price,
-          preQty
-        )
-
-        if (costUpdate) {
-          console.log(`💰 Updated cost for product ${item.product.id}:`, {
-            oldCost: 'calculated from previous data',
-            newCost: costUpdate.newAverageCost,
-            quantity: item.quantity,
-            unitPrice: item.price
-          })
+        if (isReturn) {
+          // مرتجع شراء: لا نغيّر التكلفة - المرتجع ينقّص المخزون فقط
+          // المتوسط المرجح لا يتأثر بالمرتجعات (محاسبياً)
+          console.log(`⏭️ Skipping cost update for return - product ${item.product.id}`)
+          continue
         } else {
-          const productName = item.product.name || item.product.id
-          costUpdateWarnings.push(`فشل تحديث تكلفة المنتج: ${productName}`)
-          console.warn(`⚠️  Failed to update cost for product ${item.product.id}`)
+          // شراء عادي: حساب المتوسط المرجح التراكمي
+          const preQty = preUpdateQuantities.get(item.product.id) ?? undefined
+          const costUpdate = await updateProductCostAfterPurchase(
+            item.product.id,
+            item.quantity,
+            item.price,
+            preQty
+          )
+
+          if (costUpdate) {
+            console.log(`💰 Updated cost for product ${item.product.id}:`, {
+              oldCost: 'calculated from previous data',
+              newCost: costUpdate.newAverageCost,
+              quantity: item.quantity,
+              unitPrice: item.price
+            })
+          } else {
+            const productName = item.product.name || item.product.id
+            costUpdateWarnings.push(`فشل تحديث تكلفة المنتج: ${productName}`)
+            console.warn(`⚠️  Failed to update cost for product ${item.product.id}`)
+          }
         }
       } catch (costError: any) {
         const productName = item.product.name || item.product.id

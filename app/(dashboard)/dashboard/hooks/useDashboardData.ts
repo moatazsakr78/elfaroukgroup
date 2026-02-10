@@ -428,25 +428,34 @@ function computeFilteredDashboardData(
   const groundSales = filteredSales.filter(s => s.sale_type !== 'online');
   const onlineSalesArr = filteredSales.filter(s => s.sale_type === 'online');
 
-  const groundTotal = groundSales.reduce((sum, s) => sum + (parseFloat(String(s.total_amount)) || 0), 0);
-  const groundProfit = groundSales.reduce((sum, s) => sum + (parseFloat(String(s.profit ?? 0)) || 0), 0);
-  const onlineTotal2 = onlineSalesArr.reduce((sum, s) => sum + (parseFloat(String(s.total_amount)) || 0), 0);
-  const onlineProfit = onlineSalesArr.reduce((sum, s) => sum + (parseFloat(String(s.profit ?? 0)) || 0), 0);
-  const onlineShipping = onlineSalesArr.reduce((sum, s) => sum + (parseFloat(String(s.shipping_amount ?? 0)) || 0), 0);
+  const groundInvoices = groundSales.filter(s => s.invoice_type !== 'Sale Return');
+  const groundReturns = groundSales.filter(s => s.invoice_type === 'Sale Return');
+  const onlineInvoices = onlineSalesArr.filter(s => s.invoice_type !== 'Sale Return');
+  const onlineReturns = onlineSalesArr.filter(s => s.invoice_type === 'Sale Return');
+
+  const sumAmt = (arr: typeof filteredSales) => arr.reduce((sum, s) => sum + (parseFloat(String(s.total_amount)) || 0), 0);
+  const sumPrf = (arr: typeof filteredSales) => arr.reduce((sum, s) => sum + (parseFloat(String(s.profit ?? 0)) || 0), 0);
+  const sumShp = (arr: typeof filteredSales) => arr.reduce((sum, s) => sum + (parseFloat(String(s.shipping_amount ?? 0)) || 0), 0);
 
   const saleTypeBreakdown: SaleTypeBreakdownData = {
     ground: {
-      count: groundSales.length,
-      total: groundTotal,
-      profit: groundProfit,
+      invoiceCount: groundInvoices.length,
+      invoiceTotal: sumAmt(groundInvoices),
+      returnCount: groundReturns.length,
+      returnTotal: sumAmt(groundReturns),
+      total: sumAmt(groundSales),
+      profit: sumPrf(groundSales),
       percentage: orderCount > 0 ? (groundSales.length / orderCount) * 100 : 0,
     },
     online: {
-      count: onlineSalesArr.length,
-      total: onlineTotal2,
-      profit: onlineProfit,
+      invoiceCount: onlineInvoices.length,
+      invoiceTotal: sumAmt(onlineInvoices),
+      returnCount: onlineReturns.length,
+      returnTotal: sumAmt(onlineReturns),
+      total: sumAmt(onlineSalesArr),
+      profit: sumPrf(onlineSalesArr),
       percentage: orderCount > 0 ? (onlineSalesArr.length / orderCount) * 100 : 0,
-      shippingTotal: onlineShipping,
+      shippingTotal: sumShp(onlineSalesArr),
     },
   };
 

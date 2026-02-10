@@ -179,11 +179,15 @@ export default function DashboardPage() {
                 />
                 <SaleTypeCard
                   periodLabel={periodLabel}
-                  groundCount={data.saleTypeBreakdown?.ground.count || 0}
-                  groundTotal={data.saleTypeBreakdown?.ground.total || 0}
+                  groundInvoiceCount={data.saleTypeBreakdown?.ground.invoiceCount || 0}
+                  groundInvoiceTotal={data.saleTypeBreakdown?.ground.invoiceTotal || 0}
+                  groundReturnCount={data.saleTypeBreakdown?.ground.returnCount || 0}
+                  groundReturnTotal={data.saleTypeBreakdown?.ground.returnTotal || 0}
                   groundPercentage={data.saleTypeBreakdown?.ground.percentage || 0}
-                  onlineCount={data.saleTypeBreakdown?.online.count || 0}
-                  onlineTotal={data.saleTypeBreakdown?.online.total || 0}
+                  onlineInvoiceCount={data.saleTypeBreakdown?.online.invoiceCount || 0}
+                  onlineInvoiceTotal={data.saleTypeBreakdown?.online.invoiceTotal || 0}
+                  onlineReturnCount={data.saleTypeBreakdown?.online.returnCount || 0}
+                  onlineReturnTotal={data.saleTypeBreakdown?.online.returnTotal || 0}
                   onlinePercentage={data.saleTypeBreakdown?.online.percentage || 0}
                   onlineShippingTotal={data.saleTypeBreakdown?.online.shippingTotal || 0}
                   loading={loading}

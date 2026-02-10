@@ -5,11 +5,15 @@ import { formatCurrencyAr } from '../../reports/utils/chartConfig';
 
 interface SaleTypeCardProps {
   periodLabel: string;
-  groundCount: number;
-  groundTotal: number;
+  groundInvoiceCount: number;
+  groundInvoiceTotal: number;
+  groundReturnCount: number;
+  groundReturnTotal: number;
   groundPercentage: number;
-  onlineCount: number;
-  onlineTotal: number;
+  onlineInvoiceCount: number;
+  onlineInvoiceTotal: number;
+  onlineReturnCount: number;
+  onlineReturnTotal: number;
   onlinePercentage: number;
   onlineShippingTotal: number;
   loading?: boolean;
@@ -17,11 +21,15 @@ interface SaleTypeCardProps {
 
 export default function SaleTypeCard({
   periodLabel,
-  groundCount,
-  groundTotal,
+  groundInvoiceCount,
+  groundInvoiceTotal,
+  groundReturnCount,
+  groundReturnTotal,
   groundPercentage,
-  onlineCount,
-  onlineTotal,
+  onlineInvoiceCount,
+  onlineInvoiceTotal,
+  onlineReturnCount,
+  onlineReturnTotal,
   onlinePercentage,
   onlineShippingTotal,
   loading = false,
@@ -33,6 +41,8 @@ export default function SaleTypeCard({
           <div className="flex items-center justify-between">
             <div className="flex-1">
               <div className="h-4 bg-gray-600 rounded w-1/2 mb-3"></div>
+              <div className="h-6 bg-gray-600 rounded w-3/4 mb-2"></div>
+              <div className="h-6 bg-gray-600 rounded w-3/4 mb-2"></div>
               <div className="h-6 bg-gray-600 rounded w-3/4 mb-2"></div>
               <div className="h-6 bg-gray-600 rounded w-3/4"></div>
             </div>
@@ -48,29 +58,51 @@ export default function SaleTypeCard({
       <div className="flex items-center justify-between gap-4">
         <div className="flex-1 min-w-0">
           <p className="text-gray-400 text-sm font-medium mb-2">{`تصنيف مبيعات ${periodLabel}`}</p>
-          {/* Ground row */}
-          <div className="flex items-center gap-2 mb-1.5">
+          {/* Ground invoices row */}
+          <div className="flex items-center gap-2 mb-1">
             <span className="w-2.5 h-2.5 rounded-full bg-green-400 flex-shrink-0"></span>
-            <span className="text-white font-bold text-sm">{groundCount.toLocaleString('ar-EG')}</span>
-            <span className="text-gray-400 text-xs">أرضي</span>
+            <span className="text-white font-bold text-sm">{groundInvoiceCount.toLocaleString('ar-EG')}</span>
+            <span className="text-gray-400 text-xs">فاتورة أرضي</span>
             <span className="text-green-400 font-bold text-sm mr-auto truncate">
-              {formatCurrencyAr(groundTotal)}
+              {formatCurrencyAr(groundInvoiceTotal)}
             </span>
             <span className="text-gray-500 text-xs">{groundPercentage.toFixed(0)}%</span>
           </div>
-          {/* Online row */}
-          <div className="flex items-center gap-2">
+          {/* Ground returns row */}
+          {groundReturnCount > 0 && (
+            <div className="flex items-center gap-2 mb-1">
+              <span className="w-2.5 h-2.5 rounded-full bg-red-400 flex-shrink-0"></span>
+              <span className="text-white font-bold text-sm">{groundReturnCount.toLocaleString('ar-EG')}</span>
+              <span className="text-gray-400 text-xs">مرتجع أرضي</span>
+              <span className="text-red-400 font-bold text-sm mr-auto truncate">
+                -{formatCurrencyAr(Math.abs(groundReturnTotal))}
+              </span>
+            </div>
+          )}
+          {/* Online invoices row */}
+          <div className="flex items-center gap-2 mb-1">
             <span className="w-2.5 h-2.5 rounded-full bg-blue-400 flex-shrink-0"></span>
-            <span className="text-white font-bold text-sm">{onlineCount.toLocaleString('ar-EG')}</span>
-            <span className="text-gray-400 text-xs">أون لاين</span>
+            <span className="text-white font-bold text-sm">{onlineInvoiceCount.toLocaleString('ar-EG')}</span>
+            <span className="text-gray-400 text-xs">فاتورة أون لاين</span>
             <span className="text-blue-400 font-bold text-sm mr-auto truncate">
-              {formatCurrencyAr(onlineTotal)}
+              {formatCurrencyAr(onlineInvoiceTotal)}
             </span>
             <span className="text-gray-500 text-xs">{onlinePercentage.toFixed(0)}%</span>
           </div>
+          {/* Online returns row */}
+          {onlineReturnCount > 0 && (
+            <div className="flex items-center gap-2 mb-1">
+              <span className="w-2.5 h-2.5 rounded-full bg-red-400 flex-shrink-0"></span>
+              <span className="text-white font-bold text-sm">{onlineReturnCount.toLocaleString('ar-EG')}</span>
+              <span className="text-gray-400 text-xs">مرتجع أون لاين</span>
+              <span className="text-red-400 font-bold text-sm mr-auto truncate">
+                -{formatCurrencyAr(Math.abs(onlineReturnTotal))}
+              </span>
+            </div>
+          )}
           {/* Shipping total (only if > 0) */}
           {onlineShippingTotal > 0 && (
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex items-center gap-2 mt-0.5">
               <span className="w-2.5 h-2.5 flex-shrink-0"></span>
               <span className="text-gray-500 text-xs">شحن: {formatCurrencyAr(onlineShippingTotal)}</span>
             </div>

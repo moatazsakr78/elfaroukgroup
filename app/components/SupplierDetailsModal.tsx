@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { MagnifyingGlassIcon, XMarkIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon, ChevronUpIcon, PlusIcon, PencilSquareIcon, TrashIcon, TableCellsIcon, CalendarDaysIcon, PrinterIcon, DocumentIcon, ArrowDownTrayIcon, DocumentArrowDownIcon, EllipsisVerticalIcon } from '@heroicons/react/24/outline'
 import ResizableTable from './tables/ResizableTable'
 import { supabase } from '../lib/supabase/client'
+import { recalculateProductCostFromHistory } from '../lib/utils/purchase-cost-management'
 import ConfirmDeleteModal from './ConfirmDeleteModal'
 import SimpleDateFilterModal, { DateFilter } from './SimpleDateFilterModal'
 import AddPaymentModal from './AddPaymentModal'
@@ -1220,35 +1221,144 @@ export default function SupplierDetailsModal({ isOpen, onClose, supplier }: Supp
     try {
       setIsDeleting(true)
 
-      // Delete purchase invoice items first (foreign key constraint)
+      const invoiceId = invoiceToDelete.id
+      const isReturn = invoiceToDelete.invoice_type === 'Purchase Return'
+
+      // 1. جلب بيانات الفاتورة الكاملة (branch_id, warehouse_id)
+      const { data: invoiceDetails } = await supabase
+        .from('purchase_invoices')
+        .select('branch_id, warehouse_id, record_id, total_amount')
+        .eq('id', invoiceId)
+        .single()
+
+      const branchId = invoiceDetails?.branch_id || null
+      const warehouseId = invoiceDetails?.warehouse_id || null
+
+      // 2. جلب عناصر الفاتورة قبل حذفها
+      const { data: invoiceItems } = await supabase
+        .from('purchase_invoice_items')
+        .select('product_id, quantity')
+        .eq('purchase_invoice_id', invoiceId)
+
+      const affectedProducts = invoiceItems || []
+
+      // 3. عكس المخزون لكل منتج
+      for (const item of affectedProducts) {
+        // لو فاتورة شراء عادية: ننقص المخزون. لو مرتجع: نزود المخزون
+        const quantityChange = isReturn ? item.quantity : -item.quantity
+
+        const { error: invError } = await supabase.rpc(
+          'atomic_adjust_inventory' as any,
+          {
+            p_product_id: item.product_id,
+            p_branch_id: branchId,
+            p_warehouse_id: warehouseId,
+            p_change: quantityChange,
+            p_allow_negative: true
+          }
+        )
+
+        if (invError) {
+          console.warn(`Failed to reverse inventory for product ${item.product_id}:`, invError.message)
+        }
+
+        // عكس variant quantity لو الفاتورة كانت على فرع
+        if (branchId) {
+          const { data: unspecifiedDef } = await supabase
+            .from('product_color_shape_definitions')
+            .select('id')
+            .eq('product_id', item.product_id)
+            .eq('name', 'غير محدد')
+            .eq('variant_type', 'color')
+            .single()
+
+          if (unspecifiedDef) {
+            await supabase.rpc(
+              'atomic_adjust_variant_quantity' as any,
+              {
+                p_variant_definition_id: unspecifiedDef.id,
+                p_branch_id: branchId,
+                p_change: quantityChange,
+                p_allow_negative: true
+              }
+            )
+          }
+        }
+      }
+
+      // 4. حذف دفعة المورد المرتبطة وإرجاع رصيد الخزنة
+      const { data: linkedPayments } = await supabase
+        .from('supplier_payments')
+        .select('id, amount, safe_id')
+        .eq('purchase_invoice_id', invoiceId)
+
+      if (linkedPayments && linkedPayments.length > 0) {
+        for (const payment of linkedPayments) {
+          // إرجاع رصيد الخزنة
+          if (payment.safe_id) {
+            const { data: safeData } = await supabase
+              .from('records')
+              .select('balance')
+              .eq('id', payment.safe_id)
+              .single()
+
+            if (safeData) {
+              const newBalance = (safeData.balance || 0) + (payment.amount || 0)
+              await supabase
+                .from('records')
+                .update({ balance: newBalance })
+                .eq('id', payment.safe_id)
+            }
+          }
+
+          // حذف الدفعة
+          await supabase
+            .from('supplier_payments')
+            .delete()
+            .eq('id', payment.id)
+        }
+      }
+
+      // 5. حذف عناصر الفاتورة
       const { error: purchaseItemsError } = await supabase
         .from('purchase_invoice_items')
         .delete()
-        .eq('purchase_invoice_id', invoiceToDelete.id)
+        .eq('purchase_invoice_id', invoiceId)
 
       if (purchaseItemsError) {
         console.error('Error deleting purchase invoice items:', purchaseItemsError)
         throw purchaseItemsError
       }
 
-      // Delete the purchase invoice
+      // 6. حذف الفاتورة
       const { error: purchaseError } = await supabase
         .from('purchase_invoices')
         .delete()
-        .eq('id', invoiceToDelete.id)
+        .eq('id', invoiceId)
 
       if (purchaseError) {
         console.error('Error deleting purchase invoice:', purchaseError)
         throw purchaseError
       }
 
+      // 7. إعادة حساب تكلفة كل منتج متأثر من التاريخ
+      const uniqueProductIds = Array.from(new Set(affectedProducts.map(item => item.product_id)))
+      for (const productId of uniqueProductIds) {
+        try {
+          await recalculateProductCostFromHistory(productId)
+          console.log(`✅ Recalculated cost for product ${productId} after invoice deletion`)
+        } catch (costError) {
+          console.warn(`Failed to recalculate cost for product ${productId}:`, costError)
+        }
+      }
+
       // Close modal and reset state
       setShowDeleteModal(false)
       setInvoiceToDelete(null)
-      
+
       // Refresh data (real-time will handle it but this ensures immediate update)
       fetchPurchaseInvoices()
-      
+
       // Reset selected transaction if needed
       if (selectedTransaction >= purchaseInvoices.length - 1) {
         setSelectedTransaction(Math.max(0, purchaseInvoices.length - 2))
