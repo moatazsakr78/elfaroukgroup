@@ -4,6 +4,7 @@ export const BACKUP_VERSION = '2.0';
 export const BACKUP_FORMAT = 'elfaroukgroup-backup';
 export const BATCH_INSERT_SIZE = 500;
 export const EXPORT_PAGE_SIZE = 1000;
+export const MAX_ROWS_PER_CHUNK = 2000;
 
 // ============================================================
 // Types

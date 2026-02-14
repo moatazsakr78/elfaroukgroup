@@ -16,6 +16,7 @@ import {
   BACKUP_VERSION,
   TABLE_LEVELS,
   ALL_TABLES_ORDERED,
+  MAX_ROWS_PER_CHUNK,
 } from '@/app/lib/backup/backup-config';
 
 interface ValidationResult {
@@ -132,6 +133,15 @@ interface ImportResult {
     error?: string;
   }[];
   verification: ImportVerification[];
+}
+
+async function safeJsonParse(res: Response): Promise<any> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(text.slice(0, 200) || 'استجابة غير صالحة من السيرفر');
+  }
 }
 
 export default function BackupSettings() {
@@ -315,11 +325,11 @@ export default function BackupSettings() {
       });
 
       if (!initRes.ok) {
-        const err = await initRes.json();
+        const err = await safeJsonParse(initRes);
         throw new Error(err.error || 'فشل تهيئة الاستيراد');
       }
 
-      const { protectUserId, tablesTotal } = await initRes.json();
+      const { protectUserId, tablesTotal } = await safeJsonParse(initRes);
 
       // Phase 2: Send tables one by one in dependency order
       const tablesToImport = TABLE_LEVELS.flat().filter(
@@ -333,48 +343,70 @@ export default function BackupSettings() {
         const tableName = tablesToImport[i];
         const rows = backup.tables[tableName];
 
-        const tableRes = await fetch('/api/backup/import/table', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            tableName,
-            rows,
-            protectUserId,
-            progressInfo: {
-              progress: Math.round(((tablesTotal + i + 1) / (tablesTotal * 2 + 2)) * 100),
-              tablesCompleted: i + 1,
-              tablesTotal,
-            },
-          }),
-        });
-
-        if (!tableRes.ok) {
-          const err = await tableRes.json();
-          results.push({
-            table: tableName,
-            expected: rows.length,
-            inserted: 0,
-            status: 'error',
-            error: err.error || 'فشل الاستيراد',
-          });
-          continue;
+        // Split large tables into chunks to stay under Vercel's 4.5MB payload limit
+        const chunks: any[][] = [];
+        if (rows.length > MAX_ROWS_PER_CHUNK) {
+          for (let offset = 0; offset < rows.length; offset += MAX_ROWS_PER_CHUNK) {
+            chunks.push(rows.slice(offset, offset + MAX_ROWS_PER_CHUNK));
+          }
+        } else {
+          chunks.push(rows);
         }
 
-        const tableResult = await tableRes.json();
+        let totalInserted = 0;
+        let chunkError: string | undefined;
+        let tableStatus: 'ok' | 'partial' | 'error' = 'ok';
+
+        for (let c = 0; c < chunks.length; c++) {
+          try {
+            const tableRes = await fetch('/api/backup/import/table', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                tableName,
+                rows: chunks[c],
+                protectUserId,
+                progressInfo: {
+                  progress: Math.round(((tablesTotal + i + 1) / (tablesTotal * 2 + 2)) * 100),
+                  tablesCompleted: i + 1,
+                  tablesTotal,
+                },
+              }),
+            });
+
+            if (!tableRes.ok) {
+              const err = await safeJsonParse(tableRes);
+              chunkError = err.error || `فشل استيراد الجزء ${c + 1}/${chunks.length}`;
+              tableStatus = totalInserted > 0 ? 'partial' : 'error';
+              continue;
+            }
+
+            const tableResult = await safeJsonParse(tableRes);
+            totalInserted += tableResult.inserted || 0;
+
+            if (tableResult.circularOriginals) {
+              allCircularUpdates.push({
+                table: tableName,
+                entries: tableResult.circularOriginals,
+              });
+            }
+          } catch (err: any) {
+            chunkError = err.message || `فشل استيراد الجزء ${c + 1}/${chunks.length}`;
+            tableStatus = totalInserted > 0 ? 'partial' : 'error';
+          }
+        }
+
+        if (tableStatus === 'ok' && totalInserted < rows.length) {
+          tableStatus = 'partial';
+        }
+
         results.push({
-          table: tableResult.table,
-          expected: tableResult.expected,
-          inserted: tableResult.inserted,
-          status: tableResult.status,
-          error: tableResult.error,
+          table: tableName,
+          expected: rows.length,
+          inserted: totalInserted,
+          status: tableStatus,
+          error: chunkError,
         });
-
-        if (tableResult.circularOriginals) {
-          allCircularUpdates.push({
-            table: tableName,
-            entries: tableResult.circularOriginals,
-          });
-        }
       }
 
       // Phase 3: Finalize - circular FK updates + verification
@@ -395,11 +427,11 @@ export default function BackupSettings() {
       });
 
       if (!finalRes.ok) {
-        const err = await finalRes.json();
+        const err = await safeJsonParse(finalRes);
         throw new Error(err.error || 'فشل إنهاء الاستيراد');
       }
 
-      const { verification } = await finalRes.json();
+      const { verification } = await safeJsonParse(finalRes);
 
       const importResult: ImportResult = {
         success: results.every((r) => r.status !== 'error'),
