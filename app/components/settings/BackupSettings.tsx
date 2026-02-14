@@ -11,6 +11,12 @@ import {
   XCircleIcon,
   InformationCircleIcon,
 } from '@heroicons/react/24/outline';
+import {
+  BACKUP_FORMAT,
+  BACKUP_VERSION,
+  TABLE_LEVELS,
+  ALL_TABLES_ORDERED,
+} from '@/app/lib/backup/backup-config';
 
 interface ValidationResult {
   valid: boolean;
@@ -22,6 +28,77 @@ interface ValidationResult {
     table_count: number;
     total_rows: number;
   } | null;
+}
+
+interface ParsedBackup {
+  _meta: any;
+  _manifest: Record<string, any>;
+  tables: Record<string, any[]>;
+}
+
+function validateBackupClientSide(backup: any): ValidationResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  if (!backup || typeof backup !== 'object') {
+    return { valid: false, errors: ['الملف ليس بتنسيق JSON صالح'], warnings: [], summary: null };
+  }
+
+  if (!backup._meta) {
+    return { valid: false, errors: ['الملف لا يحتوي على بيانات وصفية (_meta)'], warnings: [], summary: null };
+  }
+
+  if (backup._meta.format !== BACKUP_FORMAT) {
+    errors.push(`تنسيق الملف غير صحيح: ${backup._meta.format || 'غير محدد'}`);
+  }
+
+  if (backup._meta.version !== BACKUP_VERSION) {
+    warnings.push(`إصدار النسخة (${backup._meta.version}) يختلف عن الإصدار الحالي (${BACKUP_VERSION})`);
+  }
+
+  if (!backup._manifest || typeof backup._manifest !== 'object') {
+    errors.push('الملف لا يحتوي على سجل المحتويات (_manifest)');
+  }
+
+  if (!backup.tables || typeof backup.tables !== 'object') {
+    errors.push('الملف لا يحتوي على بيانات الجداول (tables)');
+  }
+
+  if (errors.length > 0) {
+    return { valid: false, errors, warnings, summary: null };
+  }
+
+  // Verify per-table row counts against manifest
+  const tableNames = Object.keys(backup.tables);
+  for (const tableName of tableNames) {
+    const tableData = backup.tables[tableName];
+    const manifestEntry = backup._manifest[tableName];
+
+    if (!manifestEntry) {
+      warnings.push(`الجدول ${tableName} غير موجود في سجل المحتويات`);
+      continue;
+    }
+
+    if (!Array.isArray(tableData)) {
+      errors.push(`بيانات الجدول ${tableName} ليست مصفوفة`);
+      continue;
+    }
+
+    if (tableData.length !== manifestEntry.row_count) {
+      errors.push(
+        `عدد صفوف ${tableName}: متوقع ${manifestEntry.row_count}، موجود ${tableData.length}`
+      );
+    }
+  }
+
+  const summary = {
+    created_at: backup._meta.created_at || 'غير محدد',
+    created_by: backup._meta.created_by || 'غير محدد',
+    table_count: backup._meta.table_count || tableNames.length,
+    total_rows: backup._meta.total_rows || 0,
+  };
+
+  return { valid: errors.length === 0, errors, warnings, summary };
 }
 
 interface ProgressState {
@@ -62,6 +139,7 @@ export default function BackupSettings() {
 
   // Import state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [parsedBackup, setParsedBackup] = useState<ParsedBackup | null>(null);
   const [isValidating, setIsValidating] = useState(false);
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [isImporting, setIsImporting] = useState(false);
@@ -149,22 +227,35 @@ export default function BackupSettings() {
   const handleFileSelect = async (file: File) => {
     setSelectedFile(file);
     setValidation(null);
+    setParsedBackup(null);
     setImportResult(null);
     setImportError('');
     setShowConfirm(false);
     setConfirmText('');
 
-    // Auto-validate
+    // Client-side validation - no server call needed
     setIsValidating(true);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const res = await fetch('/api/backup/validate', {
-        method: 'POST',
-        body: formData,
-      });
-      const result = await res.json();
+      const text = await file.text();
+      let backup: any;
+      try {
+        backup = JSON.parse(text);
+      } catch {
+        setValidation({
+          valid: false,
+          errors: ['فشل قراءة الملف - تأكد أنه ملف JSON صالح'],
+          warnings: [],
+          summary: null,
+        });
+        return;
+      }
+
+      const result = validateBackupClientSide(backup);
       setValidation(result);
+
+      if (result.valid) {
+        setParsedBackup(backup);
+      }
     } catch (err: any) {
       setValidation({
         valid: false,
@@ -200,7 +291,7 @@ export default function BackupSettings() {
   // Import
   // ============================
   const handleImport = async () => {
-    if (!selectedFile || confirmText !== 'تأكيد') return;
+    if (!parsedBackup || confirmText !== 'تأكيد') return;
 
     setIsImporting(true);
     setImportError('');
@@ -209,21 +300,110 @@ export default function BackupSettings() {
     startPolling();
 
     try {
-      const formData = new FormData();
-      formData.append('file', selectedFile);
+      const backup = parsedBackup;
+      const tableList = Object.keys(backup.tables);
 
-      const res = await fetch('/api/backup/import', {
+      // Phase 1: Init - send meta + table list, server deletes old data
+      const initRes = await fetch('/api/backup/import/init', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ _meta: backup._meta, tableList }),
       });
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'فشل الاستيراد');
+      if (!initRes.ok) {
+        const err = await initRes.json();
+        throw new Error(err.error || 'فشل تهيئة الاستيراد');
       }
 
-      const result: ImportResult = await res.json();
-      setImportResult(result);
+      const { protectUserId, tablesTotal } = await initRes.json();
+
+      // Phase 2: Send tables one by one in dependency order
+      const tablesToImport = TABLE_LEVELS.flat().filter(
+        (t) => backup.tables[t] && backup.tables[t].length > 0
+      );
+
+      const results: ImportResult['results'] = [];
+      const allCircularUpdates: { table: string; entries: Record<string, any> }[] = [];
+
+      for (let i = 0; i < tablesToImport.length; i++) {
+        const tableName = tablesToImport[i];
+        const rows = backup.tables[tableName];
+
+        const tableRes = await fetch('/api/backup/import/table', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tableName,
+            rows,
+            protectUserId,
+            progressInfo: {
+              progress: Math.round(((tablesTotal + i + 1) / (tablesTotal * 2 + 2)) * 100),
+              tablesCompleted: i + 1,
+              tablesTotal,
+            },
+          }),
+        });
+
+        if (!tableRes.ok) {
+          const err = await tableRes.json();
+          results.push({
+            table: tableName,
+            expected: rows.length,
+            inserted: 0,
+            status: 'error',
+            error: err.error || 'فشل الاستيراد',
+          });
+          continue;
+        }
+
+        const tableResult = await tableRes.json();
+        results.push({
+          table: tableResult.table,
+          expected: tableResult.expected,
+          inserted: tableResult.inserted,
+          status: tableResult.status,
+          error: tableResult.error,
+        });
+
+        if (tableResult.circularOriginals) {
+          allCircularUpdates.push({
+            table: tableName,
+            entries: tableResult.circularOriginals,
+          });
+        }
+      }
+
+      // Phase 3: Finalize - circular FK updates + verification
+      const tableManifest: Record<string, number> = {};
+      for (const t of ALL_TABLES_ORDERED) {
+        if (backup.tables[t]) {
+          tableManifest[t] = backup.tables[t].length;
+        }
+      }
+
+      const finalRes = await fetch('/api/backup/import/finalize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          circularUpdates: allCircularUpdates,
+          tableManifest,
+        }),
+      });
+
+      if (!finalRes.ok) {
+        const err = await finalRes.json();
+        throw new Error(err.error || 'فشل إنهاء الاستيراد');
+      }
+
+      const { verification } = await finalRes.json();
+
+      const importResult: ImportResult = {
+        success: results.every((r) => r.status !== 'error'),
+        results,
+        verification: verification || [],
+      };
+
+      setImportResult(importResult);
     } catch (err: any) {
       setImportError(err.message);
     } finally {
