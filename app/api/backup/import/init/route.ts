@@ -103,7 +103,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { _meta, tableList } = body;
 
-    if (!_meta || _meta.format !== BACKUP_FORMAT) {
+    if (!_meta || !_meta.format?.endsWith('-backup')) {
       return NextResponse.json({ error: 'تنسيق الملف غير صحيح' }, { status: 400 });
     }
 

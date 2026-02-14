@@ -185,7 +185,7 @@ export async function POST(request: Request) {
     }
 
     // Quick validation
-    if (backup._meta?.format !== BACKUP_FORMAT) {
+    if (!backup._meta?.format?.endsWith('-backup')) {
       return NextResponse.json({ error: 'تنسيق الملف غير صحيح' }, { status: 400 });
     }
 

@@ -49,7 +49,11 @@ function validateBackupClientSide(backup: any): ValidationResult {
   }
 
   if (backup._meta.format !== BACKUP_FORMAT) {
-    errors.push(`تنسيق الملف غير صحيح: ${backup._meta.format || 'غير محدد'}`);
+    if (typeof backup._meta.format === 'string' && backup._meta.format.endsWith('-backup')) {
+      warnings.push(`النسخة من مشروع مختلف: ${backup._meta.format}`);
+    } else {
+      errors.push(`تنسيق الملف غير صحيح: ${backup._meta.format || 'غير محدد'}`);
+    }
   }
 
   if (backup._meta.version !== BACKUP_VERSION) {
