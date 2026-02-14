@@ -46,7 +46,7 @@ async function deleteTableData(tableName: string, protectUserId?: string) {
     const { error } = await supabaseAdmin
       .from(tableName)
       .delete()
-      .neq('user_id', protectUserId);
+      .neq('id', protectUserId);
     if (error) throw new Error(`حذف ${tableName}: ${error.message}`);
     return;
   }
@@ -151,7 +151,7 @@ export async function POST(request: Request) {
     // Check admin
     const { data: profile } = await supabaseAdmin
       .from('user_profiles')
-      .select('is_admin, user_id')
+      .select('is_admin')
       .eq('id', session.user.id)
       .single();
 
@@ -261,7 +261,7 @@ export async function POST(request: Request) {
           filteredRows = rows.filter((r) => r.id !== protectUserId);
         }
         if (protectUserId && tableName === 'user_profiles') {
-          filteredRows = rows.filter((r) => r.user_id !== protectUserId);
+          filteredRows = rows.filter((r) => r.id !== protectUserId);
         }
 
         // Nullify circular FK columns

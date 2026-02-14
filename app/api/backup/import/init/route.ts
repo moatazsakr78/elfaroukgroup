@@ -35,7 +35,7 @@ async function deleteTableData(tableName: string, protectUserId?: string) {
     const { error } = await supabaseAdmin
       .from(tableName)
       .delete()
-      .neq('user_id', protectUserId);
+      .neq('id', protectUserId);
     if (error) throw new Error(`حذف ${tableName}: ${error.message}`);
     return;
   }
@@ -84,7 +84,7 @@ export async function POST(request: Request) {
 
     const { data: profile } = await supabaseAdmin
       .from('user_profiles')
-      .select('is_admin, user_id')
+      .select('is_admin')
       .eq('id', session.user.id)
       .single();
 

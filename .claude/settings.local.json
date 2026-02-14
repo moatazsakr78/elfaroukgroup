@@ -356,7 +356,8 @@
       "Bash(head:*)",
       "Bash(git stash:*)",
       "Bash(python3 -c \" import json, sys data = json.load\\(sys.stdin\\) # Extract table names from the response text = data[0][''text''] if data else '''' tables = json.loads\\(text\\) for t in tables: print\\(f\"\"{t[''name'']} \\(pk: {[c[''name''] for c in t.get\\(''columns'', []\\) if c.get\\(''is_identity''\\) or c.get\\(''name''\\) == ''id'']}\\)\"\"\\)\")",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(git -C /c/Users/pc/Desktop/ringo log --all --full-history -p -- \"*backup*\")"
     ],
     "deny": [],
     "additionalDirectories": [
