@@ -3,18 +3,18 @@ import { CartItemData, CartItemInsert, CartSession, CartCache } from './cart-uti
 
 export class CartService {
   static supabase = supabase;
-  
+
   // Fetch cart items from Supabase with product details
-  static async getCartItems(sessionId: string, brandId?: string | null): Promise<CartItemData[]> {
+  static async getCartItems(sessionId: string): Promise<CartItemData[]> {
     try {
       // Check cache first
-      const cacheKey = brandId ? `cart_${sessionId}_${brandId}` : `cart_${sessionId}`;
+      const cacheKey = `cart_${sessionId}`;
       const cached = CartCache.get(cacheKey);
       if (cached && !CartCache.isExpired(cacheKey)) {
         return cached;
       }
 
-      let query = supabase
+      const { data, error } = await supabase
         .from('cart_items')
         .select(`
           *,
@@ -27,13 +27,6 @@ export class CartService {
         `)
         .eq('session_id', sessionId)
         .order('created_at', { ascending: false });
-
-      // Filter by brand if provided (separate carts per brand)
-      if (brandId) {
-        query = query.eq('brand_id', brandId);
-      }
-
-      const { data, error } = await query;
 
       if (error) {
         console.error('Error fetching cart items:', error);
@@ -51,7 +44,7 @@ export class CartService {
       return [];
     }
   }
-  
+
   // Add item to cart
   static async addToCart(
     sessionId: string,
@@ -61,8 +54,7 @@ export class CartService {
     selectedColor?: string,
     selectedShape?: string,
     selectedSize?: string,
-    notes?: string,
-    brandId?: string | null
+    notes?: string
   ): Promise<CartItemData | null> {
     try {
       console.log('🏪 CartService.addToCart called with:', {
@@ -76,17 +68,11 @@ export class CartService {
         notes
       });
       // Check if item already exists in cart (handle null values properly)
-      let existingQuery = supabase
+      const { data: existingItems } = await supabase
         .from('cart_items')
         .select('*')
         .eq('session_id', sessionId)
         .eq('product_id', productId);
-
-      if (brandId) {
-        existingQuery = existingQuery.eq('brand_id', brandId);
-      }
-
-      const { data: existingItems } = await existingQuery;
 
       // Find matching item considering null/empty string equivalence
       const existingItem = existingItems?.find(item => {
@@ -117,9 +103,6 @@ export class CartService {
           selected_size: selectedSize,
           notes: notes || null
         };
-        if (brandId) {
-          insertData.brand_id = brandId;
-        }
 
         const { data, error } = await supabase
           .from('cart_items')
@@ -134,7 +117,7 @@ export class CartService {
             )
           `)
           .single();
-        
+
         if (error) {
           console.error('❌ Error adding to cart:', {
             code: error.code,
@@ -148,12 +131,11 @@ export class CartService {
           });
           return null;
         }
-        
-        
+
+
         // Clear cache to force refresh
-        const cacheKey = brandId ? `cart_${sessionId}_${brandId}` : `cart_${sessionId}`;
-        CartCache.clear(cacheKey);
-        
+        CartCache.clear(`cart_${sessionId}`);
+
         return data;
       }
     } catch (error) {
@@ -161,7 +143,7 @@ export class CartService {
       return null;
     }
   }
-  
+
   // Update cart item quantity
   static async updateCartItemQuantity(itemId: string, newQuantity: number): Promise<CartItemData | null> {
     try {
@@ -271,7 +253,7 @@ export class CartService {
       return null;
     }
   }
-  
+
   // Remove item from cart
   static async removeFromCart(itemId: string): Promise<boolean> {
     try {
@@ -279,77 +261,65 @@ export class CartService {
         .from('cart_items')
         .delete()
         .eq('id', itemId);
-      
+
       if (error) {
         console.error('Error removing from cart:', error);
         return false;
       }
-      
+
       // Clear cache
       CartCache.clear();
-      
+
       return true;
     } catch (error) {
       console.error('Error in removeFromCart:', error);
       return false;
     }
   }
-  
+
   // Clear entire cart for session
-  static async clearCart(sessionId: string, brandId?: string | null): Promise<boolean> {
+  static async clearCart(sessionId: string): Promise<boolean> {
     try {
-      let query = supabase
+      const { error } = await supabase
         .from('cart_items')
         .delete()
         .eq('session_id', sessionId);
 
-      if (brandId) {
-        query = query.eq('brand_id', brandId);
-      }
-
-      const { error } = await query;
-      
       if (error) {
         console.error('Error clearing cart:', error);
         return false;
       }
-      
+
       // Clear cache
       CartCache.clear(`cart_${sessionId}`);
-      
+
       return true;
     } catch (error) {
       console.error('Error in clearCart:', error);
       return false;
     }
   }
-  
+
   // Get cart item count
-  static async getCartItemCount(sessionId: string, brandId?: string | null): Promise<number> {
+  static async getCartItemCount(sessionId: string): Promise<number> {
     try {
-      let query = supabase
+      const { count, error } = await supabase
         .from('cart_items')
         .select('*', { count: 'exact', head: true })
         .eq('session_id', sessionId);
 
-      if (brandId) {
-        query = query.eq('brand_id', brandId);
-      }
-
-      const { count, error } = await query;
-      
       if (error) {
         console.error('Error getting cart count:', error);
         return 0;
       }
-      
+
       return count || 0;
     } catch (error) {
       console.error('Error in getCartItemCount:', error);
       return 0;
     }
   }
-  
+
   // Subscribe to cart changes (real-time)
   static subscribeToCartChanges(
     sessionId: string,
@@ -376,10 +346,10 @@ export class CartService {
         }
       )
       .subscribe();
-    
+
     return channel;
   }
-  
+
   // Unsubscribe from cart changes
   static unsubscribeFromCartChanges(channelName: string) {
     const channel = supabase.getChannels().find(ch => ch.topic === channelName);

@@ -15,8 +15,9 @@ import {
   EyeSlashIcon,
   CheckCircleIcon,
   ExclamationTriangleIcon,
-  TagIcon
+  ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline';
+import BackupSettings from '@/app/components/settings/BackupSettings';
 import TopHeader from '@/app/components/layout/TopHeader';
 import Sidebar from '@/app/components/layout/Sidebar';
 import { Currency, DEFAULT_SYSTEM_CURRENCY, DEFAULT_WEBSITE_CURRENCY, DEFAULT_UNIFIED_CURRENCY, CURRENCY_MODES } from '@/lib/constants/currencies';
@@ -194,16 +195,16 @@ const settingsCategories: SettingsCategory[] = [
     description: 'إعدادات ظهور المنتجات في المتجر'
   },
   {
-    id: 'brand',
-    name: 'العلامات التجارية',
-    icon: TagIcon,
-    description: 'إدارة العلامات التجارية والبراندات'
-  },
-  {
     id: 'security',
     name: 'الأمان',
     icon: ShieldCheckIcon,
     description: 'إعدادات الأمان وكلمات المرور'
+  },
+  {
+    id: 'backup',
+    name: 'النسخ الاحتياطي',
+    icon: ArrowDownTrayIcon,
+    description: 'تصدير واستيراد نسخة احتياطية من البيانات'
   }
 ];
 
@@ -323,29 +324,6 @@ export default function SettingsPage() {
   const [showTokenValue, setShowTokenValue] = useState(false);
   const [isSavingToken, setIsSavingToken] = useState(false);
 
-  // Brand Management State
-  const [brands, setBrands2] = useState<any[]>([]);
-  const [isLoadingBrands, setIsLoadingBrands] = useState(true);
-  const [isBrandModalOpen, setIsBrandModalOpen] = useState(false);
-  const [editingBrand, setEditingBrand] = useState<any | null>(null);
-  const [isSavingBrand, setIsSavingBrand] = useState(false);
-  const [deletingBrandId, setDeletingBrandId] = useState<string | null>(null);
-  const [brandForm, setBrandForm] = useState({
-    name: '',
-    name_ar: '',
-    slug: '',
-    domain: '',
-    logo_url: '',
-    theme_color: '#DC2626',
-    primary_color: '#3B82F6',
-    background_color: '#111827',
-    default_currency: 'ريال',
-    website_currency: 'جنيه',
-    meta_title: '',
-    meta_description: '',
-    is_active: true,
-  });
-
   // Store Display Settings using hook
   const {
     showQuantityInStore,
@@ -410,31 +388,6 @@ export default function SettingsPage() {
     };
 
     loadSecuritySettings();
-  }, []);
-
-  // Load brands
-  useEffect(() => {
-    const loadBrands = async () => {
-      try {
-        const { data, error } = await (supabase as any)
-          .from('brands')
-          .select('*')
-          .order('is_default', { ascending: false })
-          .order('created_at', { ascending: true });
-
-        if (error) {
-          console.error('Error loading brands:', error);
-          return;
-        }
-        setBrands2(data || []);
-      } catch (err) {
-        console.error('Error loading brands:', err);
-      } finally {
-        setIsLoadingBrands(false);
-      }
-    };
-
-    loadBrands();
   }, []);
 
   // Load product display mode and branches from database
@@ -1853,301 +1806,6 @@ export default function SettingsPage() {
     );
   };
 
-  // Brand Management Functions
-  const resetBrandForm = () => {
-    setBrandForm({
-      name: '',
-      name_ar: '',
-      slug: '',
-      domain: '',
-      logo_url: '',
-      theme_color: '#DC2626',
-      primary_color: '#3B82F6',
-      background_color: '#111827',
-      default_currency: 'ريال',
-      website_currency: 'جنيه',
-      meta_title: '',
-      meta_description: '',
-      is_active: true,
-    });
-  };
-
-  const openAddBrandModal = () => {
-    resetBrandForm();
-    setEditingBrand(null);
-    setIsBrandModalOpen(true);
-  };
-
-  const openEditBrandModal = (brand: any) => {
-    setEditingBrand(brand);
-    setBrandForm({
-      name: brand.name || '',
-      name_ar: brand.name_ar || '',
-      slug: brand.slug || '',
-      domain: brand.domain || '',
-      logo_url: brand.logo_url || '',
-      theme_color: brand.theme_color || '#DC2626',
-      primary_color: brand.primary_color || '#3B82F6',
-      background_color: brand.background_color || '#111827',
-      default_currency: brand.default_currency || 'ريال',
-      website_currency: brand.website_currency || 'جنيه',
-      meta_title: brand.meta_title || '',
-      meta_description: brand.meta_description || '',
-      is_active: brand.is_active !== false,
-    });
-    setIsBrandModalOpen(true);
-  };
-
-  const generateSlug = (name: string) => {
-    return name
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9\u0621-\u064A\s-]/g, '')
-      .replace(/\s+/g, '-')
-      .replace(/-+/g, '-');
-  };
-
-  const handleSaveBrand = async () => {
-    if (!brandForm.name.trim() || !brandForm.slug.trim()) {
-      alert('يرجى ملء اسم العلامة التجارية والـ Slug');
-      return;
-    }
-
-    setIsSavingBrand(true);
-    try {
-      const brandData = {
-        name: brandForm.name.trim(),
-        name_ar: brandForm.name_ar.trim() || null,
-        slug: brandForm.slug.trim(),
-        domain: brandForm.domain.trim() || null,
-        logo_url: brandForm.logo_url.trim() || null,
-        theme_color: brandForm.theme_color,
-        primary_color: brandForm.primary_color,
-        background_color: brandForm.background_color,
-        default_currency: brandForm.default_currency || 'ريال',
-        website_currency: brandForm.website_currency || 'جنيه',
-        meta_title: brandForm.meta_title.trim() || null,
-        meta_description: brandForm.meta_description.trim() || null,
-        is_active: brandForm.is_active,
-        updated_at: new Date().toISOString(),
-      };
-
-      if (editingBrand) {
-        const { error } = await (supabase as any)
-          .from('brands')
-          .update(brandData)
-          .eq('id', editingBrand.id);
-
-        if (error) throw error;
-
-        setBrands2(prev => prev.map(b => b.id === editingBrand.id ? { ...b, ...brandData } : b));
-        alert('تم تحديث العلامة التجارية بنجاح!');
-      } else {
-        const { data, error } = await (supabase as any)
-          .from('brands')
-          .insert(brandData)
-          .select()
-          .single();
-
-        if (error) throw error;
-
-        setBrands2(prev => [...prev, data]);
-        alert('تم إضافة العلامة التجارية بنجاح!');
-      }
-
-      setIsBrandModalOpen(false);
-      setEditingBrand(null);
-      resetBrandForm();
-    } catch (error: any) {
-      console.error('Error saving brand:', error);
-      if (error.code === '23505') {
-        alert('هذا الـ Slug مستخدم بالفعل، يرجى اختيار slug آخر');
-      } else {
-        alert('حدث خطأ أثناء حفظ العلامة التجارية');
-      }
-    } finally {
-      setIsSavingBrand(false);
-    }
-  };
-
-  const handleDeleteBrand = async (brandId: string) => {
-    const brand = brands.find(b => b.id === brandId);
-    if (brand?.is_default) {
-      alert('لا يمكن حذف العلامة التجارية الافتراضية');
-      return;
-    }
-
-    if (!confirm('هل أنت متأكد من حذف هذه العلامة التجارية؟ هذا الإجراء لن يؤثر على المنتجات أو المخزون.')) {
-      return;
-    }
-
-    setDeletingBrandId(brandId);
-    try {
-      const { error } = await (supabase as any)
-        .from('brands')
-        .delete()
-        .eq('id', brandId);
-
-      if (error) throw error;
-
-      setBrands2(prev => prev.filter(b => b.id !== brandId));
-      alert('تم حذف العلامة التجارية بنجاح');
-    } catch (error) {
-      console.error('Error deleting brand:', error);
-      alert('حدث خطأ أثناء حذف العلامة التجارية');
-    } finally {
-      setDeletingBrandId(null);
-    }
-  };
-
-  const renderBrandSettings = () => {
-    return (
-      <div className="space-y-6 max-w-6xl">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-white font-medium text-lg">إدارة العلامات التجارية</h3>
-            <p className="text-gray-400 text-sm mt-1">إدارة البراندات والمتاجر المختلفة - كل براند واجهة متجر مستقلة بنفس المنتجات والمخزون</p>
-          </div>
-          <button
-            onClick={openAddBrandModal}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            إضافة علامة تجارية
-          </button>
-        </div>
-
-        {/* Brands Grid */}
-        {isLoadingBrands ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-          </div>
-        ) : brands.length === 0 ? (
-          <div className="text-center py-12 text-gray-400">
-            <TagIcon className="h-12 w-12 mx-auto mb-4 opacity-50" />
-            <p>لا توجد علامات تجارية بعد</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {brands.map((brand) => (
-              <div
-                key={brand.id}
-                className={`bg-[#374151] rounded-lg border transition-all hover:border-gray-500 ${
-                  brand.is_default ? 'border-blue-500/50' : 'border-gray-600'
-                }`}
-              >
-                {/* Brand Card Header */}
-                <div className="p-4 border-b border-gray-600/50">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      {brand.logo_url ? (
-                        <img
-                          src={brand.logo_url}
-                          alt={brand.name}
-                          className="w-10 h-10 rounded-lg object-cover bg-gray-800"
-                        />
-                      ) : (
-                        <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-lg" style={{ backgroundColor: brand.theme_color || '#DC2626' }}>
-                          {(brand.name_ar || brand.name || '?')[0]}
-                        </div>
-                      )}
-                      <div>
-                        <h4 className="text-white font-medium text-sm">{brand.name_ar || brand.name}</h4>
-                        <p className="text-gray-400 text-xs" style={{ direction: 'ltr', textAlign: 'left' }}>{brand.slug}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {brand.is_default && (
-                        <span className="px-2 py-0.5 bg-blue-600/20 text-blue-400 text-xs rounded-full">افتراضي</span>
-                      )}
-                      <span className={`px-2 py-0.5 text-xs rounded-full ${
-                        brand.is_active
-                          ? 'bg-green-600/20 text-green-400'
-                          : 'bg-red-600/20 text-red-400'
-                      }`}>
-                        {brand.is_active ? 'نشط' : 'غير نشط'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Brand Card Body */}
-                <div className="p-4 space-y-3">
-                  {/* Domain */}
-                  {brand.domain && (
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-300 text-xs" style={{ direction: 'ltr' }}>{brand.domain}</span>
-                      <span className="text-gray-500 text-xs">الدومين</span>
-                    </div>
-                  )}
-
-                  {/* Currencies */}
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-300 text-xs">{brand.default_currency || 'ريال'} / {brand.website_currency || 'جنيه'}</span>
-                    <span className="text-gray-500 text-xs">العملات</span>
-                  </div>
-
-                  {/* Colors */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="w-5 h-5 rounded-full border border-gray-500"
-                        style={{ backgroundColor: brand.theme_color || '#DC2626' }}
-                        title="لون الثيم"
-                      />
-                      <div
-                        className="w-5 h-5 rounded-full border border-gray-500"
-                        style={{ backgroundColor: brand.primary_color || '#3B82F6' }}
-                        title="اللون الرئيسي"
-                      />
-                      <div
-                        className="w-5 h-5 rounded-full border border-gray-500"
-                        style={{ backgroundColor: brand.background_color || '#111827' }}
-                        title="لون الخلفية"
-                      />
-                    </div>
-                    <span className="text-gray-500 text-xs">الألوان</span>
-                  </div>
-                </div>
-
-                {/* Brand Card Actions */}
-                <div className="p-3 border-t border-gray-600/50 flex items-center gap-2 justify-end">
-                  <button
-                    onClick={() => openEditBrandModal(brand)}
-                    className="px-3 py-1.5 bg-[#2B3544] hover:bg-gray-600 text-gray-300 rounded text-xs transition-colors flex items-center gap-1"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                    تعديل
-                  </button>
-                  {!brand.is_default && (
-                    <button
-                      onClick={() => handleDeleteBrand(brand.id)}
-                      disabled={deletingBrandId === brand.id}
-                      className="px-3 py-1.5 bg-red-600/10 hover:bg-red-600/20 text-red-400 rounded text-xs transition-colors flex items-center gap-1 disabled:opacity-50"
-                    >
-                      {deletingBrandId === brand.id ? (
-                        <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-red-400"></div>
-                      ) : (
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      )}
-                      حذف
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  };
 
   const renderSettingsContent = () => {
     switch (selectedCategory) {
@@ -2159,10 +1817,10 @@ export default function SettingsPage() {
         return renderCompanySettings();
       case 'store':
         return renderStoreSettings();
-      case 'brand':
-        return renderBrandSettings();
       case 'security':
         return renderSecuritySettings();
+      case 'backup':
+        return <BackupSettings />;
       default:
         return renderPlaceholderContent(selectedCategory);
     }
@@ -2424,241 +2082,6 @@ export default function SettingsPage() {
                 className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
               >
                 حفظ التعديلات
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Brand Add/Edit Modal */}
-      {isBrandModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]">
-          <div className="bg-[#2B3544] rounded-lg p-6 w-full max-w-2xl border border-gray-600 max-h-[90vh] overflow-y-auto scrollbar-hide">
-            <h3 className="text-white text-xl font-bold mb-6">
-              {editingBrand ? 'تعديل العلامة التجارية' : 'إضافة علامة تجارية جديدة'}
-            </h3>
-
-            <div className="space-y-4">
-              {/* Row 1: Name + Name AR */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-white text-sm font-medium mb-2">الاسم (English)</label>
-                  <input
-                    type="text"
-                    value={brandForm.name}
-                    onChange={(e) => {
-                      const name = e.target.value;
-                      setBrandForm(prev => ({
-                        ...prev,
-                        name,
-                        slug: !editingBrand ? generateSlug(name) : prev.slug,
-                      }));
-                    }}
-                    placeholder="Brand Name"
-                    className="w-full px-3 py-2 bg-[#374151] border border-gray-600 rounded text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                    style={{ direction: 'ltr' }}
-                  />
-                </div>
-                <div>
-                  <label className="block text-white text-sm font-medium mb-2">الاسم (عربي)</label>
-                  <input
-                    type="text"
-                    value={brandForm.name_ar}
-                    onChange={(e) => setBrandForm(prev => ({ ...prev, name_ar: e.target.value }))}
-                    placeholder="اسم العلامة التجارية"
-                    className="w-full px-3 py-2 bg-[#374151] border border-gray-600 rounded text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-right"
-                  />
-                </div>
-              </div>
-
-              {/* Row 2: Slug + Domain */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-white text-sm font-medium mb-2">Slug (رابط URL)</label>
-                  <input
-                    type="text"
-                    value={brandForm.slug}
-                    onChange={(e) => setBrandForm(prev => ({ ...prev, slug: e.target.value.toLowerCase().replace(/\s+/g, '-') }))}
-                    placeholder="brand-slug"
-                    className="w-full px-3 py-2 bg-[#374151] border border-gray-600 rounded text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                    style={{ direction: 'ltr' }}
-                  />
-                </div>
-                <div>
-                  <label className="block text-white text-sm font-medium mb-2">الدومين</label>
-                  <input
-                    type="text"
-                    value={brandForm.domain}
-                    onChange={(e) => setBrandForm(prev => ({ ...prev, domain: e.target.value }))}
-                    placeholder="brand.example.com"
-                    className="w-full px-3 py-2 bg-[#374151] border border-gray-600 rounded text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                    style={{ direction: 'ltr' }}
-                  />
-                </div>
-              </div>
-
-              {/* Logo URL */}
-              <div>
-                <label className="block text-white text-sm font-medium mb-2">رابط الشعار</label>
-                <input
-                  type="text"
-                  value={brandForm.logo_url}
-                  onChange={(e) => setBrandForm(prev => ({ ...prev, logo_url: e.target.value }))}
-                  placeholder="https://example.com/logo.png"
-                  className="w-full px-3 py-2 bg-[#374151] border border-gray-600 rounded text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                  style={{ direction: 'ltr' }}
-                />
-              </div>
-
-              {/* Colors Row */}
-              <div>
-                <label className="block text-white text-sm font-medium mb-3">الألوان</label>
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-gray-400 text-xs mb-1.5">لون الثيم</label>
-                    <div className="flex gap-2 items-center">
-                      <input
-                        type="color"
-                        value={brandForm.theme_color}
-                        onChange={(e) => setBrandForm(prev => ({ ...prev, theme_color: e.target.value }))}
-                        className="w-10 h-9 rounded border border-gray-600 cursor-pointer"
-                      />
-                      <input
-                        type="text"
-                        value={brandForm.theme_color}
-                        onChange={(e) => setBrandForm(prev => ({ ...prev, theme_color: e.target.value }))}
-                        className="flex-1 px-2 py-1.5 bg-[#374151] border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
-                        style={{ direction: 'ltr' }}
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-gray-400 text-xs mb-1.5">اللون الرئيسي</label>
-                    <div className="flex gap-2 items-center">
-                      <input
-                        type="color"
-                        value={brandForm.primary_color}
-                        onChange={(e) => setBrandForm(prev => ({ ...prev, primary_color: e.target.value }))}
-                        className="w-10 h-9 rounded border border-gray-600 cursor-pointer"
-                      />
-                      <input
-                        type="text"
-                        value={brandForm.primary_color}
-                        onChange={(e) => setBrandForm(prev => ({ ...prev, primary_color: e.target.value }))}
-                        className="flex-1 px-2 py-1.5 bg-[#374151] border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
-                        style={{ direction: 'ltr' }}
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-gray-400 text-xs mb-1.5">لون الخلفية</label>
-                    <div className="flex gap-2 items-center">
-                      <input
-                        type="color"
-                        value={brandForm.background_color}
-                        onChange={(e) => setBrandForm(prev => ({ ...prev, background_color: e.target.value }))}
-                        className="w-10 h-9 rounded border border-gray-600 cursor-pointer"
-                      />
-                      <input
-                        type="text"
-                        value={brandForm.background_color}
-                        onChange={(e) => setBrandForm(prev => ({ ...prev, background_color: e.target.value }))}
-                        className="flex-1 px-2 py-1.5 bg-[#374151] border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
-                        style={{ direction: 'ltr' }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Currencies Row */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-white text-sm font-medium mb-2">عملة النظام</label>
-                  <input
-                    type="text"
-                    value={brandForm.default_currency}
-                    onChange={(e) => setBrandForm(prev => ({ ...prev, default_currency: e.target.value }))}
-                    placeholder="ريال"
-                    className="w-full px-3 py-2 bg-[#374151] border border-gray-600 rounded text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-right"
-                  />
-                </div>
-                <div>
-                  <label className="block text-white text-sm font-medium mb-2">عملة الموقع</label>
-                  <input
-                    type="text"
-                    value={brandForm.website_currency}
-                    onChange={(e) => setBrandForm(prev => ({ ...prev, website_currency: e.target.value }))}
-                    placeholder="جنيه"
-                    className="w-full px-3 py-2 bg-[#374151] border border-gray-600 rounded text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-right"
-                  />
-                </div>
-              </div>
-
-              {/* SEO Row */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-white text-sm font-medium mb-2">عنوان الـ SEO</label>
-                  <input
-                    type="text"
-                    value={brandForm.meta_title}
-                    onChange={(e) => setBrandForm(prev => ({ ...prev, meta_title: e.target.value }))}
-                    placeholder="عنوان الصفحة للمحركات"
-                    className="w-full px-3 py-2 bg-[#374151] border border-gray-600 rounded text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-right"
-                  />
-                </div>
-                <div>
-                  <label className="block text-white text-sm font-medium mb-2">وصف الـ SEO</label>
-                  <input
-                    type="text"
-                    value={brandForm.meta_description}
-                    onChange={(e) => setBrandForm(prev => ({ ...prev, meta_description: e.target.value }))}
-                    placeholder="وصف الصفحة للمحركات"
-                    className="w-full px-3 py-2 bg-[#374151] border border-gray-600 rounded text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-right"
-                  />
-                </div>
-              </div>
-
-              {/* Active Toggle */}
-              <div className="flex items-center justify-between py-2">
-                <span className="text-white text-sm font-medium">نشط</span>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={brandForm.is_active}
-                    onChange={(e) => setBrandForm(prev => ({ ...prev, is_active: e.target.checked }))}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
-                </label>
-              </div>
-            </div>
-
-            {/* Modal Actions */}
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => {
-                  setIsBrandModalOpen(false);
-                  setEditingBrand(null);
-                  resetBrandForm();
-                }}
-                className="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded transition-colors"
-              >
-                إلغاء
-              </button>
-              <button
-                onClick={handleSaveBrand}
-                disabled={isSavingBrand}
-                className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {isSavingBrand ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    جاري الحفظ...
-                  </>
-                ) : (
-                  editingBrand ? 'حفظ التعديلات' : 'إضافة'
-                )}
               </button>
             </div>
           </div>

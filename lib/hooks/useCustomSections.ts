@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../app/lib/supabase/client';
-import { useBrand } from '@/lib/brand/brand-context';
 
 export interface CustomSection {
   id: string;
@@ -31,7 +30,6 @@ export function useCustomSections() {
   const [sections, setSections] = useState<CustomSection[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { brandId } = useBrand();
 
   // Fetch all custom sections
   const fetchSections = useCallback(async () => {
@@ -39,16 +37,10 @@ export function useCustomSections() {
       setIsLoading(true);
       setError(null);
 
-      let query = (supabase as any)
+      const { data, error: fetchError } = await (supabase as any)
         .from('custom_sections')
         .select('*')
         .order('display_order', { ascending: true });
-
-      if (brandId) {
-        query = query.eq('brand_id', brandId);
-      }
-
-      const { data, error: fetchError } = await query;
 
       if (fetchError) {
         console.error('Error fetching custom sections:', fetchError);
@@ -69,7 +61,7 @@ export function useCustomSections() {
     } finally {
       setIsLoading(false);
     }
-  }, [brandId]);
+  }, []);
 
   // Fetch active custom sections only
   const fetchActiveSections = useCallback(async () => {
@@ -77,17 +69,11 @@ export function useCustomSections() {
       setIsLoading(true);
       setError(null);
 
-      let query = (supabase as any)
+      const { data, error: fetchError } = await (supabase as any)
         .from('custom_sections')
         .select('*')
         .eq('is_active', true)
         .order('display_order', { ascending: true });
-
-      if (brandId) {
-        query = query.eq('brand_id', brandId);
-      }
-
-      const { data, error: fetchError } = await query;
 
       if (fetchError) {
         console.error('Error fetching active custom sections:', fetchError);
@@ -108,7 +94,7 @@ export function useCustomSections() {
     } finally {
       setIsLoading(false);
     }
-  }, [brandId]);
+  }, []);
 
   // Fetch sections with full product details
   const fetchSectionsWithProducts = useCallback(async () => {
@@ -116,19 +102,12 @@ export function useCustomSections() {
       setIsLoading(true);
       setError(null);
 
-      // Build sections query with brand filter
-      let sectionsQuery = (supabase as any)
-        .from('custom_sections')
-        .select('*')
-        .order('display_order', { ascending: true });
-
-      if (brandId) {
-        sectionsQuery = sectionsQuery.eq('brand_id', brandId);
-      }
-
       // Fetch sections and all products in parallel
       const [sectionsResponse, productsResponse] = await Promise.all([
-        sectionsQuery,
+        (supabase as any)
+          .from('custom_sections')
+          .select('*')
+          .order('display_order', { ascending: true }),
         supabase
           .from('products')
           .select('id, name, description, main_image_url, sub_image_url, price, discount_percentage, discount_amount, is_hidden, rating, rating_count')
@@ -183,7 +162,7 @@ export function useCustomSections() {
     } finally {
       setIsLoading(false);
     }
-  }, [brandId]);
+  }, []);
 
   // Create a new custom section
   const createSection = useCallback(async (sectionData: Partial<CustomSection>) => {
@@ -367,7 +346,7 @@ export function useCustomSections() {
   // Initial fetch
   useEffect(() => {
     fetchSections();
-  }, [fetchSections, brandId]);
+  }, [fetchSections]);
 
   return {
     sections,

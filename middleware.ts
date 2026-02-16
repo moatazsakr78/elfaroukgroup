@@ -3,14 +3,9 @@ import type { NextRequest } from 'next/server'
 import { hasPageAccess, rolePermissions, type UserRole } from '@/app/lib/auth/roleBasedAccess'
 import { auth } from '@/lib/auth.config'
 import { PAGE_ACCESS_MAP } from '@/types/permissions'
-import { resolveBrandFromHostname } from '@/lib/brand/brand-resolver'
 
 // Cookie name for storing last valid page
 const LAST_PAGE_COOKIE = 'last_valid_page'
-
-// ✅ تحسين: استخدام الـ session المخزن بدلاً من استعلام الـ database كل مرة
-// الـ pageRestrictions مخزنة في الـ JWT token عند تسجيل الدخول
-// هذا يوفر ~30K function invocation/شهر!
 
 // Helper function to get page access code from pathname
 function getPageAccessCode(pathname: string): string | null {
@@ -75,94 +70,24 @@ export default auth(async (req) => {
     return NextResponse.next()
   }
 
-  // --- Brand Resolution ---
-  // Resolve brand from hostname and inject into request headers
-  const hostname = req.headers.get('host') || 'localhost'
-  console.log('[Middleware] Hostname:', hostname, '| Path:', pathname)
-  let brand: Awaited<ReturnType<typeof resolveBrandFromHostname>> | null = null
-  try {
-    brand = await resolveBrandFromHostname(hostname)
-    console.log('[Middleware] Brand resolved:', brand ? `${brand.slug} (${brand.id}, default=${brand.is_default})` : 'null')
-  } catch (e) {
-    console.error('[Middleware] Brand resolution error:', e instanceof Error ? e.message : e)
-  }
-
-  // Prepare request headers so server components can read brand via headers()
-  const requestHeaders = new Headers(req.headers)
-  if (brand) {
-    requestHeaders.set('x-brand-id', brand.id)
-    requestHeaders.set('x-brand-slug', brand.slug)
-  }
-
-  // Helper to add brand headers to response (for browser/client access)
-  const addBrandHeaders = (response: NextResponse) => {
-    if (brand) {
-      response.headers.set('x-brand-id', brand.id)
-      response.headers.set('x-brand-slug', brand.slug)
-    }
-    return response
-  }
-
-  // For store pages (non-admin, non-auth), rewrite to brand-specific routes
-  const isAdminPath = adminOnlyPaths.some(path =>
-    pathname === path || pathname.startsWith(path + '/')
-  )
-  const isCustomerPath = customerOnlyPaths.some(path =>
-    pathname === path || pathname.startsWith(path + '/')
-  )
-  const isAuthPath = alwaysPublicPaths.some(path => pathname === path || pathname.startsWith(path + '/'))
-  const isApiPath = pathname.startsWith('/api/')
-  const isStoreBrandRoute = pathname.startsWith('/store/')
-
-  // Rewrite homepage and store pages to brand-specific routes
-  // Only if not already a /store/ route, not admin, not auth, not API, not customer-only
-  if (brand && !brand.is_default && !isAdminPath && !isCustomerPath && !isAuthPath && !isApiPath && !isStoreBrandRoute) {
-    // Rewrite store-facing pages to /store/[brandSlug] routes
-    if (pathname === '/') {
-      const url = req.nextUrl.clone()
-      url.pathname = `/store/${brand.slug}`
-      console.log('[Middleware] Rewriting / -> /store/' + brand.slug)
-      const response = NextResponse.rewrite(url, { request: { headers: requestHeaders } })
-      return addBrandHeaders(response)
-    }
-    if (pathname === '/catalog') {
-      const url = req.nextUrl.clone()
-      url.pathname = `/store/${brand.slug}/catalog`
-      console.log('[Middleware] Rewriting /catalog -> /store/' + brand.slug + '/catalog')
-      const response = NextResponse.rewrite(url, { request: { headers: requestHeaders } })
-      return addBrandHeaders(response)
-    }
-  } else if (brand && pathname === '/') {
-    console.log('[Middleware] No rewrite for /:', {
-      is_default: brand.is_default,
-      slug: brand.slug,
-      isAdminPath,
-      isStoreBrandRoute,
-    })
-  }
-
   // Allow always-public paths (login, register, etc.)
+  const isAuthPath = alwaysPublicPaths.some(path => pathname === path || pathname.startsWith(path + '/'))
   if (isAuthPath) {
-    return addBrandHeaders(NextResponse.next({ request: { headers: requestHeaders } }))
+    return NextResponse.next()
   }
 
   // Get session from NextAuth
   const session = req.auth
   const userRole = session?.user?.role as UserRole | null
 
-  // Block admin paths for non-authenticated users
-  if (isAdminPath) {
-    // Debug logging
-    console.log('🔒 Middleware - Admin path access check:', {
-      pathname,
-      hasSession: !!session,
-      userRole,
-      userAgent: req.headers.get('user-agent')?.substring(0, 100)
-    });
+  // Check admin paths
+  const isAdminPath = adminOnlyPaths.some(path =>
+    pathname === path || pathname.startsWith(path + '/')
+  )
 
+  if (isAdminPath) {
     // If no session, redirect to login
     if (!session) {
-      console.log('❌ No session - redirecting to login');
       const loginUrl = new URL('/auth/login', req.url)
       loginUrl.searchParams.set('callbackUrl', pathname)
       return NextResponse.redirect(loginUrl)
@@ -171,48 +96,27 @@ export default auth(async (req) => {
     // Check if user has access based on role
     const hasAccess = hasPageAccess(userRole, pathname)
 
-    console.log('🔍 Access check result:', {
-      userRole,
-      pathname,
-      hasAccess
-    });
-
     if (!hasAccess) {
-      console.log('❌ Access denied - redirecting to home');
       return NextResponse.redirect(new URL('/', req.url))
     }
 
     // Check granular page permissions for employees (from session - NO database query!)
-    // ✅ تحسين: الـ pageRestrictions مخزنة في الـ JWT session عند تسجيل الدخول
     if (userRole === 'موظف' && session.user?.id) {
       const pageCode = getPageAccessCode(pathname)
 
       if (pageCode) {
-        // ✅ استخدام الـ pageRestrictions من الـ session (مخزنة في JWT)
-        // بدلاً من استعلام الـ database كل مرة
         const pageRestrictions = session.user.pageRestrictions || []
-
-        console.log('🔍 Employee permission check (from session):', {
-          userId: session.user.id,
-          pathname,
-          pageCode,
-          restrictionsCount: pageRestrictions.length,
-          isRestricted: pageRestrictions.includes(pageCode)
-        });
 
         if (pageRestrictions.includes(pageCode)) {
           // Employee is restricted from this page - redirect to last valid page
           const lastPage = req.cookies.get(LAST_PAGE_COOKIE)?.value || '/dashboard'
-          console.log('🚫 Employee restricted from page, redirecting to:', lastPage);
           return NextResponse.redirect(new URL(lastPage, req.url))
         }
       }
     }
 
     // Access granted - update last valid page cookie
-    console.log('✅ Access granted');
-    const response = NextResponse.next({ request: { headers: requestHeaders } })
-    addBrandHeaders(response)
+    const response = NextResponse.next()
     response.cookies.set(LAST_PAGE_COOKIE, pathname, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -224,13 +128,16 @@ export default auth(async (req) => {
   }
 
   // Customer paths - just check for session
+  const isCustomerPath = customerOnlyPaths.some(path =>
+    pathname === path || pathname.startsWith(path + '/')
+  )
   if (isCustomerPath && !session) {
     const loginUrl = new URL('/auth/login', req.url)
     loginUrl.searchParams.set('callbackUrl', pathname)
     return NextResponse.redirect(loginUrl)
   }
 
-  return addBrandHeaders(NextResponse.next({ request: { headers: requestHeaders } }))
+  return NextResponse.next()
 })
 
 export const config = {

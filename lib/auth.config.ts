@@ -4,7 +4,6 @@ import Google from "next-auth/providers/google"
 import bcrypt from "bcryptjs"
 import { createClient } from "@supabase/supabase-js"
 import { CLIENT_CONFIG } from "@/client.config"
-import { cookies, headers } from "next/headers"
 
 // Create Supabase client for server-side operations
 const supabase = createClient(
@@ -20,16 +19,6 @@ const supabase = createClient(
     }
   }
 )
-
-// Helper to get brand_id from request headers (set by middleware)
-function getBrandIdFromHeaders(): string | null {
-  try {
-    const headersList = headers()
-    return headersList.get('x-brand-id') || null
-  } catch {
-    return null
-  }
-}
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
@@ -125,8 +114,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             name: authUser.name,
             image: authUser.image,
             role: userRole,
-            pageRestrictions,
-            brandId: (authUser as any).brand_id || null
+            pageRestrictions
           }
         } catch (error) {
           console.error('❌ Auth error during login:', error)
@@ -145,9 +133,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       // Handle Google OAuth sign-in
       if (account?.provider === "google") {
         try {
-          const brandId = getBrandIdFromHeaders()
-
-          // Check if user exists by email (shared accounts across all brands)
+          // Check if user exists by email
           const { data: existingUsers, error: queryError } = await supabase
             .from('auth_users')
             .select('id')
@@ -161,20 +147,15 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
           // If user doesn't exist, create one
           if (!existingUsers || existingUsers.length === 0) {
-            // Create auth_users entry (with brand_id)
-            const insertData: any = {
-              email: user.email!,
-              name: user.name || user.email!.split('@')[0],
-              image: user.image || null,
-              password_hash: '' // No password for OAuth users
-            }
-            if (brandId) {
-              insertData.brand_id = brandId
-            }
-
+            // Create auth_users entry
             const { data: newUser, error: insertError } = await supabase
               .from('auth_users')
-              .insert(insertData)
+              .insert({
+                email: user.email!,
+                name: user.name || user.email!.split('@')[0],
+                image: user.image || null,
+                password_hash: '' // No password for OAuth users
+              })
               .select('id')
               .single()
 
@@ -289,16 +270,15 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         // Initial sign in - set userId and role
         // For Google users, fetch from database
         if (account?.provider === "google") {
-          // Fetch user by email (shared accounts across all brands)
+          // Fetch user by email
           const { data: authUsers, error: authError } = await supabase
             .from('auth_users')
-            .select('id, brand_id')
+            .select('id')
             .eq('email', user.email!)
             .limit(1)
 
           if (!authError && authUsers && authUsers.length > 0) {
             token.userId = authUsers[0].id
-            token.brandId = (authUsers[0] as any).brand_id || null
 
             // Fetch role and permission_id from user_profiles
             const { data: profiles, error: profileError } = await supabase
@@ -328,7 +308,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           token.userId = user.id
           token.role = user.role
           token.pageRestrictions = user.pageRestrictions || []
-          token.brandId = (user as any).brandId || null
         }
       } else if (token.userId && !token.role) {
         // Subsequent requests - role is missing, fetch it again
@@ -369,7 +348,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         session.user.id = token.userId as string
         session.user.role = token.role as string
         session.user.pageRestrictions = token.pageRestrictions as string[] || []
-        ;(session.user as any).brandId = token.brandId as string || null
       }
       return session
     }

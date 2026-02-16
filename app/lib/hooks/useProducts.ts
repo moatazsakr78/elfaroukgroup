@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../supabase/client'
 import { ProductColor } from '../../../components/website/shared/types'
 import { usePreFetchedData } from '@/lib/contexts/PreFetchedDataContext'
-import { useBrand } from '@/lib/brand/brand-context'
 
 export interface Product {
   id: string
@@ -158,7 +157,6 @@ export function useProducts() {
   // Check if we have pre-fetched data from server
   const preFetchedData = usePreFetchedData()
   const hasPreFetchedData = preFetchedData?.products && preFetchedData.products.length > 0
-  const { brandId } = useBrand()
 
   const [products, setProducts] = useState<Product[]>(hasPreFetchedData ? preFetchedData.products : [])
   const [branches, setBranches] = useState<Branch[]>([])
@@ -170,24 +168,6 @@ export function useProducts() {
     try {
       setIsLoading(true)
       setError(null)
-
-      // If brand is set, first get linked product IDs from brand_products
-      let brandProductIds: string[] | null = null
-      if (brandId) {
-        const { data: brandProducts } = await (supabase as any)
-          .from('brand_products')
-          .select('product_id')
-          .eq('brand_id', brandId)
-
-        if (brandProducts && brandProducts.length > 0) {
-          brandProductIds = brandProducts.map((bp: any) => bp.product_id)
-        } else {
-          // Brand has no linked products → empty store
-          setProducts([])
-          setIsLoading(false)
-          return
-        }
-      }
 
       // Fetch products with categories (excluding soft-deleted products)
       let productsQuery = supabase
@@ -204,11 +184,6 @@ export function useProducts() {
         .or('is_deleted.is.null,is_deleted.eq.false')
         .order('display_order', { ascending: true })
         .order('name', { ascending: true })
-
-      // Filter by brand product IDs if available
-      if (brandProductIds) {
-        productsQuery = productsQuery.in('id', brandProductIds)
-      }
 
       const { data: productsData, error: productsError } = await productsQuery
 

@@ -21,7 +21,6 @@ import { useCart } from '@/lib/contexts/CartContext';
 import { useFavorites } from '@/lib/contexts/FavoritesContext';
 import { useCartBadge } from '@/lib/hooks/useCartBadge';
 import { useCompanySettings } from '@/lib/hooks/useCompanySettings';
-import { useBrand } from '@/lib/brand/brand-context';
 import { useProductDisplaySettings } from '@/lib/hooks/useProductDisplaySettings';
 import { useStoreTheme } from '@/lib/hooks/useStoreTheme';
 import { useStoreBackHandler } from '@/lib/hooks/useBackButton';
@@ -79,12 +78,7 @@ export default function DesktopHome({
     whatsappLink?.link_url?.replace('https://wa.me/', '');
 
   // Get company settings
-  const { companyName: rawCompanyName, logoUrl: rawLogoUrl, logoShape, socialMedia, isLoading: isCompanyLoading } = useCompanySettings();
-
-  // Override with brand data if available
-  const { brand } = useBrand();
-  const companyName = brand?.name_ar || brand?.name || rawCompanyName;
-  const logoUrl = brand?.logo_url || rawLogoUrl;
+  const { companyName, logoUrl, logoShape, socialMedia, isLoading: isCompanyLoading } = useCompanySettings();
 
   // Get cart badge count and cart functions
   const { cartBadgeCount } = useCartBadge();

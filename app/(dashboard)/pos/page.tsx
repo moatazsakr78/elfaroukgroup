@@ -2607,6 +2607,12 @@ function POSPageContent() {
 
         // التحقق من صحة المدفوعات للعميل الافتراضي
         if (isDefaultCustomer) {
+          // التحقق من حقل المبلغ المدفوع (الكاش) - لازم يكون >= الإجمالي
+          const enteredPaid = parseFloat(paidAmount);
+          if (paidAmount && !isNaN(enteredPaid) && enteredPaid < discountedTotal) {
+            alert('المبلغ المدفوع أقل من قيمة الفاتورة - العميل الكاش لازم يدفع الإجمالي أو أكتر');
+            return;
+          }
           // العميل الافتراضي: المبلغ المدفوع يجب أن يكون >= قيمة الفاتورة (الباقي/الفكة مسموح)
           if (totalPaid < discountedTotal) {
             alert('العميل الافتراضي لا يقبل البيع بالآجل - يجب دفع قيمة الفاتورة كاملة');
@@ -3493,35 +3499,64 @@ function POSPageContent() {
               white-space: normal;
               overflow-wrap: break-word;
             }
-            
+
             .total-row {
               border-top: 2px solid #000;
               font-weight: 700;
               font-size: 12px;
             }
-            
+            .tbl-close {
+              height: 0;
+              border-top: 2px solid #000;
+              width: calc(100% - 40px);
+              margin: 0 20px;
+            }
+
             .payment-section {
               margin-top: 8px;
               text-align: center;
-              font-size: 11px;
+              font-size: 14px;
+              font-weight: bold;
               padding: 0 2px;
             }
-            
-            .payment-table {
-              width: calc(100% - 40px);
-              border-collapse: collapse;
-              margin: 5px 20px;
-              border: 1px solid #000;
-            }
-            
-            .payment-table th,
-            .payment-table td {
-              border: 1px solid #000;
-              padding: 4px;
-              text-align: center;
+
+            /* Payment grid - div-based for thermal printer reliability */
+            .pay-grid {
+              margin: 5px 4px;
               font-size: 11px;
             }
-            
+            .pay-hline {
+              height: 0;
+              border-top: 1px solid #000;
+            }
+            .pay-hline-thick {
+              height: 0;
+              border-top: 2px solid #000;
+            }
+            .pay-row {
+              display: flex;
+              align-items: stretch;
+              min-height: 22px;
+            }
+            .pay-cell {
+              flex: 1;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              padding: 3px 6px;
+            }
+            .pay-cell-head {
+              font-weight: bold;
+            }
+            .pay-sep {
+              width: 0;
+              border-left: 1px solid #000;
+            }
+            .pay-row-border {
+              border-left: 1px solid #000;
+              border-right: 1px solid #000;
+            }
+
             .footer {
               text-align: center;
               margin-top: 8px;
@@ -3529,7 +3564,7 @@ function POSPageContent() {
               border-top: 1px solid #000;
               padding: 3px 2px 0 2px;
             }
-            
+
             @media print {
               @page {
                 size: 80mm auto;
@@ -3565,7 +3600,18 @@ function POSPageContent() {
               .items-table td {
                 padding: 2px;
               }
-              
+
+              .pay-grid {
+                margin: 5px 0 !important;
+                width: 100% !important;
+              }
+
+              .tbl-close {
+                width: 100% !important;
+                margin: 0 !important;
+                border-top: 2px solid #000 !important;
+              }
+
               /* Ensure no containers limit width */
               * {
                 max-width: none !important;
@@ -3634,6 +3680,7 @@ function POSPageContent() {
               </tr>
             </tbody>
           </table>
+          <div class="tbl-close"></div>
 
           ${(() => {
             const pmNames = dataToUse.paymentMethodNames || {}
@@ -3646,32 +3693,36 @@ function POSPageContent() {
             let paymentRows = ''
             if (pmKeys.length > 0) {
               paymentRows = pmKeys.map(name =>
-                `<tr><td style="text-align: right; padding: 4px 8px;">${name}</td><td style="text-align: left; padding: 4px 8px;">${pmNames[name].toFixed(0)}</td></tr>`
+                `<div class="pay-row pay-row-border"><div class="pay-cell">${pmNames[name].toFixed(0)}</div><div class="pay-sep"></div><div class="pay-cell">${name}</div></div><div class="pay-hline"></div>`
               ).join('')
             } else {
-              paymentRows = `<tr><td style="text-align: right; padding: 4px 8px;">${dataToUse.primaryPaymentMethod || 'كاش'}</td><td style="text-align: left; padding: 4px 8px;">${dataToUse.totalAmount.toFixed(0)}</td></tr>`
+              paymentRows = `<div class="pay-row pay-row-border"><div class="pay-cell">${dataToUse.totalAmount.toFixed(0)}</div><div class="pay-sep"></div><div class="pay-cell">${dataToUse.primaryPaymentMethod || 'كاش'}</div></div><div class="pay-hline"></div>`
             }
             if (hasCreditAmount) {
-              paymentRows += `<tr><td style="text-align: right; padding: 4px 8px; color: #c00;">آجل</td><td style="text-align: left; padding: 4px 8px; color: #c00;">${(dataToUse.creditAmount || 0).toFixed(0)}</td></tr>`
+              paymentRows += `<div class="pay-row pay-row-border"><div class="pay-cell" style="color: #c00;">${(dataToUse.creditAmount || 0).toFixed(0)}</div><div class="pay-sep"></div><div class="pay-cell" style="color: #c00;">آجل</div></div><div class="pay-hline"></div>`
             }
             if (dataToUse.isDefaultCustomer && cashTendered > 0) {
-              paymentRows += `<tr><td style="text-align: right; padding: 4px 8px; font-weight: bold;">المدفوع</td><td style="text-align: left; padding: 4px 8px; font-weight: bold;">${cashTendered.toFixed(0)}</td></tr>`
+              paymentRows += `<div class="pay-row pay-row-border"><div class="pay-cell" style="font-weight: bold;">${cashTendered.toFixed(0)}</div><div class="pay-sep"></div><div class="pay-cell" style="font-weight: bold;">المدفوع</div></div><div class="pay-hline"></div>`
             }
             if (dataToUse.isDefaultCustomer && cashTendered > 0 && changeAmount > 0) {
-              paymentRows += `<tr><td style="text-align: right; padding: 4px 8px; font-weight: bold;">الباقي</td><td style="text-align: left; padding: 4px 8px; font-weight: bold;">${changeAmount.toFixed(0)}</td></tr>`
+              paymentRows += `<div class="pay-row pay-row-border"><div class="pay-cell" style="font-weight: bold;">${changeAmount.toFixed(0)}</div><div class="pay-sep"></div><div class="pay-cell" style="font-weight: bold;">الباقي</div></div><div class="pay-hline"></div>`
             }
 
             return `
           <div class="payment-section">
             ${numberToArabicWords(dataToUse.totalAmount)} جنيهاً
 
-            <table class="payment-table">
-              <tr>
-                <th>طريقة الدفع</th>
-                <th>المبلغ</th>
-              </tr>
+            <div class="pay-grid">
+              <div class="pay-hline"></div>
+              <div class="pay-row pay-row-border">
+                <div class="pay-cell pay-cell-head">المبلغ</div>
+                <div class="pay-sep"></div>
+                <div class="pay-cell pay-cell-head">طريقة الدفع</div>
+              </div>
+              <div class="pay-hline"></div>
               ${paymentRows}
-            </table>
+              <div class="pay-hline-thick"></div>
+            </div>
             ${isNonDefaultCustomer && hasCreditAmount ? `
             <div style="margin-top: 4px; font-size: 11px;">
               إجمالي الدين: <strong>${(dataToUse.customer?.calculatedBalance || 0).toFixed(0)}</strong>
@@ -3911,6 +3962,13 @@ function POSPageContent() {
               padding: 4px;
               text-align: center;
               font-size: 11px;
+            }
+
+            .payment-table-close {
+              height: 2px;
+              background: #000;
+              width: calc(100% - 40px);
+              margin: 0 20px;
             }
 
             .footer {
@@ -6138,6 +6196,7 @@ function POSPageContent() {
                           <div className="text-right">
                             {(cartDiscount > 0 || cartItems.some(item => item.discount && item.discount > 0)) ? (
                               <>
+                                <div className="text-white text-sm font-medium">الإجمالي: ({cartItems.length})</div>
                                 <div className="flex items-center gap-2 justify-end">
                                   <span className="text-gray-400 text-xs line-through">
                                     {formatPrice(cartTotal, "system")}
@@ -6152,7 +6211,7 @@ function POSPageContent() {
                               </>
                             ) : (
                               <>
-                                <div className="text-white text-sm font-medium">الإجمالي:</div>
+                                <div className="text-white text-sm font-medium">الإجمالي: ({cartItems.length})</div>
                                 <div className="text-green-400 font-bold text-lg">
                                   {formatPrice(cartTotal, "system")}
                                 </div>
@@ -6194,7 +6253,7 @@ function POSPageContent() {
                             {isProcessingInvoice ? '...' : (
                               <>
                                 {paidAmount && parseFloat(paidAmount) > 0 && (
-                                  <span className="text-orange-300 font-bold">
+                                  <span className="text-orange-300 font-bold whitespace-nowrap text-xs">
                                     الباقي: {(parseFloat(paidAmount) - calculateTotalWithDiscounts()).toFixed(0)}
                                   </span>
                                 )}
@@ -6724,6 +6783,7 @@ function POSPageContent() {
                     <div className="text-right">
                       {(cartDiscount > 0 || cartItems.some(item => item.discount && item.discount > 0)) ? (
                         <>
+                          <div className="text-white text-sm font-medium">الإجمالي: ({cartItems.length})</div>
                           <div className="flex items-center gap-2 justify-end">
                             <span className="text-gray-400 text-xs line-through">
                               {formatPrice(cartTotal, "system")}
@@ -6738,7 +6798,7 @@ function POSPageContent() {
                         </>
                       ) : (
                         <>
-                          <div className="text-white text-sm font-medium">الإجمالي:</div>
+                          <div className="text-white text-sm font-medium">الإجمالي: ({cartItems.length})</div>
                           <div className="text-green-400 font-bold text-lg">
                             {formatPrice(cartTotal, "system")}
                           </div>
@@ -6780,7 +6840,7 @@ function POSPageContent() {
                       {isProcessingInvoice ? '...' : (
                         <>
                           {paidAmount && parseFloat(paidAmount) > 0 && (
-                            <span className="text-orange-300 font-bold">
+                            <span className="text-orange-300 font-bold whitespace-nowrap text-xs">
                               الباقي: {(parseFloat(paidAmount) - calculateTotalWithDiscounts()).toFixed(0)}
                             </span>
                           )}

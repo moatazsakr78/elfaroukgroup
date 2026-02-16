@@ -30,7 +30,7 @@ const supabase = createClient<Database, 'elfaroukgroup'>(supabaseUrl, supabaseAn
  * - Display mode filtering (respects selected branches) ✅
  * - Result: 1 DB query serves 1000s of users, fresh data every minute!
  */
-export async function getWebsiteProducts(brandId?: string | null) {
+export async function getWebsiteProducts() {
   try {
     // ✨ Step 0: Fetch product display settings
     const { data: displaySettingsData } = await supabase
@@ -45,32 +45,6 @@ export async function getWebsiteProducts(brandId?: string | null) {
 
     console.log('🎛️ Display mode:', displayMode);
     console.log('🏢 Selected branches:', selectedBranches.length);
-
-    // If brandId is provided, get products from brand_products junction table
-    let brandProductIds: string[] | null = null;
-    let brandPriceOverrides: Map<string, { custom_price: number | null; custom_sale_price: number | null; is_featured: boolean; display_order: number }> | null = null;
-
-    if (brandId) {
-      const { data: brandProducts } = await (supabase as any)
-        .from('brand_products')
-        .select('product_id, custom_price, custom_sale_price, is_featured, display_order')
-        .eq('brand_id', brandId);
-
-      if (brandProducts && brandProducts.length > 0) {
-        brandProductIds = brandProducts.map((bp: any) => bp.product_id);
-        brandPriceOverrides = new Map(
-          brandProducts.map((bp: any) => [bp.product_id, {
-            custom_price: bp.custom_price,
-            custom_sale_price: bp.custom_sale_price,
-            is_featured: bp.is_featured || false,
-            display_order: bp.display_order || 0,
-          }])
-        );
-      } else {
-        // Brand has no linked products → return empty store
-        return [];
-      }
-    }
 
     let query = supabase
       .from('products')
@@ -102,11 +76,6 @@ export async function getWebsiteProducts(brandId?: string | null) {
       .eq('is_active', true)
       .eq('is_hidden', false)
       .order('display_order', { ascending: true });
-
-    // Filter by brand products if brandId provided
-    if (brandProductIds) {
-      query = query.in('id', brandProductIds);
-    }
 
     const { data: products, error } = await query;
 
@@ -200,29 +169,6 @@ export async function getWebsiteProducts(brandId?: string | null) {
 
         product.allImages = images;
       });
-
-      // Apply brand-specific price overrides and featured status
-      if (brandPriceOverrides) {
-        products.forEach((product: any) => {
-          const override = brandPriceOverrides!.get(product.id);
-          if (override) {
-            if (override.custom_price !== null) {
-              product.price = override.custom_price;
-            }
-            if (override.custom_sale_price !== null) {
-              product.discount_amount = product.price - override.custom_sale_price;
-            }
-            if (override.is_featured) {
-              product.is_featured = true;
-            }
-            if (override.display_order > 0) {
-              product.display_order = override.display_order;
-            }
-          }
-        });
-        // Re-sort by brand display_order
-        products.sort((a: any, b: any) => (a.display_order || 0) - (b.display_order || 0));
-      }
 
       // ✨ Step 3: Filter products based on display_mode
       if (displayMode === 'show_with_stock') {
@@ -424,20 +370,13 @@ export async function getProductWithAllData(productId: string) {
  * Get store categories with their products
  * Used for category carousels
  */
-export async function getStoreCategoriesWithProducts(brandId?: string | null) {
+export async function getStoreCategoriesWithProducts() {
   try {
-    let categoriesQuery = supabase
+    const { data: categories, error } = await supabase
       .from('store_categories')
       .select('*')
       .eq('is_active', true)
       .order('sort_order', { ascending: true });
-
-    // Filter by brand if provided
-    if (brandId) {
-      categoriesQuery = categoriesQuery.eq('brand_id', brandId);
-    }
-
-    const { data: categories, error } = await categoriesQuery;
 
     if (error) throw error;
 
@@ -445,17 +384,11 @@ export async function getStoreCategoriesWithProducts(brandId?: string | null) {
     const categoriesWithProducts = await Promise.all(
       (categories || []).map(async (category) => {
         // Get product IDs from junction table
-        let categoryProductsQuery = supabase
+        const { data: categoryProducts } = await supabase
           .from('store_category_products')
           .select('product_id')
           .eq('store_category_id', category.id)
           .order('sort_order', { ascending: true });
-
-        if (brandId) {
-          categoryProductsQuery = categoryProductsQuery.eq('brand_id', brandId);
-        }
-
-        const { data: categoryProducts } = await categoryProductsQuery;
 
         const productIds = (categoryProducts?.map(cp => cp.product_id).filter((id): id is string => id !== null)) || [];
 
@@ -502,7 +435,7 @@ export async function getStoreCategoriesWithProducts(brandId?: string | null) {
  * Note: Custom sections table doesn't exist yet in this database
  * Returning empty array for now - can be implemented when table is created
  */
-export async function getCustomSections(brandId?: string | null) {
+export async function getCustomSections() {
   // TODO: Implement when custom_sections table is created
   return [];
 }
@@ -513,7 +446,7 @@ export async function getCustomSections(brandId?: string | null) {
  * Note: This will be implemented based on your actual settings table structure
  * For now, returning null
  */
-export async function getCompanySettings(brandId?: string | null) {
+export async function getCompanySettings() {
   // TODO: Implement when company settings table structure is confirmed
   return null;
 }
@@ -524,27 +457,8 @@ export async function getCompanySettings(brandId?: string | null) {
  * Note: Returning default theme colors for now
  * Can be connected to actual theme table when available
  */
-export async function getStoreTheme(brandId?: string | null) {
+export async function getStoreTheme() {
   try {
-    if (brandId) {
-      // Try to get brand-specific theme
-      const { data: themeData } = await supabase
-        .from('store_theme_colors')
-        .select('*')
-        .eq('brand_id', brandId)
-        .eq('is_active', true)
-        .single();
-
-      if (themeData) {
-        return {
-          primary_color: themeData.primary_color || '#DC2626',
-          primary_hover_color: themeData.primary_hover_color || '#B91C1C',
-          interactive_color: themeData.button_color || '#EF4444'
-        };
-      }
-    }
-
-    // Fallback: get default brand's active theme (limit 1 to avoid error with multiple active themes)
     const { data: defaultTheme } = await supabase
       .from('store_theme_colors')
       .select('*')

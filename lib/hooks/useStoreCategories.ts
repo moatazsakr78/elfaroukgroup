@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '../../app/lib/supabase/client';
-import { useBrand } from '@/lib/brand/brand-context';
 
 export interface StoreCategory {
   id: string;
@@ -348,7 +347,6 @@ export function useStoreCategoriesWithProducts() {
   const [categoriesWithProducts, setCategoriesWithProducts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { brandId } = useBrand();
 
   const fetchCategoriesWithProducts = async () => {
     try {
@@ -375,10 +373,6 @@ export function useStoreCategoriesWithProducts() {
         .eq('is_active', true)
         .order('sort_order', { ascending: true });
 
-      if (brandId) {
-        query = query.eq('brand_id', brandId);
-      }
-
       const { data, error } = await query;
 
       if (error) throw error;
@@ -404,7 +398,7 @@ export function useStoreCategoriesWithProducts() {
 
   useEffect(() => {
     fetchCategoriesWithProducts();
-  }, [brandId]);
+  }, []);
 
   return {
     categoriesWithProducts,

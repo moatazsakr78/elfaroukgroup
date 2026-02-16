@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/app/lib/supabase/client';
-import { useBrand } from '@/lib/brand/brand-context';
 
 export interface StoreThemeColors {
   id: string;
@@ -28,7 +27,6 @@ const DEFAULT_THEME: StoreThemeColors = {
 };
 
 export function useStoreTheme() {
-  const { brandId } = useBrand();
   const [primaryColor, setPrimaryColor] = useState(DEFAULT_THEME.primary_color);
   const [primaryHoverColor, setPrimaryHoverColor] = useState(DEFAULT_THEME.primary_hover_color);
   const [interactiveColor, setInteractiveColor] = useState(DEFAULT_THEME.interactive_color);
@@ -41,17 +39,11 @@ export function useStoreTheme() {
     // Fetch active theme
     const fetchActiveTheme = async () => {
       try {
-        let query = (supabase as any)
+        const { data, error } = await (supabase as any)
           .from('store_theme_colors')
           .select('*')
-          .eq('is_active', true);
-
-        // Filter by brand if available
-        if (brandId) {
-          query = query.eq('brand_id', brandId);
-        }
-
-        const { data, error } = await query.single();
+          .eq('is_active', true)
+          .single();
 
         if (error) {
           console.error('Error fetching active theme:', error);
@@ -106,7 +98,7 @@ export function useStoreTheme() {
     return () => {
       subscription.unsubscribe();
     };
-  }, [brandId]);
+  }, []);
 
   return {
     primaryColor,

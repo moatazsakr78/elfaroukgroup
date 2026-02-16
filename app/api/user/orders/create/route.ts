@@ -71,9 +71,6 @@ export async function POST(request: Request) {
       )
     }
 
-    // Get brand_id from request headers (set by middleware)
-    const brandId = request.headers.get('x-brand-id') || null
-
     // ===== SERVER-SIDE PRICE VALIDATION =====
     // Fetch real prices from database to prevent client-side price manipulation
     const productIds = orderData.items.map(item => item.product_id)
@@ -110,32 +107,13 @@ export async function POST(request: Request) {
       }
     }
 
-    // Check for brand-specific price overrides
-    let brandPriceMap = new Map<string, number>()
-    if (brandId) {
-      const { data: brandProducts } = await supabaseAdmin
-        .from('brand_products')
-        .select('product_id, custom_price')
-        .eq('brand_id', brandId)
-        .in('product_id', productIds)
-
-      if (brandProducts) {
-        for (const bp of brandProducts) {
-          if (bp.custom_price != null) {
-            brandPriceMap.set(bp.product_id, parseFloat(String(bp.custom_price)))
-          }
-        }
-      }
-    }
-
     // Calculate server-side subtotal using real prices
     let serverSubtotal = 0
     const validatedItems: OrderItem[] = []
 
     for (const item of orderData.items) {
       const product = productMap.get(item.product_id)!
-      // Brand price override takes precedence, then base product price
-      const realPrice = brandPriceMap.get(item.product_id) ?? parseFloat(String(product.price))
+      const realPrice = parseFloat(String(product.price))
 
       serverSubtotal += realPrice * item.quantity
       validatedItems.push({
@@ -273,29 +251,22 @@ export async function POST(request: Request) {
     // Insert order into orders table
     // Note: user_session is used instead of user_id because user_id is uuid type
     // and NextAuth user.id is a text string
-    const orderInsertData: any = {
-      order_number: orderNumber,
-      customer_id: customerId,
-      user_session: userId, // Store NextAuth user ID in user_session (text field)
-      customer_name: orderData.customer.name,
-      customer_phone: orderData.customer.phone,
-      customer_address: orderData.customer.address || null,
-      total_amount: finalTotal,
-      subtotal_amount: finalSubtotal,
-      shipping_amount: finalShipping,
-      status: 'pending',
-      delivery_type: orderData.delivery_method === 'delivery' ? 'delivery' : 'pickup',
-      notes: notes
-    }
-
-    // Add brand_id if available
-    if (brandId) {
-      orderInsertData.brand_id = brandId
-    }
-
     const { data: orderResult, error: orderError } = await supabaseAdmin
       .from('orders')
-      .insert(orderInsertData)
+      .insert({
+        order_number: orderNumber,
+        customer_id: customerId,
+        user_session: userId, // Store NextAuth user ID in user_session (text field)
+        customer_name: orderData.customer.name,
+        customer_phone: orderData.customer.phone,
+        customer_address: orderData.customer.address || null,
+        total_amount: finalTotal,
+        subtotal_amount: finalSubtotal,
+        shipping_amount: finalShipping,
+        status: 'pending',
+        delivery_type: orderData.delivery_method === 'delivery' ? 'delivery' : 'pickup',
+        notes: notes
+      } as any)
       .select('id, order_number')
       .single()
 
