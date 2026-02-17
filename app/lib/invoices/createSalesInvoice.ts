@@ -516,38 +516,31 @@ export async function createSalesInvoice({
     // No need to update account_balance in customers table
     // The balance is computed in real-time from sales and customer_payments tables
 
-    // Calculate cash amount from payments (cash payments go to drawer)
-    // Using methodMap from above instead of querying again (optimization)
-    let cashToDrawer = 0
-    const cashPaymentMethods = ['cash', 'نقدي', 'كاش']
+    // Calculate total amount going to drawer (ALL payment methods, not just cash)
+    let totalToDrawer = 0
 
     if (paymentSplitData && paymentSplitData.length > 0) {
-      // Use the methodMap we already fetched (no additional queries needed)
-      cashToDrawer = paymentSplitData
+      totalToDrawer = paymentSplitData
         .filter(p => p.amount > 0 && p.paymentMethodId)
-        .filter(p => {
-          const methodName = methodMap.get(p.paymentMethodId)?.toLowerCase() || ''
-          return cashPaymentMethods.includes(methodName)
-        })
         .reduce((sum, p) => sum + p.amount, 0)
 
       // للمرتجعات: الفلوس تخرج من الخزنة (قيمة سالبة)
       if (isReturn) {
-        cashToDrawer = -cashToDrawer
+        totalToDrawer = -totalToDrawer
       }
-    } else if (paymentMethod === 'cash' || paymentMethod === 'نقدي') {
-      // If no split payment and payment method is cash, entire amount goes to drawer
+    } else {
+      // Single payment - entire amount goes to drawer
       // For returns, this will be negative (money out of drawer)
-      cashToDrawer = totalAmount - (creditAmount || 0)
+      totalToDrawer = totalAmount - (creditAmount || 0)
       // Guard: if totalAmount is 0 but creditAmount > 0, something is wrong
       if (totalAmount === 0 && (creditAmount || 0) > 0) {
         console.error('BUG: totalAmount is 0 but creditAmount > 0, skipping drawer update')
-        cashToDrawer = 0
+        totalToDrawer = 0
       }
     }
 
     // Create transaction records in cash_drawer_transactions - one per payment method
-    // Cash payments update the drawer balance, non-cash payments are recorded without affecting balance
+    // ALL payment methods update the drawer balance
     try {
       let drawer: any = null
       let currentBalance: number = 0
@@ -580,14 +573,12 @@ export async function createSalesInvoice({
       }
 
       // Build per-payment-method transactions
-      const cashPaymentMethods = ['cash', 'نقدي', 'كاش']
       const transactionsToInsert: any[] = []
 
       if (validPayments.length > 0) {
         // Split payment mode - create one transaction per payment method
         for (const payment of validPayments) {
           const methodName = methodMap.get(payment.paymentMethodId) || 'cash'
-          const isCash = cashPaymentMethods.includes(methodName.toLowerCase())
           let amount = isReturn ? -payment.amount : payment.amount
 
           const txData: any = {
@@ -604,21 +595,16 @@ export async function createSalesInvoice({
           if (!hasNoSafe && drawer) {
             txData.drawer_id = drawer.id
             txData.record_id = selections.record.id
-            if (isCash) {
-              // Cash payments update drawer balance
-              currentBalance = roundMoney(currentBalance + amount)
-              txData.balance_after = currentBalance
-            } else {
-              // Non-cash payments: record but don't affect drawer balance
-              txData.balance_after = null
-            }
+            // ALL payment methods update drawer balance
+            currentBalance = roundMoney(currentBalance + amount)
+            txData.balance_after = currentBalance
           }
 
           transactionsToInsert.push(txData)
         }
       } else {
         // Single payment (no split) - single transaction
-        const amount = cashToDrawer
+        const amount = totalToDrawer
         const txData: any = {
           transaction_type: isReturn ? 'return' : 'sale',
           amount: amount,
@@ -640,7 +626,7 @@ export async function createSalesInvoice({
         transactionsToInsert.push(txData)
       }
 
-      // Update drawer balance with only the cash portion
+      // Update drawer balance with ALL payment methods
       if (!hasNoSafe && drawer) {
         await supabase
           .from('cash_drawers')

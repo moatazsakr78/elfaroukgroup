@@ -786,8 +786,10 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
 
                           {/* Item Info */}
                           <div className="mb-2">
-                            <h4 className="text-white text-base font-bold line-clamp-2 leading-tight">{item.productName}</h4>
-                            <p className="text-gray-500 text-[11px] font-mono mt-1 truncate">{item.barcode}</p>
+                            <h4 className="text-white text-sm font-bold line-clamp-2 leading-snug min-h-[2.5rem]">
+                              {item.productName || 'بدون اسم'}
+                            </h4>
+                            <p className="text-gray-400 text-[11px] font-mono mt-1 truncate">{item.barcode}</p>
                           </div>
 
                           {/* Copies Input */}
@@ -831,7 +833,7 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
 
                           {/* Product Name */}
                           <div className="mb-2">
-                            <h4 className="text-white text-base font-bold line-clamp-2 leading-tight mb-1.5">{group.productName}</h4>
+                            <h4 className="text-white text-base font-bold line-clamp-2 leading-tight mb-1.5">{group.productName || 'بدون اسم'}</h4>
 
                             {/* Variant Badges */}
                             <div className="flex flex-wrap gap-1.5 mb-1">

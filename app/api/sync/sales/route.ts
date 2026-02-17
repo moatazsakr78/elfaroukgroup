@@ -234,25 +234,20 @@ async function processSingleSale(sale: PendingSale): Promise<SyncResult> {
     }
   }
 
-  // Handle cash drawer
+  // Handle cash drawer - ALL payment methods update the drawer balance
   const hasNoSafe = !sale.record_id
-  const cashPaymentMethods = ['cash', 'نقدي', 'كاش']
 
-  let cashToDrawer = 0
+  let totalToDrawer = 0
   if (sale.payment_split_data && sale.payment_split_data.length > 0) {
-    cashToDrawer = sale.payment_split_data
+    totalToDrawer = sale.payment_split_data
       .filter(p => p.amount > 0 && p.paymentMethodId)
-      .filter(p => {
-        const methodName = methodMap.get(p.paymentMethodId)?.toLowerCase() || ''
-        return cashPaymentMethods.includes(methodName)
-      })
       .reduce((sum, p) => sum + p.amount, 0)
 
     if (isReturn) {
-      cashToDrawer = -cashToDrawer
+      totalToDrawer = -totalToDrawer
     }
-  } else if (sale.payment_method === 'cash' || sale.payment_method === 'نقدي') {
-    cashToDrawer = sale.total_amount - (sale.credit_amount || 0)
+  } else {
+    totalToDrawer = sale.total_amount - (sale.credit_amount || 0)
   }
 
   // Create cash drawer transaction
@@ -279,7 +274,7 @@ async function processSingleSale(sale: PendingSale): Promise<SyncResult> {
       }
 
       if (drawer) {
-        newBalance = roundMoney((drawer.current_balance || 0) + cashToDrawer)
+        newBalance = roundMoney((drawer.current_balance || 0) + totalToDrawer)
         await supabase
           .from('cash_drawers')
           .update({
@@ -290,23 +285,59 @@ async function processSingleSale(sale: PendingSale): Promise<SyncResult> {
       }
     }
 
-    const transactionData: any = {
-      transaction_type: isReturn ? 'return' : 'sale',
-      amount: cashToDrawer,
-      sale_id: salesData.id,
-      notes: `${isReturn ? 'مرتجع' : 'بيع'} - فاتورة رقم ${invoiceNumber} (offline sync)`,
-      performed_by: sale.user_name || 'system'
+    // Create per-payment-method transactions
+    const transactionsToInsert: any[] = []
+    const validPayments = (sale.payment_split_data || []).filter((p: any) => p.amount > 0 && p.paymentMethodId)
+
+    if (validPayments.length > 0) {
+      let runningBalance = drawer ? (drawer.current_balance || 0) : 0
+      for (const payment of validPayments) {
+        const methodName = methodMap.get(payment.paymentMethodId) || 'cash'
+        const amount = isReturn ? -payment.amount : payment.amount
+
+        const txData: any = {
+          transaction_type: isReturn ? 'return' : 'sale',
+          amount: amount,
+          sale_id: salesData.id,
+          payment_method: methodName,
+          notes: `${isReturn ? 'مرتجع' : 'بيع'} - فاتورة رقم ${invoiceNumber} (${methodName}) (offline sync)`,
+          performed_by: sale.user_name || 'system'
+        }
+
+        if (!hasNoSafe && drawer) {
+          txData.drawer_id = drawer.id
+          txData.record_id = sale.record_id
+          runningBalance = roundMoney(runningBalance + amount)
+          txData.balance_after = runningBalance
+        }
+
+        transactionsToInsert.push(txData)
+      }
+    } else {
+      // Single payment - single transaction
+      const txData: any = {
+        transaction_type: isReturn ? 'return' : 'sale',
+        amount: totalToDrawer,
+        sale_id: salesData.id,
+        payment_method: sale.payment_method || 'cash',
+        notes: `${isReturn ? 'مرتجع' : 'بيع'} - فاتورة رقم ${invoiceNumber} (offline sync)`,
+        performed_by: sale.user_name || 'system'
+      }
+
+      if (!hasNoSafe && drawer) {
+        txData.drawer_id = drawer.id
+        txData.record_id = sale.record_id
+        txData.balance_after = newBalance
+      }
+
+      transactionsToInsert.push(txData)
     }
 
-    if (!hasNoSafe && drawer) {
-      transactionData.drawer_id = drawer.id
-      transactionData.record_id = sale.record_id
-      transactionData.balance_after = newBalance
+    if (transactionsToInsert.length > 0) {
+      await supabase
+        .from('cash_drawer_transactions')
+        .insert(transactionsToInsert)
     }
-
-    await supabase
-      .from('cash_drawer_transactions')
-      .insert(transactionData)
   } catch (drawerError) {
     console.warn('Failed to create cash drawer transaction:', drawerError)
   }
