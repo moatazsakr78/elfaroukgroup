@@ -323,6 +323,7 @@ function POSPageContent() {
   // Payment Split States
   const [paymentSplitData, setPaymentSplitData] = useState<any[]>([]);
   const [creditAmount, setCreditAmount] = useState<number>(0);
+  const [invoiceCounter, setInvoiceCounter] = useState(0);
 
   // Change Calculator States (حساب الباقي)
   const [paidAmount, setPaidAmount] = useState<string>("");
@@ -3063,6 +3064,9 @@ function POSPageContent() {
 
       // Clear cart after successful invoice creation
       clearCart();
+
+      // Reset PaymentSplit to default (cash)
+      setInvoiceCounter(prev => prev + 1);
 
       // Reset paid amount (change calculator)
       setPaidAmount("");
@@ -6177,6 +6181,7 @@ function POSPageContent() {
                     {/* Payment Split Component - Show in sales, return, and purchase mode (not transfer or edit mode) */}
                     {!isTransferMode && !activePOSTab?.isEditMode && (
                       <PaymentSplit
+                        key={invoiceCounter}
                         totalAmount={calculateTotalWithDiscounts()}
                         onPaymentsChange={(payments, credit) => {
                           setPaymentSplitData(payments);
@@ -6764,6 +6769,7 @@ function POSPageContent() {
               {/* Payment Split Component - Show in sales, return, and purchase mode (not transfer or edit mode) */}
               {!isTransferMode && !activePOSTab?.isEditMode && (
                 <PaymentSplit
+                  key={invoiceCounter}
                   totalAmount={calculateTotalWithDiscounts()}
                   onPaymentsChange={(payments, credit) => {
                     setPaymentSplitData(payments);

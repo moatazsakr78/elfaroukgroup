@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { XMarkIcon, MagnifyingGlassIcon, BanknotesIcon, UserIcon, BuildingOfficeIcon, CheckIcon } from '@heroicons/react/24/outline'
+import { XMarkIcon, MagnifyingGlassIcon, BanknotesIcon, UserIcon, BuildingOfficeIcon, CheckIcon, CreditCardIcon } from '@heroicons/react/24/outline'
 import { supabase } from '../lib/supabase/client'
 import { updateSalesInvoice, getSaleDetails } from '../lib/invoices/updateSalesInvoice'
 import { useAuth } from '@/lib/useAuth'
@@ -31,6 +31,12 @@ interface Branch {
   name: string
 }
 
+interface PaymentMethod {
+  id: string
+  name: string
+  is_active: boolean | null
+}
+
 export default function EditInvoiceModal({
   isOpen,
   onClose,
@@ -50,24 +56,28 @@ export default function EditInvoiceModal({
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null)
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null)
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string | null>(null)
 
   // القوائم
   const [safes, setSafes] = useState<Safe[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
   const [branches, setBranches] = useState<Branch[]>([])
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
 
   // البحث
   const [safeSearch, setSafeSearch] = useState('')
   const [customerSearch, setCustomerSearch] = useState('')
   const [branchSearch, setBranchSearch] = useState('')
+  const [paymentMethodSearch, setPaymentMethodSearch] = useState('')
 
   // القوائم المنسدلة المفتوحة
-  const [openDropdown, setOpenDropdown] = useState<'safe' | 'customer' | 'branch' | null>(null)
+  const [openDropdown, setOpenDropdown] = useState<'safe' | 'customer' | 'branch' | 'paymentMethod' | null>(null)
 
   // Refs للقوائم المنسدلة
   const safeDropdownRef = useRef<HTMLDivElement>(null)
   const customerDropdownRef = useRef<HTMLDivElement>(null)
   const branchDropdownRef = useRef<HTMLDivElement>(null)
+  const paymentMethodDropdownRef = useRef<HTMLDivElement>(null)
 
   // جلب بيانات الفاتورة
   const fetchSaleDetails = useCallback(async () => {
@@ -95,6 +105,7 @@ export default function EditInvoiceModal({
         setSelectedRecordId(effectiveRecordId)
         setSelectedCustomerId(sale.customer_id)
         setSelectedBranchId(sale.branch_id)
+        setSelectedPaymentMethod(sale.payment_method || null)
       } else {
         setError('لم يتم العثور على الفاتورة')
       }
@@ -144,6 +155,19 @@ export default function EditInvoiceModal({
     }
   }, [])
 
+  // جلب طرق الدفع
+  const fetchPaymentMethods = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('payment_methods')
+      .select('id, name, is_active')
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+
+    if (!error && data) {
+      setPaymentMethods(data)
+    }
+  }, [])
+
   // البحث في العملاء
   const searchCustomers = useCallback(async (query: string) => {
     if (!query.trim()) {
@@ -170,8 +194,9 @@ export default function EditInvoiceModal({
       fetchSafes()
       fetchCustomers()
       fetchBranches()
+      fetchPaymentMethods()
     }
-  }, [isOpen, saleId, fetchSaleDetails, fetchSafes, fetchCustomers, fetchBranches])
+  }, [isOpen, saleId, fetchSaleDetails, fetchSafes, fetchCustomers, fetchBranches, fetchPaymentMethods])
 
   // إغلاق القوائم المنسدلة عند النقر خارجها
   useEffect(() => {
@@ -183,6 +208,9 @@ export default function EditInvoiceModal({
         setOpenDropdown(null)
       }
       if (openDropdown === 'branch' && branchDropdownRef.current && !branchDropdownRef.current.contains(event.target as Node)) {
+        setOpenDropdown(null)
+      }
+      if (openDropdown === 'paymentMethod' && paymentMethodDropdownRef.current && !paymentMethodDropdownRef.current.contains(event.target as Node)) {
         setOpenDropdown(null)
       }
     }
@@ -214,8 +242,9 @@ export default function EditInvoiceModal({
       const hasRecordChanged = selectedRecordId !== currentSale.record_id
       const hasCustomerChanged = selectedCustomerId !== currentSale.customer_id
       const hasBranchChanged = selectedBranchId !== currentSale.branch_id
+      const hasPaymentMethodChanged = selectedPaymentMethod !== (currentSale.payment_method || null)
 
-      if (!hasRecordChanged && !hasCustomerChanged && !hasBranchChanged) {
+      if (!hasRecordChanged && !hasCustomerChanged && !hasBranchChanged && !hasPaymentMethodChanged) {
         onClose()
         return
       }
@@ -225,6 +254,7 @@ export default function EditInvoiceModal({
         newRecordId: hasRecordChanged ? selectedRecordId : undefined,
         newCustomerId: hasCustomerChanged ? selectedCustomerId : undefined,
         newBranchId: hasBranchChanged ? selectedBranchId : undefined,
+        newPaymentMethod: hasPaymentMethodChanged ? (selectedPaymentMethod || undefined) : undefined,
         userId: user?.id || null,
         userName: user?.name || null
       })
@@ -252,6 +282,10 @@ export default function EditInvoiceModal({
     branch.name.toLowerCase().includes(branchSearch.toLowerCase())
   )
 
+  const filteredPaymentMethods = paymentMethods.filter(method =>
+    method.name.toLowerCase().includes(paymentMethodSearch.toLowerCase())
+  )
+
   // الحصول على الاسم المعروض
   const getSelectedSafeName = () => {
     if (selectedRecordId === null) return 'لا يوجد'
@@ -265,6 +299,11 @@ export default function EditInvoiceModal({
 
   const getSelectedBranchName = () => {
     return branches.find(b => b.id === selectedBranchId)?.name || currentSale?.branch?.name || 'غير محدد'
+  }
+
+  const getSelectedPaymentMethodName = () => {
+    if (!selectedPaymentMethod) return 'غير محدد'
+    return paymentMethods.find(m => m.name === selectedPaymentMethod)?.name || selectedPaymentMethod
   }
 
   if (!isOpen) return null
@@ -298,75 +337,128 @@ export default function EditInvoiceModal({
                 </div>
               )}
 
-              {/* اختيار الخزنة */}
-              <div ref={safeDropdownRef} className="relative">
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  <BanknotesIcon className="w-4 h-4 inline ml-1" />
-                  الخزنة
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setOpenDropdown(openDropdown === 'safe' ? null : 'safe')}
-                  className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white text-right flex items-center justify-between hover:border-gray-500 transition-colors"
-                >
-                  <span>{getSelectedSafeName()}</span>
-                  <span className="text-gray-400">▼</span>
-                </button>
+              {/* طريقة الدفع والخزنة - على نفس الصف */}
+              <div className="grid grid-cols-2 gap-3">
+                {/* اختيار طريقة الدفع */}
+                <div ref={paymentMethodDropdownRef} className="relative">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <CreditCardIcon className="w-4 h-4 inline ml-1" />
+                    طريقة الدفع
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setOpenDropdown(openDropdown === 'paymentMethod' ? null : 'paymentMethod')}
+                    className="w-full px-3 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white text-right flex items-center justify-between hover:border-gray-500 transition-colors text-sm"
+                  >
+                    <span className="truncate">{getSelectedPaymentMethodName()}</span>
+                    <span className="text-gray-400 mr-1">▼</span>
+                  </button>
 
-                {openDropdown === 'safe' && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-gray-700 border border-gray-600 rounded-lg shadow-xl z-50 max-h-64 overflow-hidden">
-                    {/* حقل البحث */}
-                    <div className="p-2 border-b border-gray-600">
-                      <div className="relative">
-                        <input
-                          type="text"
-                          placeholder="بحث..."
-                          value={safeSearch}
-                          onChange={(e) => setSafeSearch(e.target.value)}
-                          className="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded text-white placeholder-gray-400 text-sm pr-8"
-                        />
-                        <MagnifyingGlassIcon className="w-4 h-4 absolute right-2 top-1/2 -translate-y-1/2 text-gray-400" />
+                  {openDropdown === 'paymentMethod' && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-gray-700 border border-gray-600 rounded-lg shadow-xl z-50 max-h-64 overflow-hidden">
+                      <div className="p-2 border-b border-gray-600">
+                        <div className="relative">
+                          <input
+                            type="text"
+                            placeholder="بحث..."
+                            value={paymentMethodSearch}
+                            onChange={(e) => setPaymentMethodSearch(e.target.value)}
+                            className="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded text-white placeholder-gray-400 text-sm pr-8"
+                          />
+                          <MagnifyingGlassIcon className="w-4 h-4 absolute right-2 top-1/2 -translate-y-1/2 text-gray-400" />
+                        </div>
+                      </div>
+
+                      <div className="overflow-y-auto max-h-48">
+                        {filteredPaymentMethods.map(method => (
+                          <button
+                            key={method.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedPaymentMethod(method.name)
+                              setOpenDropdown(null)
+                              setPaymentMethodSearch('')
+                            }}
+                            className={`w-full px-4 py-2 text-right flex items-center justify-between hover:bg-gray-600 transition-colors ${
+                              selectedPaymentMethod === method.name ? 'bg-blue-600/30 text-blue-300' : 'text-gray-300'
+                            }`}
+                          >
+                            <span>{method.name}</span>
+                            {selectedPaymentMethod === method.name && <CheckIcon className="w-4 h-4" />}
+                          </button>
+                        ))}
                       </div>
                     </div>
+                  )}
+                </div>
 
-                    {/* القائمة */}
-                    <div className="overflow-y-auto max-h-48">
-                      {/* خيار "لا يوجد" */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedRecordId(null)
-                          setOpenDropdown(null)
-                          setSafeSearch('')
-                        }}
-                        className={`w-full px-4 py-2 text-right flex items-center justify-between hover:bg-gray-600 transition-colors ${
-                          selectedRecordId === null ? 'bg-blue-600/30 text-blue-300' : 'text-gray-300'
-                        }`}
-                      >
-                        <span>لا يوجد</span>
-                        {selectedRecordId === null && <CheckIcon className="w-4 h-4" />}
-                      </button>
+                {/* اختيار الخزنة */}
+                <div ref={safeDropdownRef} className="relative">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <BanknotesIcon className="w-4 h-4 inline ml-1" />
+                    الخزنة
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setOpenDropdown(openDropdown === 'safe' ? null : 'safe')}
+                    className="w-full px-3 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white text-right flex items-center justify-between hover:border-gray-500 transition-colors text-sm"
+                  >
+                    <span className="truncate">{getSelectedSafeName()}</span>
+                    <span className="text-gray-400 mr-1">▼</span>
+                  </button>
 
-                      {filteredSafes.map(safe => (
+                  {openDropdown === 'safe' && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-gray-700 border border-gray-600 rounded-lg shadow-xl z-50 max-h-64 overflow-hidden">
+                      <div className="p-2 border-b border-gray-600">
+                        <div className="relative">
+                          <input
+                            type="text"
+                            placeholder="بحث..."
+                            value={safeSearch}
+                            onChange={(e) => setSafeSearch(e.target.value)}
+                            className="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded text-white placeholder-gray-400 text-sm pr-8"
+                          />
+                          <MagnifyingGlassIcon className="w-4 h-4 absolute right-2 top-1/2 -translate-y-1/2 text-gray-400" />
+                        </div>
+                      </div>
+
+                      <div className="overflow-y-auto max-h-48">
                         <button
-                          key={safe.id}
                           type="button"
                           onClick={() => {
-                            setSelectedRecordId(safe.id)
+                            setSelectedRecordId(null)
                             setOpenDropdown(null)
                             setSafeSearch('')
                           }}
                           className={`w-full px-4 py-2 text-right flex items-center justify-between hover:bg-gray-600 transition-colors ${
-                            selectedRecordId === safe.id ? 'bg-blue-600/30 text-blue-300' : 'text-gray-300'
+                            selectedRecordId === null ? 'bg-blue-600/30 text-blue-300' : 'text-gray-300'
                           }`}
                         >
-                          <span>{safe.name}</span>
-                          {selectedRecordId === safe.id && <CheckIcon className="w-4 h-4" />}
+                          <span>لا يوجد</span>
+                          {selectedRecordId === null && <CheckIcon className="w-4 h-4" />}
                         </button>
-                      ))}
+
+                        {filteredSafes.map(safe => (
+                          <button
+                            key={safe.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedRecordId(safe.id)
+                              setOpenDropdown(null)
+                              setSafeSearch('')
+                            }}
+                            className={`w-full px-4 py-2 text-right flex items-center justify-between hover:bg-gray-600 transition-colors ${
+                              selectedRecordId === safe.id ? 'bg-blue-600/30 text-blue-300' : 'text-gray-300'
+                            }`}
+                          >
+                            <span>{safe.name}</span>
+                            {selectedRecordId === safe.id && <CheckIcon className="w-4 h-4" />}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
 
               {/* اختيار العميل */}

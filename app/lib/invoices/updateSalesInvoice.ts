@@ -8,6 +8,7 @@ export interface UpdateSalesInvoiceParams {
   newRecordId?: string | null      // الخزنة الجديدة (null = "لا يوجد")
   newCustomerId?: string | null    // العميل الجديد
   newBranchId?: string | null      // الفرع الجديد
+  newPaymentMethod?: string        // طريقة الدفع الجديدة
   userId?: string | null
   userName?: string | null
 }
@@ -19,6 +20,7 @@ export interface UpdateSalesInvoiceResult {
     record?: { old: string | null, new: string | null }
     customer?: { old: string | null, new: string | null }
     branch?: { old: string | null, new: string | null }
+    payment_method?: { old: string | null, new: string | null }
   }
 }
 
@@ -27,6 +29,7 @@ export async function updateSalesInvoice({
   newRecordId,
   newCustomerId,
   newBranchId,
+  newPaymentMethod,
   userId = null,
   userName = null
 }: UpdateSalesInvoiceParams): Promise<UpdateSalesInvoiceResult> {
@@ -206,7 +209,24 @@ export async function updateSalesInvoice({
       })
     }
 
-    // 6. تحديث الفاتورة في جدول sales
+    // 6. تعديل طريقة الدفع (إذا تم تغييرها)
+    if (newPaymentMethod !== undefined && newPaymentMethod !== sale.payment_method) {
+      changes.payment_method = {
+        old: sale.payment_method,
+        new: newPaymentMethod
+      }
+
+      updateHistory.push({
+        timestamp: new Date().toISOString(),
+        user_id: userId,
+        user_name: userName,
+        field: 'payment_method',
+        old_value: sale.payment_method,
+        new_value: newPaymentMethod
+      })
+    }
+
+    // 7. تحديث الفاتورة في جدول sales
     const updateData: any = {
       is_updated: true,
       update_history: updateHistory
@@ -220,6 +240,9 @@ export async function updateSalesInvoice({
     }
     if (newBranchId !== undefined) {
       updateData.branch_id = newBranchId
+    }
+    if (newPaymentMethod !== undefined) {
+      updateData.payment_method = newPaymentMethod
     }
 
     const { error: updateError } = await supabase

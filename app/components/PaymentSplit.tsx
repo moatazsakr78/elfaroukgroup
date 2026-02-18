@@ -201,7 +201,6 @@ export default function PaymentSplit({ totalAmount, onPaymentsChange, isDefaultC
                 className="w-full px-2 py-1 bg-gray-700 text-white rounded border border-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs h-[26px] appearance-none"
                 style={{ lineHeight: '1' }}
               >
-                <option value="">طريقة الدفع</option>
                 {paymentMethods.map((method) => (
                   <option key={method.id} value={method.id}>
                     {method.name}
