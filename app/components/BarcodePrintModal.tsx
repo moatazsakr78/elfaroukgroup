@@ -158,6 +158,17 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
   const [isPreparing, setIsPreparing] = useState(false)
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set())
 
+  // Reset all state when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      copiesRef.current = {}
+      setCopiesVersion(0)
+      setSearchQuery('')
+      setShowPreview(false)
+      setExpandedProducts(new Set())
+    }
+  }, [isOpen])
+
   // Build flat list of printable items (product barcode + color barcodes + shape barcodes)
   const printableItems = useMemo(() => {
     const items: PrintableItem[] = []
