@@ -34,7 +34,7 @@ interface PrintableItem {
   productName: string
   variantName?: string
   variantType?: 'color' | 'shape'
-  barcode: string
+  barcode?: string
   colorHex?: string
   imageUrl?: string
   product: Product
@@ -164,15 +164,13 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
 
     products.forEach(product => {
       // Main product barcode
-      if (product.barcode) {
-        items.push({
-          key: product.id as string,
-          productName: product.name,
-          barcode: product.barcode,
-          imageUrl: product.main_image_url || undefined,
-          product
-        })
-      }
+      items.push({
+        key: product.id as string,
+        productName: product.name,
+        barcode: product.barcode || undefined,
+        imageUrl: product.main_image_url || undefined,
+        product
+      })
 
       // Color variant barcodes
       const colors = (product as any).colors
@@ -526,7 +524,7 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
     return printableItems.filter(item =>
       item.productName.toLowerCase().includes(query) ||
       (item.variantName && item.variantName.toLowerCase().includes(query)) ||
-      item.barcode.toLowerCase().includes(query)
+      (item.barcode && item.barcode.toLowerCase().includes(query))
     )
   }, [printableItems, searchQuery])
 
@@ -881,7 +879,7 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
                             <h4 className="text-white text-sm font-bold truncate">
                               {item.productName || 'بدون اسم'}
                             </h4>
-                            <p className="text-gray-400 text-xs font-mono truncate">{item.barcode}</p>
+                            <p className="text-gray-400 text-xs font-mono truncate">{item.barcode || 'بدون باركود'}</p>
                           </div>
                           {/* Copies Controls */}
                           <CopiesControl
@@ -1039,7 +1037,7 @@ export default function BarcodePrintModal({ isOpen, onClose, products, branches 
                                       {item.variantType === 'color' ? `لون: ${item.variantName}` : `شكل: ${item.variantName}`}
                                     </span>
                                   </div>
-                                  <p className="text-gray-400 text-xs font-mono truncate flex-1">{item.barcode}</p>
+                                  <p className="text-gray-400 text-xs font-mono truncate flex-1">{item.barcode || 'بدون باركود'}</p>
                                   <CopiesControl
                                     itemKey={item.key}
                                     initialCount={copiesRef.current[item.key] || 0}
