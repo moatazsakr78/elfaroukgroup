@@ -295,7 +295,6 @@ function POSPageContent() {
     // Also update the tab's selections to persist the price type
     if (activePOSTab) {
       updateActiveTabSelections({
-        ...activePOSTab.selections,
         priceType: priceType
       });
     }
@@ -401,9 +400,12 @@ function POSPageContent() {
     if (activeTabId === 'main') {
       setGlobalCustomer(customer);
     } else {
-      updateActiveTabSelections({ customer });
+      const DEFAULT_CUSTOMER_ID = '00000000-0000-0000-0000-000000000001';
+      const isDefault = customer?.id === DEFAULT_CUSTOMER_ID || customer?.name === 'عميل';
+      const newTitle = isDefault ? 'نقطة البيع' : (customer?.name || 'فاتورة جديدة');
+      updateTabCustomerAndTitle(activeTabId, customer, newTitle);
     }
-  }, [activeTabId, setGlobalCustomer, updateActiveTabSelections]);
+  }, [activeTabId, setGlobalCustomer, updateTabCustomerAndTitle]);
 
   const setBranch = useCallback((branch: any) => {
     if (activeTabId === 'main') {
@@ -1311,20 +1313,13 @@ function POSPageContent() {
         setCartItems([]);
         console.log("Transferred cart to new customer tab:", customer?.name);
       } else {
-        // Empty cart - just update the main tab's customer (don't create new tab)
-        setCustomer(customer);
-
-        // Apply customer's default record if set
-        if (customer?.default_record_id) {
-          setRecord({ id: customer.default_record_id });
-        }
-
-        // Apply customer's default price type if set
-        if (customer?.default_price_type) {
-          setSelectedPriceType(customer.default_price_type);
-        }
-
-        console.log("Updated main tab customer:", customer?.name);
+        // Empty cart - create new tab for the customer (main tab should never change)
+        addTabWithCustomer(customer, {
+          branch: globalSelections.branch,
+          record: globalSelections.record,
+          priceType: selectedPriceType,
+        });
+        console.log("Created new tab for customer:", customer?.name);
       }
     } else {
       // Either not main tab OR selecting default customer - update customer and apply defaults
