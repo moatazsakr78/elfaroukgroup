@@ -387,6 +387,22 @@ function POSPageContent() {
     return activePOSTab?.selections || { customer: null, branch: null, record: null };
   }, [activeTabId, activePOSTab?.selections, globalSelections]);
 
+  // Ensure main tab always shows default customer
+  // When a non-default customer is selected on main, a new tab is auto-created,
+  // so globalSelections.customer should always be the default when on main tab
+  useEffect(() => {
+    if (activeTabId === 'main' && defaultCustomer && selectionsLoaded) {
+      const DEFAULT_CUSTOMER_ID = '00000000-0000-0000-0000-000000000001';
+      const currentCustomer = globalSelections.customer;
+      const isAlreadyDefault = !currentCustomer ||
+        currentCustomer.id === DEFAULT_CUSTOMER_ID ||
+        currentCustomer.name === 'عميل';
+      if (!isAlreadyDefault) {
+        setGlobalCustomer(defaultCustomer);
+      }
+    }
+  }, [activeTabId, defaultCustomer, selectionsLoaded, globalSelections.customer, setGlobalCustomer]);
+
   // Functions to update selections (tab-aware)
   const setRecord = useCallback((record: any) => {
     if (activeTabId === 'main') {
