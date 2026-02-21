@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import POSSearchInput from '@/app/components/pos/POSSearchInput'
 
 // Local storage key for inventory column visibility
 const INVENTORY_COLUMN_VISIBILITY_KEY = 'inventory-column-visibility-v2'
@@ -29,7 +30,6 @@ import {
   ClipboardDocumentListIcon,
   ChartBarIcon,
   TableCellsIcon,
-  MagnifyingGlassIcon,
   ChevronDownIcon,
   Squares2X2Icon,
   ListBulletIcon,
@@ -55,6 +55,8 @@ interface Category {
 
 export default function InventoryPage() {
   const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
+  const [searchMode, setSearchMode] = useState<'all' | 'name' | 'code' | 'barcode'>('all')
   const [selectedGroup, setSelectedGroup] = useState('الفروع والمخازن')
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [showBranchesDropdown, setShowBranchesDropdown] = useState(false)
@@ -696,23 +698,48 @@ export default function InventoryPage() {
     return hasLowStock ? 'low' : 'good'
   }, [calculateTotalQuantity, selectedBranches])
 
-  // OPTIMIZED: Memoized product filtering to prevent unnecessary re-renders
-  const filteredProducts = useMemo(() => {
-    if (!products.length) {
-      console.log('📦 No products to filter');
-      return []
+  const handleSearchChange = useCallback((query: string) => {
+    setDebouncedSearchQuery(query)
+  }, [])
+
+  // OPTIMIZED: Pre-built search index for O(1) lookups instead of O(n) filtering
+  const searchIndex = useMemo(() => {
+    const nameIndex = new Map<string, Set<string>>()
+    const codeIndex = new Map<string, Set<string>>()
+    const barcodeIndex = new Map<string, Set<string>>()
+
+    const addToIndex = (index: Map<string, Set<string>>, term: string, productId: string) => {
+      if (!term) return
+      const normalized = term.toLowerCase()
+      for (let i = 1; i <= normalized.length; i++) {
+        const prefix = normalized.slice(0, i)
+        if (!index.has(prefix)) index.set(prefix, new Set())
+        index.get(prefix)!.add(productId)
+      }
     }
 
-    console.log('📦 Total products before filtering:', products.length);
+    products.forEach((product) => {
+      const nameWords = product.name.toLowerCase().split(/\s+/)
+      nameWords.forEach(word => {
+        addToIndex(nameIndex, word, product.id)
+      })
+      addToIndex(nameIndex, product.name, product.id)
 
-    // دالة البحث بكلمات متعددة - تُرجع true إذا كل الكلمات موجودة في أي من الحقول
-    const matchesMultiWordSearch = (query: string, ...fields: (string | null | undefined)[]): boolean => {
-      if (!query) return true;
-      const words = query.toLowerCase().split(/\s+/).filter(w => w.length > 0);
-      if (words.length === 0) return true;
-      const combinedText = fields.filter(Boolean).map(f => f!.toLowerCase()).join(' ');
-      return words.every(word => combinedText.includes(word));
-    };
+      if (product.product_code) {
+        addToIndex(codeIndex, product.product_code, product.id)
+      }
+
+      if (product.barcode) {
+        addToIndex(barcodeIndex, product.barcode, product.id)
+      }
+    })
+
+    return { nameIndex, codeIndex, barcodeIndex }
+  }, [products])
+
+  // OPTIMIZED: Memoized product filtering using search index
+  const filteredProducts = useMemo(() => {
+    if (!products.length) return []
 
     const filtered = products.filter(item => {
       // Category filter: If a category is selected and it's not the root "منتجات" category
@@ -723,10 +750,56 @@ export default function InventoryPage() {
         }
       }
 
-      // Text search filter - يدعم البحث بكلمات متعددة
-      const matchesSearch = matchesMultiWordSearch(searchQuery, item.name, item.barcode, item.category?.name)
+      // Text search filter using index
+      if (debouncedSearchQuery) {
+        const query = debouncedSearchQuery.toLowerCase()
 
-      if (!matchesSearch) return false
+        const getMatchesFromIndex = (index: Map<string, Set<string>>) => {
+          const words = query.split(/\s+/).filter(w => w.length > 0)
+          if (words.length === 0) return new Set<string>()
+
+          if (words.length === 1) {
+            return index.get(words[0]) || new Set<string>()
+          }
+
+          let result: Set<string> | null = null
+          for (const word of words) {
+            const matches = index.get(word)
+            if (!matches || matches.size === 0) return new Set<string>()
+
+            if (result === null) {
+              result = new Set(matches)
+            } else {
+              const newResult = new Set<string>()
+              result.forEach(id => {
+                if (matches.has(id)) newResult.add(id)
+              })
+              result = newResult
+            }
+          }
+          return result || new Set<string>()
+        }
+
+        let matchingIds = new Set<string>()
+        switch (searchMode) {
+          case 'all':
+            getMatchesFromIndex(searchIndex.nameIndex).forEach(id => matchingIds.add(id))
+            getMatchesFromIndex(searchIndex.codeIndex).forEach(id => matchingIds.add(id))
+            getMatchesFromIndex(searchIndex.barcodeIndex).forEach(id => matchingIds.add(id))
+            break
+          case 'name':
+            matchingIds = getMatchesFromIndex(searchIndex.nameIndex)
+            break
+          case 'code':
+            matchingIds = getMatchesFromIndex(searchIndex.codeIndex)
+            break
+          case 'barcode':
+            matchingIds = getMatchesFromIndex(searchIndex.barcodeIndex)
+            break
+        }
+
+        if (!matchingIds.has(item.id)) return false
+      }
 
       // Stock status filter
       const stockStatus = getStockStatus(item)
@@ -734,27 +807,21 @@ export default function InventoryPage() {
 
       // Audit status filter - check selected audit branch or all branches
       if (selectedAuditBranch) {
-        // Filter by specific branch audit status
         const branchAuditStatus = (item.inventoryData?.[selectedAuditBranch] as any)?.audit_status || 'غير مجرود'
         return auditStatusFilters[branchAuditStatus as keyof typeof auditStatusFilters]
       } else {
-        // ✨ FIXED: Show product if it has NO inventory data OR if it matches filter in selected branches
         const inventoryEntries = Object.entries(item.inventoryData || {});
 
-        // If product has no inventory in ANY branch, show it (with default audit status)
         if (inventoryEntries.length === 0) {
           return auditStatusFilters['غير مجرود' as keyof typeof auditStatusFilters];
         }
 
-        // Get inventory entries for selected branches only
         const selectedBranchInventory = inventoryEntries.filter(([branchId]) => selectedBranches[branchId]);
 
-        // If no inventory in selected branches, check default audit status
         if (selectedBranchInventory.length === 0) {
           return auditStatusFilters['غير مجرود' as keyof typeof auditStatusFilters];
         }
 
-        // Check if any selected branch matches the audit status filters
         return selectedBranchInventory.some(([branchId, inventory]: [string, any]) => {
           const auditStatus = (inventory as any)?.audit_status || 'غير مجرود'
           return auditStatusFilters[auditStatus as keyof typeof auditStatusFilters]
@@ -762,45 +829,19 @@ export default function InventoryPage() {
       }
     })
 
-    console.log('📦 Filtered products count:', filtered.length);
-    console.log('🔍 Filter states:', {
-      selectedCategory: selectedCategory?.name,
-      searchQuery,
-      stockStatusFilters: stockStatusFilters,
-      auditStatusFilters: auditStatusFilters,
-      selectedBranchesCount: Object.values(selectedBranches).filter(Boolean).length,
-      selectedBranches: Object.keys(selectedBranches).filter(id => selectedBranches[id])
-    });
-
-    // Debug: Check why products are being filtered out
-    if (filtered.length < products.length) {
-      console.log('⚠️ Products filtered out:', products.length - filtered.length);
-
-      // Sample a few filtered out products to understand why
-      const filteredOut = products.filter(item => !filtered.includes(item)).slice(0, 3);
-      filteredOut.forEach(item => {
-        console.log('❌ Filtered out product:', {
-          name: item.name,
-          hasInventoryData: !!item.inventoryData,
-          inventoryBranches: Object.keys(item.inventoryData || {}),
-          stockStatus: getStockStatus(item)
-        });
-      });
-    }
-
     return filtered;
-  }, [products, searchQuery, stockStatusFilters, auditStatusFilters, selectedAuditBranch, selectedBranches, getStockStatus, selectedCategory, categories, getAllSubcategoryIds])
+  }, [products, debouncedSearchQuery, searchMode, searchIndex, stockStatusFilters, auditStatusFilters, selectedAuditBranch, selectedBranches, getStockStatus, selectedCategory, categories, getAllSubcategoryIds])
 
   // ✨ PERFORMANCE: Limit visible products to reduce DOM nodes (like POS page)
   const visibleProducts = useMemo(() => {
     // If searching, filtering by category, or user clicked "show all" - show all results
-    const hasActiveFilter = searchQuery || (selectedCategory && selectedCategory.name !== 'منتجات')
+    const hasActiveFilter = debouncedSearchQuery || (selectedCategory && selectedCategory.name !== 'منتجات')
     if (hasActiveFilter || showAllProducts) {
       return filteredProducts
     }
     // Otherwise limit to first 50 products
     return filteredProducts.slice(0, VISIBLE_PRODUCTS_LIMIT)
-  }, [filteredProducts, searchQuery, selectedCategory, showAllProducts])
+  }, [filteredProducts, debouncedSearchQuery, selectedCategory, showAllProducts])
 
   // Calculate capital per branch from loaded products
   const branchCapitals = useMemo(() => {
@@ -832,11 +873,11 @@ export default function InventoryPage() {
   // Reset showAllProducts when filters change
   useEffect(() => {
     setShowAllProducts(false)
-  }, [searchQuery, selectedCategory, stockStatusFilters, auditStatusFilters])
+  }, [debouncedSearchQuery, selectedCategory, stockStatusFilters, auditStatusFilters])
 
   // Check if there are more products to show
   const hasMoreProducts = !showAllProducts &&
-    !searchQuery &&
+    !debouncedSearchQuery &&
     !(selectedCategory && selectedCategory.name !== 'منتجات') &&
     filteredProducts.length > VISIBLE_PRODUCTS_LIMIT
 
@@ -1479,16 +1520,12 @@ export default function InventoryPage() {
                   </div>
 
                   {/* Search */}
-                  <div className="relative">
-                    <MagnifyingGlassIcon className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="اسم المنتج..."
-                      className="w-80 pl-4 pr-10 py-2 bg-[#2B3544] border border-gray-600 rounded-md text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                    />
-                  </div>
+                  <POSSearchInput
+                    onSearch={handleSearchChange}
+                    searchMode={searchMode}
+                    onSearchModeChange={setSearchMode}
+                    className="w-80"
+                  />
                 </div>
 
                 {/* Right Side - Capital Display */}

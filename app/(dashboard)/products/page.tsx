@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import POSSearchInput from '@/app/components/pos/POSSearchInput'
 import ProductsTabletView from '../../components/ProductsTabletView'
 import { supabase } from '../../lib/supabase/client'
 import { ProductGridImage, ProductModalImage, ProductThumbnail } from '../../components/ui/OptimizedImage'
@@ -38,7 +39,6 @@ import {
   ArrowDownTrayIcon,
   ArrowUpTrayIcon,
   TableCellsIcon,
-  MagnifyingGlassIcon,
   ChevronDownIcon,
   Squares2X2Icon,
   ListBulletIcon,
@@ -66,6 +66,8 @@ interface Category {
 
 export default function ProductsPage() {
   const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
+  const [searchMode, setSearchMode] = useState<'all' | 'name' | 'code' | 'barcode'>('all')
   const [selectedGroup, setSelectedGroup] = useState('الفروع والمخازن')
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [isTablet, setIsTablet] = useState(false) // Now includes mobile devices
@@ -854,16 +856,46 @@ export default function ProductsPage() {
   }, [])
 
 
-  // دالة البحث بكلمات متعددة - تُرجع true إذا كل الكلمات موجودة في أي من الحقول
-  const matchesMultiWordSearch = (query: string, ...fields: (string | null | undefined)[]): boolean => {
-    if (!query) return true;
-    const words = query.toLowerCase().split(/\s+/).filter(w => w.length > 0);
-    if (words.length === 0) return true;
-    const combinedText = fields.filter(Boolean).map(f => f!.toLowerCase()).join(' ');
-    return words.every(word => combinedText.includes(word));
-  };
+  const handleSearchChange = useCallback((query: string) => {
+    setDebouncedSearchQuery(query)
+  }, [])
 
-  // OPTIMIZED: Memoized product filtering to prevent unnecessary re-renders
+  // OPTIMIZED: Pre-built search index for O(1) lookups instead of O(n) filtering
+  const searchIndex = useMemo(() => {
+    const nameIndex = new Map<string, Set<string>>()
+    const codeIndex = new Map<string, Set<string>>()
+    const barcodeIndex = new Map<string, Set<string>>()
+
+    const addToIndex = (index: Map<string, Set<string>>, term: string, productId: string) => {
+      if (!term) return
+      const normalized = term.toLowerCase()
+      for (let i = 1; i <= normalized.length; i++) {
+        const prefix = normalized.slice(0, i)
+        if (!index.has(prefix)) index.set(prefix, new Set())
+        index.get(prefix)!.add(productId)
+      }
+    }
+
+    products.forEach((product) => {
+      const nameWords = product.name.toLowerCase().split(/\s+/)
+      nameWords.forEach(word => {
+        addToIndex(nameIndex, word, product.id)
+      })
+      addToIndex(nameIndex, product.name, product.id)
+
+      if (product.product_code) {
+        addToIndex(codeIndex, product.product_code, product.id)
+      }
+
+      if (product.barcode) {
+        addToIndex(barcodeIndex, product.barcode, product.id)
+      }
+    })
+
+    return { nameIndex, codeIndex, barcodeIndex }
+  }, [products])
+
+  // OPTIMIZED: Memoized product filtering using search index
   const filteredProducts = useMemo(() => {
     let filtered = products
 
@@ -876,11 +908,55 @@ export default function ProductsPage() {
       )
     }
 
-    // Search query filter - يدعم البحث بكلمات متعددة
-    if (searchQuery) {
-      filtered = filtered.filter(product =>
-        matchesMultiWordSearch(searchQuery, product.name, product.barcode)
-      )
+    // Search query filter using index
+    if (debouncedSearchQuery) {
+      const query = debouncedSearchQuery.toLowerCase()
+
+      const getMatchesFromIndex = (index: Map<string, Set<string>>) => {
+        const words = query.split(/\s+/).filter(w => w.length > 0)
+        if (words.length === 0) return new Set<string>()
+
+        if (words.length === 1) {
+          return index.get(words[0]) || new Set<string>()
+        }
+
+        let result: Set<string> | null = null
+        for (const word of words) {
+          const matches = index.get(word)
+          if (!matches || matches.size === 0) return new Set<string>()
+
+          if (result === null) {
+            result = new Set(matches)
+          } else {
+            const newResult = new Set<string>()
+            result.forEach(id => {
+              if (matches.has(id)) newResult.add(id)
+            })
+            result = newResult
+          }
+        }
+        return result || new Set<string>()
+      }
+
+      let matchingIds = new Set<string>()
+      switch (searchMode) {
+        case 'all':
+          getMatchesFromIndex(searchIndex.nameIndex).forEach(id => matchingIds.add(id))
+          getMatchesFromIndex(searchIndex.codeIndex).forEach(id => matchingIds.add(id))
+          getMatchesFromIndex(searchIndex.barcodeIndex).forEach(id => matchingIds.add(id))
+          break
+        case 'name':
+          matchingIds = getMatchesFromIndex(searchIndex.nameIndex)
+          break
+        case 'code':
+          matchingIds = getMatchesFromIndex(searchIndex.codeIndex)
+          break
+        case 'barcode':
+          matchingIds = getMatchesFromIndex(searchIndex.barcodeIndex)
+          break
+      }
+
+      filtered = filtered.filter(p => matchingIds.has(p.id))
     }
 
     // Missing data filter
@@ -889,27 +965,27 @@ export default function ProductsPage() {
     }
 
     return filtered
-  }, [products, searchQuery, selectedCategory, categories, getAllSubcategoryIds, missingDataFilter, missingDataFilterMode])
+  }, [products, debouncedSearchQuery, searchMode, searchIndex, selectedCategory, categories, getAllSubcategoryIds, missingDataFilter, missingDataFilterMode])
 
   // ✨ PERFORMANCE: Limit visible products to reduce DOM nodes (like POS page)
   const visibleProducts = useMemo(() => {
     // If searching, filtering, or user clicked "show all" - show all results
-    const hasActiveFilter = searchQuery || (selectedCategory && selectedCategory.name !== 'منتجات') || missingDataFilter.size > 0
+    const hasActiveFilter = debouncedSearchQuery || (selectedCategory && selectedCategory.name !== 'منتجات') || missingDataFilter.size > 0
     if (hasActiveFilter || showAllProducts) {
       return filteredProducts
     }
     // Otherwise limit to first 50 products
     return filteredProducts.slice(0, VISIBLE_PRODUCTS_LIMIT)
-  }, [filteredProducts, searchQuery, selectedCategory, missingDataFilter, showAllProducts])
+  }, [filteredProducts, debouncedSearchQuery, selectedCategory, missingDataFilter, showAllProducts])
 
   // Reset showAllProducts when filters change
   useEffect(() => {
     setShowAllProducts(false)
-  }, [searchQuery, selectedCategory, missingDataFilter])
+  }, [debouncedSearchQuery, selectedCategory, missingDataFilter])
 
   // Check if there are more products to show
   const hasMoreProducts = !showAllProducts &&
-    !searchQuery &&
+    !debouncedSearchQuery &&
     !(selectedCategory && selectedCategory.name !== 'منتجات') &&
     missingDataFilter.size === 0 &&
     filteredProducts.length > VISIBLE_PRODUCTS_LIMIT
@@ -1256,16 +1332,12 @@ export default function ProductsPage() {
                   </div>
 
                   {/* Search */}
-                  <div className="relative">
-                    <MagnifyingGlassIcon className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="اسم المنتج..."
-                      className="w-80 pl-4 pr-10 py-2 bg-[#2B3544] border border-gray-600 rounded-md text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#5DADE2] focus:border-transparent text-sm"
-                    />
-                  </div>
+                  <POSSearchInput
+                    onSearch={handleSearchChange}
+                    searchMode={searchMode}
+                    onSearchModeChange={setSearchMode}
+                    className="w-80"
+                  />
                 </div>
 
                 {/* Right Side - Additional controls can be added here */}

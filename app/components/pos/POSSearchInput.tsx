@@ -99,7 +99,7 @@ const POSSearchInput = memo(forwardRef<POSSearchInputRef, POSSearchInputProps>(f
   }, [searchMode, onSearchModeChange]);
 
   return (
-    <div className={`relative ${className || ''}`}>
+    <div className={`relative ${className || 'w-72'}`}>
       <div
         className="absolute left-2 top-1/2 -translate-y-1/2 bg-blue-600 px-2 py-0.5 rounded text-xs text-white font-medium z-10 select-none cursor-pointer"
         onClick={handleModeClick}
@@ -116,7 +116,7 @@ const POSSearchInput = memo(forwardRef<POSSearchInputRef, POSSearchInputProps>(f
         placeholder={getPlaceholder()}
         className={isMobile
           ? "w-full pl-16 pr-10 py-2 bg-[#2B3544] border border-gray-600 rounded-md text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#5DADE2] focus:border-transparent"
-          : "w-72 pl-16 pr-10 py-2 bg-[#2B3544] border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          : "w-full pl-16 pr-10 py-2 bg-[#2B3544] border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
         }
         style={isMobile ? { fontSize: "16px" } : undefined}
       />
