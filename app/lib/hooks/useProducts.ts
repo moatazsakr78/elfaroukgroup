@@ -169,25 +169,40 @@ export function useProducts() {
       setIsLoading(true)
       setError(null)
 
-      // Fetch products with categories (excluding soft-deleted products)
-      let productsQuery = supabase
-        .from('products')
-        .select(`
-          *,
-          category:categories(
-            id,
-            name,
-            name_en
-          )
-        `)
-        .eq('is_active', true)
-        .or('is_deleted.is.null,is_deleted.eq.false')
-        .order('display_order', { ascending: true })
-        .order('name', { ascending: true })
+      // Fetch ALL products with pagination (bypasses Supabase 1000 row limit)
+      const PAGE_SIZE = 1000;
+      const allProducts: any[] = [];
+      let paginationOffset = 0;
+      let hasMoreProducts = true;
 
-      const { data: productsData, error: productsError } = await productsQuery
+      while (hasMoreProducts) {
+        const { data, error: pageError } = await supabase
+          .from('products')
+          .select(`
+            *,
+            category:categories(
+              id,
+              name,
+              name_en
+            )
+          `)
+          .eq('is_active', true)
+          .or('is_deleted.is.null,is_deleted.eq.false')
+          .order('display_order', { ascending: true })
+          .order('name', { ascending: true })
+          .range(paginationOffset, paginationOffset + PAGE_SIZE - 1);
 
-      if (productsError) throw productsError
+        if (pageError) throw pageError;
+        if (data && data.length > 0) {
+          allProducts.push(...data);
+          paginationOffset += data.length;
+          if (data.length < PAGE_SIZE) hasMoreProducts = false;
+        } else {
+          hasMoreProducts = false;
+        }
+      }
+
+      const productsData = allProducts;
 
       // Fetch branches (handle potential auth errors)
       const { data: branchesData, error: branchesError } = await supabase

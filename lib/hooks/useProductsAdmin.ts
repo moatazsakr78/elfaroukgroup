@@ -122,16 +122,21 @@ export function useProductsAdmin(options?: { selectedBranches?: string[] }) {
 
       console.time('⚡ Fetch products with inventory');
 
-      // ✨ OPTIMIZED: Run branches and products queries in PARALLEL
-      const [branchesResult, productsResult] = await Promise.all([
-        // Query 1: Fetch branches
-        supabase
-          .from('branches')
-          .select('*')
-          .eq('is_active', true)
-          .order('name'),
-        // Query 2: Get all products with categories (excluding soft-deleted products)
-        supabase
+      // Query 1: Fetch branches (small dataset, no pagination needed)
+      const { data: branchesData, error: branchesError } = await supabase
+        .from('branches')
+        .select('*')
+        .eq('is_active', true)
+        .order('name');
+
+      // Query 2: Fetch ALL products with pagination (bypasses Supabase 1000 row limit)
+      const PAGE_SIZE = 1000;
+      const allProducts: any[] = [];
+      let offset = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        const { data, error: pageError } = await supabase
           .from('products')
           .select(`
             id,
@@ -171,10 +176,20 @@ export function useProductsAdmin(options?: { selectedBranches?: string[] }) {
           .eq('is_active', true)
           .or('is_deleted.is.null,is_deleted.eq.false')
           .order('display_order', { ascending: true })
-      ]);
+          .range(offset, offset + PAGE_SIZE - 1);
 
-      const { data: branchesData, error: branchesError } = branchesResult;
-      const { data: rawProducts, error: productsError } = productsResult;
+        if (pageError) throw pageError;
+        if (data && data.length > 0) {
+          allProducts.push(...data);
+          offset += data.length;
+          if (data.length < PAGE_SIZE) hasMore = false;
+        } else {
+          hasMore = false;
+        }
+      }
+
+      const rawProducts = allProducts;
+      const productsError = null;
 
       if (branchesError) {
         console.warn('Unable to fetch branches:', branchesError);
