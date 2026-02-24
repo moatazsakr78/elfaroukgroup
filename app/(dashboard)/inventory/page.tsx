@@ -17,6 +17,7 @@ import ManagementModal from '../../components/ManagementModal'
 import CategoriesTreeView from '../../components/CategoriesTreeView'
 import ColumnsControlModal from '../../components/ColumnsControlModal'
 import QuantityAdjustmentModal from '../../components/QuantityAdjustmentModal'
+import TransferQuantityModal from '../../components/TransferQuantityModal'
 import InventoryPDFExportModal from '../../components/InventoryPDFExportModal'
 import { useProductsAdmin } from '../../../lib/hooks/useProductsAdmin'
 import { supabase } from '../../lib/supabase/client'
@@ -38,7 +39,11 @@ import {
   EyeSlashIcon,
   XMarkIcon,
   PencilSquareIcon,
-  BanknotesIcon
+  BanknotesIcon,
+  PlusIcon,
+  MinusIcon,
+  CubeIcon,
+  ArrowsRightLeftIcon
 } from '@heroicons/react/24/outline'
 
 // Database category interface for type safety
@@ -91,9 +96,12 @@ export default function InventoryPage() {
   
   // Quantity adjustment modal states
   const [showQuantityModal, setShowQuantityModal] = useState(false)
-  const [quantityModalMode, setQuantityModalMode] = useState<'add' | 'edit'>('add')
+  const [quantityModalMode, setQuantityModalMode] = useState<'add' | 'edit' | 'subtract'>('add')
+  const [showQuantityDropdown, setShowQuantityDropdown] = useState(false)
+  const quantityDropdownRef = useRef<HTMLDivElement>(null)
   const [selectedProductForQuantity, setSelectedProductForQuantity] = useState<any>(null)
   const [selectedBranchForQuantity, setSelectedBranchForQuantity] = useState<string>('')
+  const [showTransferModal, setShowTransferModal] = useState(false)
 
   const activityLog = useActivityLogger();
 
@@ -884,6 +892,19 @@ export default function InventoryPage() {
     !(selectedCategory && selectedCategory.name !== 'منتجات') &&
     filteredProducts.length > VISIBLE_PRODUCTS_LIMIT
 
+  // Close quantity dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (quantityDropdownRef.current && !quantityDropdownRef.current.contains(e.target as Node)) {
+        setShowQuantityDropdown(false)
+      }
+    }
+    if (showQuantityDropdown) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showQuantityDropdown])
+
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen)
   }
@@ -957,15 +978,16 @@ export default function InventoryPage() {
   }, [])
 
   // Handle quantity adjustment actions
-  const handleQuantityAction = useCallback((mode: 'add' | 'edit') => {
+  const handleQuantityAction = useCallback((mode: 'add' | 'edit' | 'subtract') => {
     if (!selectedProduct) {
       alert('يرجى اختيار منتج أولاً')
       return
     }
-    
+
     setQuantityModalMode(mode)
     setSelectedProductForQuantity(selectedProduct)
     setShowQuantityModal(true)
+    setShowQuantityDropdown(false)
   }, [selectedProduct])
 
   // Handle quantity confirmation with database update
@@ -986,7 +1008,7 @@ export default function InventoryPage() {
       })
 
       // Show loading state
-      const loadingMessage = quantityModalMode === 'add' ? 'جاري إضافة الكمية...' : 'جاري تعديل الكمية...'
+      const loadingMessage = quantityModalMode === 'add' ? 'جاري إضافة الكمية...' : quantityModalMode === 'subtract' ? 'جاري خصم الكمية...' : 'جاري تعديل الكمية...'
       console.log(loadingMessage)
 
       // Create the API payload
@@ -1090,6 +1112,80 @@ export default function InventoryPage() {
       alert('حدث خطأ في تحديث الكمية: ' + errorMessage)
     }
   }, [selectedProductForQuantity, quantityModalMode, fetchProducts])
+
+  // Handle transfer action
+  const handleTransferAction = useCallback(() => {
+    if (!selectedProduct) {
+      alert('يرجى اختيار منتج أولاً')
+      return
+    }
+    setSelectedProductForQuantity(selectedProduct)
+    setShowTransferModal(true)
+    setShowQuantityDropdown(false)
+  }, [selectedProduct])
+
+  // Handle transfer confirmation
+  const handleTransferConfirm = useCallback(async (quantity: number, reason: string, fromBranchId: string, toBranchId: string) => {
+    if (!selectedProductForQuantity) return
+
+    try {
+      const response = await fetch('/api/supabase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'transfer_inventory',
+          productId: selectedProductForQuantity.id,
+          fromBranchId,
+          toBranchId,
+          transferQuantity: quantity
+        })
+      })
+
+      const result = await response.json()
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'فشل في تحويل الكمية')
+      }
+
+      // Update local state for both branches
+      setProducts(prevProducts =>
+        prevProducts.map(product => {
+          if (product.id === selectedProductForQuantity.id) {
+            const newInventoryData = {
+              ...product.inventoryData,
+              [fromBranchId]: {
+                ...product.inventoryData?.[fromBranchId],
+                quantity: result.fromNewQty,
+              },
+              [toBranchId]: {
+                ...product.inventoryData?.[toBranchId],
+                quantity: result.toNewQty,
+              }
+            }
+
+            const newTotalQuantity = Object.values(newInventoryData).reduce(
+              (sum, inv: any) => sum + (inv?.quantity || 0), 0
+            )
+
+            return {
+              ...product,
+              inventoryData: newInventoryData,
+              totalQuantity: newTotalQuantity
+            } as any
+          }
+          return product
+        })
+      )
+
+      revalidateProductPage(selectedProductForQuantity.id).catch(() => {})
+      alert('تم تحويل الكمية بنجاح')
+      activityLog({ entityType: 'inventory', actionType: 'update', entityId: selectedProductForQuantity.id, entityName: selectedProductForQuantity.name });
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'خطأ غير معروف'
+      alert('حدث خطأ في تحويل الكمية: ' + errorMessage)
+    }
+  }, [selectedProductForQuantity])
 
   // Handle audit status right click
   const handleAuditStatusRightClick = useCallback((e: React.MouseEvent, productId: string, branchId: string) => {
@@ -1300,21 +1396,47 @@ export default function InventoryPage() {
               <span className="text-sm">اكسل</span>
             </button>
 
-            <button
-              onClick={() => handleQuantityAction('add')}
-              className="flex flex-col items-center p-2 text-gray-300 hover:text-white cursor-pointer min-w-[80px]"
-            >
-              <ClipboardDocumentListIcon className="h-5 w-5 mb-1" />
-              <span className="text-sm">إضافة</span>
-            </button>
-
-            <button
-              onClick={() => handleQuantityAction('edit')}
-              className="flex flex-col items-center p-2 text-gray-300 hover:text-white cursor-pointer min-w-[80px]"
-            >
-              <PencilSquareIcon className="h-5 w-5 mb-1" />
-              <span className="text-sm">تعديل</span>
-            </button>
+            <div className="relative" ref={quantityDropdownRef}>
+              <button
+                onClick={() => setShowQuantityDropdown(!showQuantityDropdown)}
+                className="flex flex-col items-center p-2 text-gray-300 hover:text-white cursor-pointer min-w-[80px]"
+              >
+                <CubeIcon className="h-5 w-5 mb-1" />
+                <span className="text-sm">الكمية</span>
+              </button>
+              {showQuantityDropdown && (
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 bg-[#2B3544] border border-[#4A5568] rounded-lg shadow-xl z-50 min-w-[160px] py-1">
+                  <button
+                    onClick={() => handleQuantityAction('add')}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-gray-300 hover:bg-green-600/20 hover:text-green-400 transition-colors"
+                  >
+                    <PlusIcon className="h-4 w-4 text-green-400" />
+                    <span className="text-sm">إضافة</span>
+                  </button>
+                  <button
+                    onClick={() => handleQuantityAction('subtract')}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-gray-300 hover:bg-red-600/20 hover:text-red-400 transition-colors"
+                  >
+                    <MinusIcon className="h-4 w-4 text-red-400" />
+                    <span className="text-sm">خصم</span>
+                  </button>
+                  <button
+                    onClick={() => handleQuantityAction('edit')}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-gray-300 hover:bg-blue-600/20 hover:text-blue-400 transition-colors"
+                  >
+                    <PencilSquareIcon className="h-4 w-4 text-blue-400" />
+                    <span className="text-sm">تعديل</span>
+                  </button>
+                  <button
+                    onClick={() => handleTransferAction()}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-gray-300 hover:bg-purple-600/20 hover:text-purple-400 transition-colors"
+                  >
+                    <ArrowsRightLeftIcon className="h-4 w-4 text-purple-400" />
+                    <span className="text-sm">تحويل</span>
+                  </button>
+                </div>
+              )}
+            </div>
 
             <button className="flex flex-col items-center p-2 text-gray-300 hover:text-white cursor-pointer min-w-[80px]">
               <ChartBarIcon className="h-5 w-5 mb-1" />
@@ -2151,6 +2273,15 @@ export default function InventoryPage() {
         mode={quantityModalMode}
         branches={branches}
         onConfirm={handleQuantityConfirm}
+      />
+
+      {/* Transfer Quantity Modal */}
+      <TransferQuantityModal
+        isOpen={showTransferModal}
+        onClose={() => setShowTransferModal(false)}
+        product={selectedProductForQuantity}
+        branches={branches}
+        onConfirm={handleTransferConfirm}
       />
       
       {/* Audit Status Context Menu */}

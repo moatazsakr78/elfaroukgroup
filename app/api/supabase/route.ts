@@ -12,8 +12,8 @@ const supabase = createClient(
 
 export async function POST(request: NextRequest) {
   try {
-    const { action, productId, branchId, quantity, auditStatus } = await request.json()
-    
+    const { action, productId, branchId, quantity, auditStatus, fromBranchId, toBranchId, transferQuantity } = await request.json()
+
     console.log('API request:', { action, productId, branchId, quantity, auditStatus })
     
     if (action === 'update_inventory') {
@@ -169,10 +169,121 @@ export async function POST(request: NextRequest) {
       })
     }
     
+    if (action === 'transfer_inventory') {
+      console.log('Transferring inventory:', { productId, fromBranchId, toBranchId, transferQuantity })
+
+      if (!productId || !fromBranchId || !toBranchId || !transferQuantity) {
+        return NextResponse.json(
+          { success: false, error: 'Missing required fields for transfer' },
+          { status: 400 }
+        )
+      }
+
+      const transferQty = parseInt(transferQuantity)
+      if (transferQty <= 0) {
+        return NextResponse.json(
+          { success: false, error: 'Transfer quantity must be greater than 0' },
+          { status: 400 }
+        )
+      }
+
+      // Get current quantities for both branches
+      const { data: fromRecord, error: fromError } = await supabase
+        .from('inventory')
+        .select('id, quantity')
+        .eq('product_id', productId)
+        .eq('branch_id', fromBranchId)
+        .maybeSingle()
+
+      if (fromError) {
+        return NextResponse.json(
+          { success: false, error: 'Error checking source branch inventory', details: fromError.message },
+          { status: 500 }
+        )
+      }
+
+      const { data: toRecord, error: toError } = await supabase
+        .from('inventory')
+        .select('id, quantity')
+        .eq('product_id', productId)
+        .eq('branch_id', toBranchId)
+        .maybeSingle()
+
+      if (toError) {
+        return NextResponse.json(
+          { success: false, error: 'Error checking destination branch inventory', details: toError.message },
+          { status: 500 }
+        )
+      }
+
+      const fromCurrentQty = fromRecord?.quantity || 0
+      const toCurrentQty = toRecord?.quantity || 0
+      const fromNewQty = fromCurrentQty - transferQty
+      const toNewQty = toCurrentQty + transferQty
+
+      // Update source branch
+      let fromResult
+      if (fromRecord) {
+        fromResult = await supabase
+          .from('inventory')
+          .update({ quantity: fromNewQty, last_updated: new Date().toISOString() })
+          .eq('id', fromRecord.id)
+          .select('*')
+          .single()
+      } else {
+        fromResult = await supabase
+          .from('inventory')
+          .insert({ product_id: productId, branch_id: fromBranchId, quantity: fromNewQty, last_updated: new Date().toISOString() })
+          .select('*')
+          .single()
+      }
+
+      if (fromResult.error) {
+        return NextResponse.json(
+          { success: false, error: 'Failed to update source branch', details: fromResult.error.message },
+          { status: 500 }
+        )
+      }
+
+      // Update destination branch
+      let toResult
+      if (toRecord) {
+        toResult = await supabase
+          .from('inventory')
+          .update({ quantity: toNewQty, last_updated: new Date().toISOString() })
+          .eq('id', toRecord.id)
+          .select('*')
+          .single()
+      } else {
+        toResult = await supabase
+          .from('inventory')
+          .insert({ product_id: productId, branch_id: toBranchId, quantity: toNewQty, last_updated: new Date().toISOString() })
+          .select('*')
+          .single()
+      }
+
+      if (toResult.error) {
+        return NextResponse.json(
+          { success: false, error: 'Failed to update destination branch', details: toResult.error.message },
+          { status: 500 }
+        )
+      }
+
+      console.log('Successfully transferred inventory:', { from: fromResult.data, to: toResult.data })
+
+      return NextResponse.json({
+        success: true,
+        data: { from: fromResult.data, to: toResult.data },
+        message: 'Inventory transferred successfully',
+        fromNewQty,
+        toNewQty
+      })
+    }
+
     return NextResponse.json(
-      { 
-        success: false, 
-        error: 'Invalid action' 
+      {
+        success: false,
+        error: 'Invalid action'
       },
       { status: 400 }
     )
