@@ -120,6 +120,9 @@ export default function InventoryTabletView({
   // Audit branches dropdown
   const [showAuditBranchesDropdown, setShowAuditBranchesDropdown] = useState(false)
 
+  // Audit status context menu
+  const [auditContextMenu, setAuditContextMenu] = useState({ show: false, x: 0, y: 0, productId: '', branchId: '' })
+
   // Ref for scrollable toolbar
   const toolbarRef = useRef<HTMLDivElement>(null)
 
@@ -184,7 +187,7 @@ export default function InventoryTabletView({
     
     // Add branch columns
     branches.forEach(branch => {
-      allColumns.push(`quantity_${branch.id}`, `lowstock_${branch.id}`, `variants_${branch.id}`)
+      allColumns.push(`quantity_${branch.id}`, `lowstock_${branch.id}`, `variants_${branch.id}`, `audit_status_${branch.id}`)
     })
     
     const initialVisible: {[key: string]: boolean} = {}
@@ -208,13 +211,16 @@ export default function InventoryTabletView({
       if (!target.closest('.quantity-dropdown') && !target.closest('.quantity-dropdown-menu')) {
         setShowQuantityDropdown(false)
       }
+      if (!target.closest('.audit-context-menu')) {
+        setAuditContextMenu(prev => prev.show ? { show: false, x: 0, y: 0, productId: '', branchId: '' } : prev)
+      }
     }
 
-    if (showBranchesDropdown || showAuditBranchesDropdown || showQuantityDropdown) {
+    if (showBranchesDropdown || showAuditBranchesDropdown || showQuantityDropdown || auditContextMenu.show) {
       document.addEventListener('click', handleClickOutside)
       return () => document.removeEventListener('click', handleClickOutside)
     }
-  }, [showBranchesDropdown, showAuditBranchesDropdown, showQuantityDropdown])
+  }, [showBranchesDropdown, showAuditBranchesDropdown, showQuantityDropdown, auditContextMenu.show])
 
   // OPTIMIZED: Memoized function to calculate total quantity
   const calculateTotalQuantity = useCallback((item: any) => {
@@ -250,6 +256,85 @@ export default function InventoryTabletView({
     
     return hasLowStock ? 'low' : 'good'
   }, [calculateTotalQuantity, selectedBranches])
+
+  // Handle audit status right click
+  const handleAuditStatusRightClick = useCallback((e: React.MouseEvent, productId: string, branchId: string) => {
+    e.stopPropagation()
+    setAuditContextMenu({
+      show: true,
+      x: e.clientX,
+      y: e.clientY,
+      productId,
+      branchId
+    })
+  }, [])
+
+  // Handle audit context menu action selection - optimistic update
+  const handleAuditContextMenuAction = useCallback(async (newStatus: string) => {
+    if (!auditContextMenu.productId || !auditContextMenu.branchId) return
+
+    const productId = auditContextMenu.productId
+    const branchId = auditContextMenu.branchId
+
+    setAuditContextMenu({ show: false, x: 0, y: 0, productId: '', branchId: '' })
+
+    const currentProduct = products.find(p => p.id === productId)
+    const previousStatus = currentProduct?.inventoryData?.[branchId]?.audit_status || 'غير مجرود'
+
+    try {
+      // Optimistic update
+      setProducts(prevProducts =>
+        prevProducts.map(product => {
+          if (product.id === productId) {
+            return {
+              ...product,
+              inventoryData: {
+                ...product.inventoryData,
+                [branchId]: {
+                  ...product.inventoryData?.[branchId],
+                  audit_status: newStatus
+                } as any
+              }
+            } as any
+          }
+          return product
+        })
+      )
+
+      const response = await fetch('/api/dashboard/inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update_audit_status',
+          productId,
+          branchId,
+          auditStatus: newStatus
+        })
+      })
+
+      if (!response.ok) throw new Error('Failed to update audit status')
+    } catch (error) {
+      // Rollback on error
+      setProducts(prevProducts =>
+        prevProducts.map(product => {
+          if (product.id === productId) {
+            return {
+              ...product,
+              inventoryData: {
+                ...product.inventoryData,
+                [branchId]: {
+                  ...product.inventoryData?.[branchId],
+                  audit_status: previousStatus
+                } as any
+              }
+            } as any
+          }
+          return product
+        })
+      )
+      alert('فشل في تحديث حالة الجرد: ' + (error instanceof Error ? error.message : 'خطأ غير معروف'))
+    }
+  }, [auditContextMenu.productId, auditContextMenu.branchId, setProducts, products])
 
   // OPTIMIZED: Generate dynamic table columns with advanced memoization
   const dynamicTableColumns = useMemo(() => {
@@ -522,6 +607,40 @@ export default function InventoryTabletView({
       )
     }
 
+    // Add audit status columns for each selected branch
+    const auditStatusColumns = branches
+      .filter(branch => selectedBranches[branch.id])
+      .map(branch => ({
+        id: `audit_status_${branch.id}`,
+        header: `حالة الجرد - ${branch.name}`,
+        accessor: `audit_status_${branch.id}`,
+        width: 150,
+        render: (value: any, item: any) => {
+          const inventoryData = item.inventoryData?.[branch.id]
+          const status = (inventoryData as any)?.audit_status || 'غير مجرود'
+
+          const getStatusColor = (s: string) => {
+            switch(s) {
+              case 'تام الجرد': return 'bg-green-600 text-white'
+              case 'استعد': return 'bg-yellow-600 text-white'
+              case 'غير مجرود': return 'bg-red-600 text-white'
+              default: return 'bg-red-600 text-white'
+            }
+          }
+
+          return (
+            <div
+              className="flex justify-center"
+              onClick={(e) => handleAuditStatusRightClick(e, item.id, branch.id)}
+            >
+              <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(status)} cursor-pointer`}>
+                {status}
+              </span>
+            </div>
+          )
+        }
+      }))
+
     // Get count of selected branches
     const selectedBranchesCount = Object.values(selectedBranches).filter(Boolean).length
 
@@ -537,12 +656,13 @@ export default function InventoryTabletView({
       ...branchQuantityColumns,
       ...branchLowStockColumns,
       ...variantColumns,
+      ...auditStatusColumns,
       activityColumn
     ]
     
     // Filter columns based on visibility
     return allColumns.filter(col => visibleColumns[col.id] !== false)
-  }, [branches, visibleColumns, selectedBranches, calculateTotalQuantity, getStockStatus])
+  }, [branches, visibleColumns, selectedBranches, calculateTotalQuantity, getStockStatus, handleAuditStatusRightClick])
 
   // OPTIMIZED: Memoized product filtering
   const filteredProducts = useMemo(() => {
@@ -1407,6 +1527,48 @@ export default function InventoryTabletView({
             <ArrowsRightLeftIcon className="h-4 w-4 text-purple-400" />
             <span className="text-sm">تحويل</span>
           </button>
+        </div>
+      )}
+
+      {/* Audit Status Context Menu */}
+      {auditContextMenu.show && (
+        <div
+          className="fixed audit-context-menu bg-[#2B3544] border-2 border-[#4A5568] rounded-xl shadow-2xl py-2 z-[9999]"
+          style={{
+            left: auditContextMenu.x,
+            top: auditContextMenu.y,
+            minWidth: '150px'
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {(() => {
+            const currentProduct = products.find(p => p.id === auditContextMenu.productId)
+            const branchInventory = currentProduct?.inventoryData?.[auditContextMenu.branchId]
+            const currentStatus = (branchInventory as any)?.audit_status || 'غير مجرود'
+            const allStatuses = ['غير مجرود', 'استعد', 'تام الجرد']
+            const availableStatuses = allStatuses.filter(status => status !== currentStatus)
+
+            return availableStatuses.map((status) => {
+              const getStatusColor = (s: string) => {
+                switch(s) {
+                  case 'تام الجرد': return 'hover:bg-green-600/20 text-green-400'
+                  case 'استعد': return 'hover:bg-yellow-600/20 text-yellow-400'
+                  case 'غير مجرود': return 'hover:bg-red-600/20 text-red-400'
+                  default: return 'hover:bg-gray-600/20 text-gray-400'
+                }
+              }
+
+              return (
+                <button
+                  key={status}
+                  onClick={() => handleAuditContextMenuAction(status)}
+                  className={`w-full text-right px-4 py-3 transition-colors ${getStatusColor(status)} border-b border-gray-600/30 last:border-b-0`}
+                >
+                  <span className="font-medium">{status}</span>
+                </button>
+              )
+            })
+          })()}
         </div>
       )}
 
