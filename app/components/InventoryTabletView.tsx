@@ -10,7 +10,11 @@ import AddStorageModal from './AddStorageModal'
 import ManagementModal from './ManagementModal'
 import CategoriesTreeView from './CategoriesTreeView'
 import ColumnsControlModal from './ColumnsControlModal'
+import QuantityAdjustmentModal from './QuantityAdjustmentModal'
+import TransferQuantityModal from './TransferQuantityModal'
 import { useProductsAdmin } from '@/lib/hooks/useProductsAdmin'
+import { useActivityLogger } from '@/app/lib/hooks/useActivityLogger'
+import { revalidateProductPage } from '@/lib/utils/revalidate'
 import {
   ArrowPathIcon,
   BuildingStorefrontIcon,
@@ -30,7 +34,13 @@ import {
   Bars3Icon,
   EyeSlashIcon,
   FolderIcon,
-  FolderOpenIcon
+  FolderOpenIcon,
+  PencilSquareIcon,
+  BanknotesIcon,
+  PlusIcon,
+  MinusIcon,
+  CubeIcon,
+  ArrowsRightLeftIcon
 } from '@heroicons/react/24/outline'
 
 // Database category interface
@@ -113,8 +123,19 @@ export default function InventoryTabletView({
   // Ref for scrollable toolbar
   const toolbarRef = useRef<HTMLDivElement>(null)
 
+  // Quantity adjustment modal states
+  const [showQuantityModal, setShowQuantityModal] = useState(false)
+  const [quantityModalMode, setQuantityModalMode] = useState<'add' | 'edit' | 'subtract'>('add')
+  const [showQuantityDropdown, setShowQuantityDropdown] = useState(false)
+  const quantityDropdownRef = useRef<HTMLDivElement>(null)
+  const quantityDropdownMenuRef = useRef<HTMLDivElement>(null)
+  const [quantityDropdownPos, setQuantityDropdownPos] = useState<{top: number, left: number}>({top: 0, left: 0})
+  const [selectedProductForQuantity, setSelectedProductForQuantity] = useState<any>(null)
+  const [showTransferModal, setShowTransferModal] = useState(false)
+
   // Get products and branches data - Using optimized admin hook for better mobile performance
-  const { products, branches, isLoading, error, fetchProducts } = useProductsAdmin()
+  const { products, setProducts, branches, isLoading, error, fetchProducts } = useProductsAdmin()
+  const activityLog = useActivityLogger()
 
   // OPTIMIZED: Memoized branch toggle handler
   const handleBranchToggle = useCallback((branchId: string) => {
@@ -184,13 +205,16 @@ export default function InventoryTabletView({
       if (!target.closest('.audit-branches-dropdown')) {
         setShowAuditBranchesDropdown(false)
       }
+      if (!target.closest('.quantity-dropdown') && !target.closest('.quantity-dropdown-menu')) {
+        setShowQuantityDropdown(false)
+      }
     }
 
-    if (showBranchesDropdown || showAuditBranchesDropdown) {
+    if (showBranchesDropdown || showAuditBranchesDropdown || showQuantityDropdown) {
       document.addEventListener('click', handleClickOutside)
       return () => document.removeEventListener('click', handleClickOutside)
     }
-  }, [showBranchesDropdown, showAuditBranchesDropdown])
+  }, [showBranchesDropdown, showAuditBranchesDropdown, showQuantityDropdown])
 
   // OPTIMIZED: Memoized function to calculate total quantity
   const calculateTotalQuantity = useCallback((item: any) => {
@@ -600,6 +624,195 @@ export default function InventoryTabletView({
     setIsCategoriesHidden(!isCategoriesHidden)
   }
 
+  // Calculate capital per branch from loaded products
+  const branchCapitals = useMemo(() => {
+    const capitalMap: { [branchId: string]: number } = {}
+    let total = 0
+
+    products.forEach((product: any) => {
+      const costPrice = parseFloat(product.cost_price) || 0
+      if (costPrice <= 0 || !product.inventoryData) return
+
+      Object.entries(product.inventoryData).forEach(([branchId, inv]: [string, any]) => {
+        if (!selectedBranches[branchId]) return
+        const qty = parseFloat(inv?.quantity) || 0
+        if (qty <= 0) return
+        const value = qty * costPrice
+        capitalMap[branchId] = (capitalMap[branchId] || 0) + value
+        total += value
+      })
+    })
+
+    const branchList = branches
+      .filter(b => selectedBranches[b.id] && capitalMap[b.id])
+      .map(b => ({ id: b.id, name: b.name, capital: capitalMap[b.id] || 0 }))
+      .sort((a, b) => b.capital - a.capital)
+
+    return { total, branches: branchList }
+  }, [products, branches, selectedBranches])
+
+  // Handle quantity adjustment actions
+  const handleQuantityAction = useCallback((mode: 'add' | 'edit' | 'subtract') => {
+    if (!selectedProduct) {
+      alert('يرجى اختيار منتج أولاً')
+      return
+    }
+
+    setQuantityModalMode(mode)
+    setSelectedProductForQuantity(selectedProduct)
+    setShowQuantityModal(true)
+    setShowQuantityDropdown(false)
+  }, [selectedProduct])
+
+  // Handle transfer action
+  const handleTransferAction = useCallback(() => {
+    if (!selectedProduct) {
+      alert('يرجى اختيار منتج أولاً')
+      return
+    }
+    setSelectedProductForQuantity(selectedProduct)
+    setShowTransferModal(true)
+    setShowQuantityDropdown(false)
+  }, [selectedProduct])
+
+  // Handle quantity confirmation with database update
+  const handleQuantityConfirm = useCallback(async (newQuantity: number, reason: string, branchId: string) => {
+    if (!selectedProductForQuantity || !branchId) {
+      alert('بيانات المنتج أو الفرع مفقودة')
+      return
+    }
+
+    try {
+      const payload = {
+        action: 'update_inventory',
+        productId: selectedProductForQuantity.id,
+        branchId: branchId,
+        quantity: newQuantity
+      }
+
+      const response = await fetch('/api/supabase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+
+      let result
+      try {
+        result = await response.json()
+      } catch {
+        throw new Error('استجابة غير صالحة من الخادم')
+      }
+
+      if (!response.ok) {
+        throw new Error(result?.error || result?.message || `HTTP Error ${response.status}`)
+      }
+
+      if (!result.success) {
+        throw new Error(result.error || result.message || 'فشل في تحديث الكمية')
+      }
+
+      // Smart update - Update only this product's inventory locally
+      setProducts(prevProducts =>
+        prevProducts.map(product => {
+          if (product.id === selectedProductForQuantity.id) {
+            const newInventoryData = {
+              ...product.inventoryData,
+              [branchId]: {
+                ...product.inventoryData?.[branchId],
+                quantity: newQuantity,
+              }
+            }
+
+            const newTotalQuantity = Object.values(newInventoryData).reduce(
+              (sum, inv: any) => sum + (inv?.quantity || 0), 0
+            )
+
+            return {
+              ...product,
+              inventoryData: newInventoryData,
+              totalQuantity: newTotalQuantity
+            } as any
+          }
+          return product
+        })
+      )
+
+      // Refresh website cache
+      revalidateProductPage(selectedProductForQuantity.id).catch(() => {})
+
+      const successMessage = quantityModalMode === 'add' ? 'تم إضافة الكمية بنجاح' : 'تم تعديل الكمية بنجاح'
+      alert(successMessage)
+      activityLog({ entityType: 'inventory', actionType: 'update', entityId: selectedProductForQuantity.id, entityName: selectedProductForQuantity.name })
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'خطأ غير معروف'
+      alert('حدث خطأ في تحديث الكمية: ' + errorMessage)
+    }
+  }, [selectedProductForQuantity, quantityModalMode, setProducts, activityLog])
+
+  // Handle transfer confirmation
+  const handleTransferConfirm = useCallback(async (quantity: number, reason: string, fromBranchId: string, toBranchId: string) => {
+    if (!selectedProductForQuantity) return
+
+    try {
+      const response = await fetch('/api/supabase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'transfer_inventory',
+          productId: selectedProductForQuantity.id,
+          fromBranchId,
+          toBranchId,
+          transferQuantity: quantity
+        })
+      })
+
+      const result = await response.json()
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'فشل في تحويل الكمية')
+      }
+
+      // Update local state for both branches
+      setProducts(prevProducts =>
+        prevProducts.map(product => {
+          if (product.id === selectedProductForQuantity.id) {
+            const newInventoryData = {
+              ...product.inventoryData,
+              [fromBranchId]: {
+                ...product.inventoryData?.[fromBranchId],
+                quantity: result.fromNewQty,
+              },
+              [toBranchId]: {
+                ...product.inventoryData?.[toBranchId],
+                quantity: result.toNewQty,
+              }
+            }
+
+            const newTotalQuantity = Object.values(newInventoryData).reduce(
+              (sum, inv: any) => sum + (inv?.quantity || 0), 0
+            )
+
+            return {
+              ...product,
+              inventoryData: newInventoryData,
+              totalQuantity: newTotalQuantity
+            } as any
+          }
+          return product
+        })
+      )
+
+      revalidateProductPage(selectedProductForQuantity.id).catch(() => {})
+      alert('تم تحويل الكمية بنجاح')
+      activityLog({ entityType: 'inventory', actionType: 'update', entityId: selectedProductForQuantity.id, entityName: selectedProductForQuantity.name })
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'خطأ غير معروف'
+      alert('حدث خطأ في تحويل الكمية: ' + errorMessage)
+    }
+  }, [selectedProductForQuantity, setProducts, activityLog])
+
   return (
     <div className="h-screen bg-[#2B3544] overflow-hidden">
       {/* Top Header */}
@@ -682,16 +895,26 @@ export default function InventoryTabletView({
               <span className="text-xs">الأعمدة</span>
             </button>
 
-            {/* إضافة أزرار إضافية خاصة بالمخزون */}
-            <button className="flex items-center gap-2 px-3 py-2 text-gray-300 hover:text-white cursor-pointer whitespace-nowrap bg-[#2B3544] hover:bg-[#434E61] rounded transition-colors">
-              <ClipboardDocumentListIcon className="h-4 w-4" />
-              <span className="text-xs">إضافة كمية</span>
-            </button>
-
-            <button className="flex items-center gap-2 px-3 py-2 text-gray-300 hover:text-white cursor-pointer whitespace-nowrap bg-[#2B3544] hover:bg-[#434E61] rounded transition-colors">
-              <ClipboardDocumentListIcon className="h-4 w-4" />
-              <span className="text-xs">تعديل كمية</span>
-            </button>
+            {/* Quantity Dropdown Button */}
+            <div className="relative quantity-dropdown flex-shrink-0" ref={quantityDropdownRef}>
+              <button
+                onClick={() => {
+                  if (!showQuantityDropdown && quantityDropdownRef.current) {
+                    const rect = quantityDropdownRef.current.getBoundingClientRect()
+                    setQuantityDropdownPos({
+                      top: rect.bottom + 4,
+                      left: rect.left + rect.width / 2
+                    })
+                  }
+                  setShowQuantityDropdown(!showQuantityDropdown)
+                }}
+                className="flex items-center gap-2 px-3 py-2 text-gray-300 hover:text-white cursor-pointer whitespace-nowrap bg-[#2B3544] hover:bg-[#434E61] rounded transition-colors"
+              >
+                <CubeIcon className="h-4 w-4" />
+                <span className="text-xs">الكمية</span>
+                <ChevronDownIcon className={`h-3 w-3 transition-transform ${showQuantityDropdown ? 'rotate-180' : ''}`} />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -908,6 +1131,28 @@ export default function InventoryTabletView({
               غير موجود
             </button>
           </div>
+
+          {/* Capital Display Row */}
+          <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide mt-2" style={{scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch'}}>
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-blue-600/20 to-emerald-600/20 border border-blue-500/30 rounded-lg flex-shrink-0">
+              <BanknotesIcon className="h-4 w-4 text-emerald-400" />
+              <span className="text-xs text-gray-400">رأس المال:</span>
+              <span className="text-sm font-bold text-emerald-400">
+                {branchCapitals.total.toLocaleString('ar-EG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+              </span>
+            </div>
+            {branchCapitals.branches.map(branch => (
+              <div
+                key={branch.id}
+                className="flex items-center gap-1.5 px-2 py-1 bg-[#2B3544] border border-gray-600/50 rounded-md flex-shrink-0"
+              >
+                <span className="text-xs text-gray-400">{branch.name}:</span>
+                <span className="text-xs font-semibold text-blue-300">
+                  {branch.capital.toLocaleString('ar-EG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Content Area with Sidebar and Main Content - Below Search Bar */}
@@ -1030,8 +1275,36 @@ export default function InventoryTabletView({
                             }`}>
                               {calculateTotalQuantity(product)}
                             </span>
-                            <span className="text-gray-400 text-xs">الكمية الإجمالية</span>
+                            <span className="text-gray-400 text-xs">الكمية</span>
                           </div>
+
+                          {/* Per-Branch Quantities */}
+                          {product.inventoryData && Object.entries(product.inventoryData)
+                            .filter(([locationId]) => selectedBranches[locationId])
+                            .map(([locationId, inventory]: [string, any]) => {
+                              const branch = branches.find(b => b.id === locationId)
+                              const locationName = branch?.name || `موقع ${locationId.slice(0, 8)}`
+                              const quantity = inventory?.quantity || 0
+                              const minStock = inventory?.min_stock || 0
+
+                              let colorClass = 'text-green-400'
+                              if (quantity === 0) {
+                                colorClass = 'text-red-400'
+                              } else if (quantity <= minStock && minStock > 0) {
+                                colorClass = 'text-yellow-400'
+                              }
+
+                              return (
+                                <div key={locationId} className="flex justify-between items-center">
+                                  <span className={`${colorClass} font-medium text-xs`}>
+                                    {quantity}
+                                  </span>
+                                  <span className="text-gray-400 text-xs truncate">
+                                    {locationName}
+                                  </span>
+                                </div>
+                              )
+                            })}
                         </div>
                       </div>
                     ))}
@@ -1093,6 +1366,67 @@ export default function InventoryTabletView({
         onClose={() => setShowColumnsModal(false)}
         columns={getAllColumns}
         onColumnsChange={handleColumnsChange}
+      />
+
+      {/* Quantity Dropdown Menu - Fixed position to escape overflow container */}
+      {showQuantityDropdown && (
+        <div
+          ref={quantityDropdownMenuRef}
+          className="fixed quantity-dropdown-menu bg-[#2B3544] border border-[#4A5568] rounded-lg shadow-xl z-[9999] min-w-[160px] py-1"
+          style={{
+            top: quantityDropdownPos.top,
+            left: quantityDropdownPos.left,
+            transform: 'translateX(-50%)'
+          }}
+        >
+          <button
+            onClick={() => handleQuantityAction('add')}
+            className="w-full flex items-center gap-3 px-4 py-2.5 text-gray-300 hover:bg-green-600/20 hover:text-green-400 transition-colors"
+          >
+            <PlusIcon className="h-4 w-4 text-green-400" />
+            <span className="text-sm">إضافة</span>
+          </button>
+          <button
+            onClick={() => handleQuantityAction('subtract')}
+            className="w-full flex items-center gap-3 px-4 py-2.5 text-gray-300 hover:bg-red-600/20 hover:text-red-400 transition-colors"
+          >
+            <MinusIcon className="h-4 w-4 text-red-400" />
+            <span className="text-sm">خصم</span>
+          </button>
+          <button
+            onClick={() => handleQuantityAction('edit')}
+            className="w-full flex items-center gap-3 px-4 py-2.5 text-gray-300 hover:bg-blue-600/20 hover:text-blue-400 transition-colors"
+          >
+            <PencilSquareIcon className="h-4 w-4 text-blue-400" />
+            <span className="text-sm">تعديل</span>
+          </button>
+          <button
+            onClick={() => handleTransferAction()}
+            className="w-full flex items-center gap-3 px-4 py-2.5 text-gray-300 hover:bg-purple-600/20 hover:text-purple-400 transition-colors"
+          >
+            <ArrowsRightLeftIcon className="h-4 w-4 text-purple-400" />
+            <span className="text-sm">تحويل</span>
+          </button>
+        </div>
+      )}
+
+      {/* Quantity Adjustment Modal */}
+      <QuantityAdjustmentModal
+        isOpen={showQuantityModal}
+        onClose={() => setShowQuantityModal(false)}
+        product={selectedProductForQuantity}
+        mode={quantityModalMode}
+        branches={branches}
+        onConfirm={handleQuantityConfirm}
+      />
+
+      {/* Transfer Quantity Modal */}
+      <TransferQuantityModal
+        isOpen={showTransferModal}
+        onClose={() => setShowTransferModal(false)}
+        product={selectedProductForQuantity}
+        branches={branches}
+        onConfirm={handleTransferConfirm}
       />
 
       {/* Tablet-optimized styles - EXACT COPY FROM PRODUCTS */}
