@@ -14,6 +14,7 @@ import QuantityAdjustmentModal from './QuantityAdjustmentModal'
 import TransferQuantityModal from './TransferQuantityModal'
 import { useProductsAdmin } from '@/lib/hooks/useProductsAdmin'
 import { useActivityLogger } from '@/app/lib/hooks/useActivityLogger'
+import { useCurrentBranch } from '@/lib/contexts/CurrentBranchContext'
 import { revalidateProductPage } from '@/lib/utils/revalidate'
 import {
   ArrowPathIcon,
@@ -72,6 +73,8 @@ interface InventoryTabletViewProps {
   hasMoreProducts: boolean
   remainingProductsCount: number
   onLoadAllProducts: () => void
+  showAuditBadges: boolean
+  toggleAuditBadges: () => void
 }
 
 export default function InventoryTabletView({
@@ -85,7 +88,9 @@ export default function InventoryTabletView({
   setStockStatusFilters,
   hasMoreProducts,
   remainingProductsCount,
-  onLoadAllProducts
+  onLoadAllProducts,
+  showAuditBadges,
+  toggleAuditBadges
 }: InventoryTabletViewProps) {
   const [showBranchesDropdown, setShowBranchesDropdown] = useState(false)
   const [selectedBranches, setSelectedBranches] = useState<{[key: string]: boolean}>({})
@@ -138,6 +143,7 @@ export default function InventoryTabletView({
 
   // Get products and branches data - Using optimized admin hook for better mobile performance
   const { products, setProducts, branches, isLoading, error, fetchProducts } = useProductsAdmin()
+  const { currentBranch } = useCurrentBranch()
   const activityLog = useActivityLogger()
 
   // OPTIMIZED: Memoized branch toggle handler
@@ -239,7 +245,7 @@ export default function InventoryTabletView({
   const getStockStatus = useCallback((item: any) => {
     const totalQuantity = calculateTotalQuantity(item)
     
-    if (totalQuantity === 0) return 'zero'
+    if (totalQuantity <= 0) return 'zero'
     
     let hasLowStock = false
     if (item.inventoryData) {
@@ -466,7 +472,7 @@ export default function InventoryTabletView({
         
         // Determine color based on quantity status for this specific branch
         let colorClass = 'text-green-400' // Good - Green
-        if (quantity === 0) {
+        if (quantity <= 0) {
           colorClass = 'text-red-400' // Zero - Red
         } else if (quantity <= minStock && minStock > 0) {
           colorClass = 'text-yellow-400' // Low - Yellow
@@ -1093,6 +1099,19 @@ export default function InventoryTabletView({
               </button>
             </div>
 
+            {/* Audit Badges Toggle */}
+            <button
+              onClick={toggleAuditBadges}
+              className={`p-2 rounded-md transition-colors flex-shrink-0 ${
+                showAuditBadges
+                  ? 'bg-blue-600 text-white'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-600 bg-[#2B3544] border border-gray-600'
+              }`}
+              title="إظهار/إخفاء حالة الجرد"
+            >
+              <ClipboardDocumentListIcon className="h-4 w-4" />
+            </button>
+
             {/* 4. Categories Toggle Button */}
             <button
               onClick={toggleCategoriesVisibility}
@@ -1350,6 +1369,31 @@ export default function InventoryTabletView({
                           </button>
                         </div>
 
+                        {/* Audit Status Badge - top left of image */}
+                        {showAuditBadges && currentBranch && product.inventoryData?.[currentBranch.id] && (
+                          <div className="absolute top-2 left-2 z-10">
+                            <span
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleAuditStatusRightClick(e, product.id, currentBranch.id)
+                              }}
+                              className={`px-2 py-0.5 rounded text-[10px] font-medium cursor-pointer shadow-md ${
+                                (() => {
+                                  const status = (product.inventoryData[currentBranch.id] as any)?.audit_status || 'غير مجرود'
+                                  switch(status) {
+                                    case 'تام الجرد': return 'bg-green-600 text-white'
+                                    case 'استعد': return 'bg-yellow-600 text-white'
+                                    case 'غير مجرود': return 'bg-red-600 text-white'
+                                    default: return 'bg-red-600 text-white'
+                                  }
+                                })()
+                              }`}
+                            >
+                              {(product.inventoryData[currentBranch.id] as any)?.audit_status || 'غير مجرود'}
+                            </span>
+                          </div>
+                        )}
+
                         {/* Product Image - Larger on tablets */}
                         <div className="w-full h-36 sm:h-44 md:h-48 bg-[#2B3544] rounded-md mb-3 flex items-center justify-center overflow-hidden">
                           {product.main_image_url ? (
@@ -1408,7 +1452,7 @@ export default function InventoryTabletView({
                               const minStock = inventory?.min_stock || 0
 
                               let colorClass = 'text-green-400'
-                              if (quantity === 0) {
+                              if (quantity <= 0) {
                                 colorClass = 'text-red-400'
                               } else if (quantity <= minStock && minStock > 0) {
                                 colorClass = 'text-yellow-400'

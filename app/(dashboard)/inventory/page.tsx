@@ -3,9 +3,11 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import POSSearchInput from '@/app/components/pos/POSSearchInput'
 import { useActivityLogger } from "@/app/lib/hooks/useActivityLogger"
+import { useCurrentBranch } from '@/lib/contexts/CurrentBranchContext'
 
 // Local storage key for inventory column visibility
 const INVENTORY_COLUMN_VISIBILITY_KEY = 'inventory-column-visibility-v2'
+const INVENTORY_AUDIT_BADGES_KEY = 'inventory-audit-badges-visible'
 import InventoryTabletView from '../../components/InventoryTabletView'
 import { ProductGridImage, ProductModalImage, ProductThumbnail } from '../../components/ui/OptimizedImage'
 import ResizableTable from '../../components/tables/ResizableTable'
@@ -83,7 +85,7 @@ export default function InventoryPage() {
   const [isEditingWarehouse, setIsEditingWarehouse] = useState(false)
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null)
   const [selectedProduct, setSelectedProduct] = useState<any>(null)
-  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table')
+  const [viewMode, setViewMode] = useState<'table' | 'grid'>('grid')
   const [showProductModal, setShowProductModal] = useState(false)
   const [modalProduct, setModalProduct] = useState<any>(null)
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
@@ -93,7 +95,8 @@ export default function InventoryPage() {
   const inventoryVisibilityLoadedRef = useRef(false)
   const [isTablet, setIsTablet] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
-  
+  const [showAuditBadges, setShowAuditBadges] = useState(false)
+
   // Quantity adjustment modal states
   const [showQuantityModal, setShowQuantityModal] = useState(false)
   const [quantityModalMode, setQuantityModalMode] = useState<'add' | 'edit' | 'subtract'>('add')
@@ -163,6 +166,7 @@ export default function InventoryPage() {
 
   // ✨ OPTIMIZED: Use super-optimized admin hook (reduces 201 queries to 3!)
   const { products, setProducts, branches, isLoading, error, fetchProducts } = useProductsAdmin()
+  const { currentBranch } = useCurrentBranch()
 
   // ✨ PERFORMANCE: Limit visible products to reduce DOM nodes
   const VISIBLE_PRODUCTS_LIMIT = 50
@@ -225,6 +229,20 @@ export default function InventoryPage() {
     checkDevice()
     window.addEventListener('resize', checkDevice)
     return () => window.removeEventListener('resize', checkDevice)
+  }, [])
+
+  // Load audit badges visibility from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem(INVENTORY_AUDIT_BADGES_KEY)
+    if (saved !== null) setShowAuditBadges(saved === 'true')
+  }, [])
+
+  const toggleAuditBadges = useCallback(() => {
+    setShowAuditBadges(prev => {
+      const newVal = !prev
+      localStorage.setItem(INVENTORY_AUDIT_BADGES_KEY, String(newVal))
+      return newVal
+    })
   }, [])
 
   // Initialize selected branches when branches data loads
@@ -437,7 +455,7 @@ export default function InventoryPage() {
         
         // Determine color based on quantity status for this specific branch
         let colorClass = 'text-green-400' // Good - Green
-        if (quantity === 0) {
+        if (quantity <= 0) {
           colorClass = 'text-red-400' // Zero - Red
         } else if (quantity <= minStock && minStock > 0) {
           colorClass = 'text-yellow-400' // Low - Yellow
@@ -690,7 +708,7 @@ export default function InventoryPage() {
   const getStockStatus = useCallback((item: any) => {
     const totalQuantity = calculateTotalQuantity(item)
     
-    if (totalQuantity === 0) return 'zero'
+    if (totalQuantity <= 0) return 'zero'
     
     // Check if any selected branch has low stock
     let hasLowStock = false
@@ -1315,6 +1333,8 @@ export default function InventoryPage() {
         hasMoreProducts={hasMoreProducts}
         remainingProductsCount={filteredProducts.length - VISIBLE_PRODUCTS_LIMIT}
         onLoadAllProducts={() => setShowAllProducts(true)}
+        showAuditBadges={showAuditBadges}
+        toggleAuditBadges={toggleAuditBadges}
       />
     )
   }
@@ -1645,6 +1665,19 @@ export default function InventoryPage() {
                     </button>
                   </div>
 
+                  {/* Audit Badges Toggle */}
+                  <button
+                    onClick={toggleAuditBadges}
+                    className={`p-2 rounded-md transition-colors ${
+                      showAuditBadges
+                        ? 'bg-blue-600 text-white'
+                        : 'text-gray-400 hover:text-white hover:bg-gray-600 bg-[#2B3544]'
+                    }`}
+                    title="إظهار/إخفاء حالة الجرد"
+                  >
+                    <ClipboardDocumentListIcon className="h-4 w-4" />
+                  </button>
+
                   {/* Search */}
                   <POSSearchInput
                     onSearch={handleSearchChange}
@@ -1757,7 +1790,32 @@ export default function InventoryPage() {
                             alt={product.name}
                             priority={index < 6} // Prioritize first 6 products
                           />
-                          
+
+                          {/* Audit Status Badge - top left of image */}
+                          {showAuditBadges && currentBranch && product.inventoryData?.[currentBranch.id] && (
+                            <div className="absolute top-2 left-2 z-10">
+                              <span
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleAuditStatusRightClick(e, product.id, currentBranch.id)
+                                }}
+                                className={`px-2 py-0.5 rounded text-[10px] font-medium cursor-pointer shadow-md ${
+                                  (() => {
+                                    const status = (product.inventoryData[currentBranch.id] as any)?.audit_status || 'غير مجرود'
+                                    switch(status) {
+                                      case 'تام الجرد': return 'bg-green-600 text-white'
+                                      case 'استعد': return 'bg-yellow-600 text-white'
+                                      case 'غير مجرود': return 'bg-red-600 text-white'
+                                      default: return 'bg-red-600 text-white'
+                                    }
+                                  })()
+                                }`}
+                              >
+                                {(product.inventoryData[currentBranch.id] as any)?.audit_status || 'غير مجرود'}
+                              </span>
+                            </div>
+                          )}
+
                           {/* Hover Button - positioned above image */}
                           <div className="absolute top-2 right-2 z-50">
                             <button
@@ -1820,7 +1878,7 @@ export default function InventoryPage() {
                             
                             // Determine color based on quantity status for this specific branch
                             let colorClass = 'text-green-400' // Good - Green
-                            if (quantity === 0) {
+                            if (quantity <= 0) {
                               colorClass = 'text-red-400' // Zero - Red
                             } else if (quantity <= minStock && minStock > 0) {
                               colorClass = 'text-yellow-400' // Low - Yellow
@@ -1837,6 +1895,7 @@ export default function InventoryPage() {
                               </div>
                             )
                           })}
+
                         </div>
                       </div>
                     ))}
