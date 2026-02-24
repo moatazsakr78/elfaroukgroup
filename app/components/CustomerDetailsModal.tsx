@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { MagnifyingGlassIcon, XMarkIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon, ChevronUpIcon, PlusIcon, PencilSquareIcon, TrashIcon, TableCellsIcon, CalendarDaysIcon, PrinterIcon, DocumentIcon, ArrowDownTrayIcon, DocumentArrowDownIcon, EllipsisVerticalIcon } from '@heroicons/react/24/outline'
+import { MagnifyingGlassIcon, XMarkIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon, ChevronUpIcon, PlusIcon, PencilSquareIcon, TrashIcon, TableCellsIcon, CalendarDaysIcon, PrinterIcon, DocumentIcon, ArrowDownTrayIcon, DocumentArrowDownIcon, EllipsisVerticalIcon, XCircleIcon } from '@heroicons/react/24/outline'
 import ResizableTable from './tables/ResizableTable'
 import { supabase } from '../lib/supabase/client'
 import ConfirmDeleteModal from './ConfirmDeleteModal'
+import { cancelSalesInvoice } from '../lib/invoices/cancelSalesInvoice'
 import SimpleDateFilterModal, { DateFilter } from './SimpleDateFilterModal'
 import AddPaymentModal from './AddPaymentModal'
 import { useSystemCurrency, useFormatPrice } from '@/lib/hooks/useCurrency'
@@ -582,6 +583,7 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
           invoice_type,
           record_id,
           cashier_id,
+          status,
           customer:customers(
             name,
             phone
@@ -2145,105 +2147,29 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
     setShowDeleteModal(true)
   }
 
-  // Confirm delete invoice
+  // Confirm cancel invoice
   const confirmDeleteInvoice = async () => {
     if (!invoiceToDelete) return
 
     try {
       setIsDeleting(true)
 
-      // 1. أولاً: نجيب معاملات الخزنة المرتبطة بهذه الفاتورة لتحديث رصيد الخزنة
-      const { data: drawerTransactions, error: transError } = await supabase
-        .from('cash_drawer_transactions')
-        .select('id, drawer_id, amount, record_id')
-        .eq('sale_id', invoiceToDelete.id)
+      const result = await cancelSalesInvoice({
+        saleId: invoiceToDelete.id,
+        userId: null,
+        userName: null
+      })
 
-      if (!transError && drawerTransactions && drawerTransactions.length > 0) {
-        // لكل معاملة، نخصم المبلغ من الخزنة
-        for (const transaction of drawerTransactions) {
-          // جلب رصيد الخزنة الحالي
-          const { data: drawer } = await supabase
-            .from('cash_drawers')
-            .select('id, current_balance')
-            .eq('id', transaction.drawer_id)
-            .single()
-
-          if (drawer) {
-            // خصم المبلغ من رصيد الخزنة (المبلغ موجب للبيع، سالب للمرتجع)
-            const newBalance = (drawer.current_balance || 0) - transaction.amount
-
-            // تحديث رصيد الخزنة
-            await supabase
-              .from('cash_drawers')
-              .update({
-                current_balance: newBalance,
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', drawer.id)
-
-            // إضافة سجل حذف الفاتورة
-            await supabase
-              .from('cash_drawer_transactions')
-              .insert({
-                drawer_id: drawer.id,
-                record_id: transaction.record_id,
-                transaction_type: 'invoice_delete',
-                amount: -transaction.amount, // عكس المبلغ الأصلي
-                balance_after: newBalance,
-                sale_id: invoiceToDelete.id,
-                notes: `حذف فاتورة رقم ${invoiceToDelete.invoice_number}`,
-                performed_by: 'system'
-              })
-
-            console.log(`✅ Cash drawer updated after delete: ${-transaction.amount}, new balance: ${newBalance}`)
-          }
-        }
-
-        // حذف معاملات الخزنة الأصلية المرتبطة بالفاتورة
-        await supabase
-          .from('cash_drawer_transactions')
-          .delete()
-          .eq('sale_id', invoiceToDelete.id)
-          .neq('transaction_type', 'invoice_delete') // لا نحذف سجل الحذف الجديد
-      }
-
-      // 2. حذف المدفوعات المرتبطة بالفاتورة من جدول customer_payments
-      const { error: paymentsError } = await supabase
-        .from('customer_payments')
-        .delete()
-        .ilike('notes', `%${invoiceToDelete.invoice_number}%`)
-
-      if (paymentsError) {
-        console.warn('Error deleting customer payments:', paymentsError)
-      }
-
-      // 3. حذف عناصر الفاتورة
-      const { error: saleItemsError } = await supabase
-        .from('sale_items')
-        .delete()
-        .eq('sale_id', invoiceToDelete.id)
-
-      if (saleItemsError) {
-        console.error('Error deleting sale items:', saleItemsError)
-        throw saleItemsError
-      }
-
-      // 4. حذف الفاتورة نفسها
-      const { error: saleError } = await supabase
-        .from('sales')
-        .delete()
-        .eq('id', invoiceToDelete.id)
-
-      if (saleError) {
-        console.error('Error deleting sale:', saleError)
-        throw saleError
+      if (!result.success) {
+        console.error('Error cancelling invoice:', result.message)
+        return
       }
 
       // Close modal and reset state
       setShowDeleteModal(false)
       setInvoiceToDelete(null)
 
-      // Refresh data (real-time will handle it but this ensures immediate update)
+      // Refresh data
       fetchSales()
 
       // Reset selected transaction if needed
@@ -2252,8 +2178,7 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
       }
 
     } catch (error) {
-      console.error('Error deleting invoice:', error)
-      // You could add a toast notification here for error feedback
+      console.error('Error cancelling invoice:', error)
     } finally {
       setIsDeleting(false)
     }
@@ -2642,12 +2567,19 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
         <span className="text-gray-400">{index + 1}</span>
       )
     },
-    { 
-      id: 'invoice_number', 
-      header: 'رقم الفاتورة', 
-      accessor: 'invoice_number', 
+    {
+      id: 'invoice_number',
+      header: 'رقم الفاتورة',
+      accessor: 'invoice_number',
       width: 180,
-      render: (value: string) => <span className="text-blue-400">{value}</span>
+      render: (value: string, item: any) => (
+        <span className={`flex items-center gap-1 ${item.status === 'cancelled' ? 'opacity-60' : ''}`}>
+          <span className="text-blue-400">{value}</span>
+          {item.status === 'cancelled' && (
+            <span className="text-[10px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded">ملغاة</span>
+          )}
+        </span>
+      )
     },
     { 
       id: 'created_at', 
@@ -3336,7 +3268,10 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
                               {formatPrice(Math.abs(parseFloat(sale.total_amount)), 'system')}
                             </span>
                             <div className="flex items-center gap-2">
-                              <span className="text-blue-400 font-medium text-sm">#{sale.invoice_number}</span>
+                              <span className={`text-blue-400 font-medium text-sm ${sale.status === 'cancelled' ? 'opacity-60' : ''}`}>#{sale.invoice_number}</span>
+                              {sale.status === 'cancelled' && (
+                                <span className="text-[10px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded">ملغاة</span>
+                              )}
                               <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                                 sale.invoice_type === 'مرتجع شراء'
                                   ? 'bg-orange-900 text-orange-300'
@@ -3924,7 +3859,7 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
                             // Open POS in a new window with edit mode
                             window.open(`/pos?edit=true&saleId=${selectedSale.id}`, '_blank')
                           }}
-                          disabled={sales.length === 0 || selectedTransaction >= sales.length || isLoadingItems}
+                          disabled={sales.length === 0 || selectedTransaction >= sales.length || isLoadingItems || (sales.length > 0 && selectedTransaction < sales.length && sales[selectedTransaction]?.status === 'cancelled')}
                           className="flex flex-col items-center p-2 text-gray-300 hover:text-white disabled:text-gray-500 disabled:cursor-not-allowed cursor-pointer min-w-[80px] transition-colors"
                         >
                           <PencilSquareIcon className="h-5 w-5 mb-1" />
@@ -3938,11 +3873,11 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
                             handleDeleteInvoice(sales[selectedTransaction])
                           }
                         }}
-                        disabled={sales.length === 0 || selectedTransaction >= sales.length}
-                        className="flex flex-col items-center p-2 text-red-400 hover:text-red-300 disabled:text-gray-500 disabled:cursor-not-allowed cursor-pointer min-w-[80px] transition-colors"
+                        disabled={sales.length === 0 || selectedTransaction >= sales.length || (sales.length > 0 && selectedTransaction < sales.length && sales[selectedTransaction]?.status === 'cancelled')}
+                        className="flex flex-col items-center p-2 text-orange-400 hover:text-orange-300 disabled:text-gray-500 disabled:cursor-not-allowed cursor-pointer min-w-[80px] transition-colors"
                       >
-                        <TrashIcon className="h-5 w-5 mb-1" />
-                        <span className="text-sm">حذف الفاتورة</span>
+                        <XCircleIcon className="h-5 w-5 mb-1" />
+                        <span className="text-sm">إلغاء الفاتورة</span>
                       </button>
 
                       <button
@@ -4802,15 +4737,16 @@ export default function CustomerDetailsModal({ isOpen, onClose, customer }: Cust
         )}
       </div>
 
-      {/* Delete Invoice Confirmation Modal */}
+      {/* Cancel Invoice Confirmation Modal */}
       <ConfirmDeleteModal
         isOpen={showDeleteModal}
         onClose={cancelDelete}
         onConfirm={confirmDeleteInvoice}
         isDeleting={isDeleting}
-        title="تأكيد حذف الفاتورة"
-        message="هل أنت متأكد أنك تريد حذف هذه الفاتورة؟"
+        title="تأكيد إلغاء الفاتورة"
+        message="هل أنت متأكد أنك تريد إلغاء هذه الفاتورة؟ سيتم إرجاع المخزون وعكس معاملات الخزنة."
         itemName={invoiceToDelete ? `فاتورة رقم: ${invoiceToDelete.invoice_number}` : ''}
+        variant="cancel"
       />
 
       {/* Delete Payment Confirmation Modal */}

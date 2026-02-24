@@ -40,6 +40,7 @@ import {
   ArrowsRightLeftIcon
 } from '@heroicons/react/24/outline'
 import { ranks } from '@/app/lib/data/ranks'
+import { useActivityLogger } from "@/app/lib/hooks/useActivityLogger"
 import Image from 'next/image'
 
 // Customer groups interface is now imported from the hook
@@ -265,6 +266,7 @@ export default function CustomersPage() {
   // Use the real-time hooks for customer groups and customers
   const { groups, isLoading: groupsLoading, error: groupsError, toggleGroup } = useCustomerGroups()
   const { customers, isLoading: customersLoading, error: customersError, isDefaultCustomer } = useCustomers()
+  const activityLog = useActivityLogger()
 
   // Get all columns for columns control modal
   const getAllColumns = () => {
@@ -361,8 +363,9 @@ export default function CustomersPage() {
       }
 
       // Clear selection after successful deletion
+      activityLog({ entityType: 'customer', actionType: 'delete', entityId: selectedCustomer.id, entityName: selectedCustomer.name })
       setSelectedCustomer(null)
-      
+
     } catch (err) {
       console.error('Unexpected error:', err)
       alert('حدث خطأ غير متوقع أثناء حذف العميل')
@@ -479,9 +482,10 @@ export default function CustomersPage() {
       if (error) throw error
       
       // Clear selection and close confirmation
+      activityLog({ entityType: 'category', actionType: 'delete', entityId: selectedCustomerGroup.id, entityName: selectedCustomerGroup.name, description: 'حذف مجموعة عملاء: ' + selectedCustomerGroup.name })
       setSelectedCustomerGroup(null)
       setShowDeleteConfirm(false)
-      
+
       // Refresh groups list
       await fetchCustomerGroups()
       

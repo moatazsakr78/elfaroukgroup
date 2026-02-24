@@ -30,6 +30,7 @@ import { useStoreThemes } from '@/lib/hooks/useStoreTheme';
 import { supabase } from '@/app/lib/supabase/client';
 import { clearSettingsCache } from '@/lib/hooks/useProductFilter';
 import LogoEditor from '@/app/components/LogoEditor';
+import { useActivityLogger } from "@/app/lib/hooks/useActivityLogger";
 
 // Custom dropdown component with delete buttons
 const CurrencyDropdownWithDelete = ({
@@ -211,6 +212,7 @@ const settingsCategories: SettingsCategory[] = [
 
 export default function SettingsPage() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const activityLog = useActivityLogger();
   const [selectedCategory, setSelectedCategory] = useState<string>('system');
 
   // System Settings State
@@ -783,6 +785,7 @@ export default function SettingsPage() {
       clearSettingsCache();
 
       alert('تم حفظ الإعدادات بنجاح!');
+      activityLog({ entityType: 'setting', actionType: 'update', description: `عدّل إعدادات ${selectedCategory === 'theme' ? 'المظهر' : selectedCategory === 'company' ? 'الشركة' : selectedCategory === 'store' ? 'المتجر' : 'النظام'}` });
     } catch (error) {
       console.error('Error saving settings:', error);
       alert('حدث خطأ أثناء حفظ الإعدادات');
@@ -1604,6 +1607,7 @@ export default function SettingsPage() {
         setShowTokenInput(false);
         setNewToken('');
         alert('تم حفظ الـ Token بنجاح!');
+        activityLog({ entityType: 'setting', actionType: 'update', description: 'حفظ Token واتساب' });
       } else {
         throw new Error(data.error || 'Failed to save token');
       }
@@ -1630,6 +1634,7 @@ export default function SettingsPage() {
         setWasenderTokenConfigured(false);
         setWasenderTokenLastUpdated(null);
         alert('تم حذف الـ Token بنجاح');
+        activityLog({ entityType: 'setting', actionType: 'delete', description: 'حذف Token واتساب' });
       } else {
         throw new Error(data.error || 'Failed to delete token');
       }

@@ -1442,7 +1442,8 @@ function ReportsPageContent() {
             product_id,
             products(category_id)
           )
-        `);
+        `)
+        .neq('status', 'cancelled');
 
       // Apply date filters using unified helper function
       const dateRange = getDateRangeForFilter(currentFilter);
@@ -2012,7 +2013,8 @@ function ReportsPageContent() {
             unit_price,
             cost_price
           )
-        `);
+        `)
+        .neq('status', 'cancelled');
 
       // Apply date filters using unified helper function
       const dateRange = getDateRangeForFilter(currentFilter);
@@ -2179,6 +2181,7 @@ function ReportsPageContent() {
           record_id,
           sale_items(quantity, product_id, products(category_id))
         `)
+        .neq('status', 'cancelled')
         .not('customer_id', 'is', null);
 
       // Apply date filters using unified helper function
@@ -2351,7 +2354,8 @@ function ReportsPageContent() {
           branch_id,
           record_id,
           sale_items(product_id, products(category_id))
-        `);
+        `)
+        .neq('status', 'cancelled');
 
       // Apply date filters using unified helper function
       const dateRange = getDateRangeForFilter(currentFilter);
@@ -2511,7 +2515,8 @@ function ReportsPageContent() {
           branch_id,
           record_id,
           sale_items(product_id, products(category_id))
-        `);
+        `)
+        .neq('status', 'cancelled');
 
       // Apply date filters using unified helper function
       const dateRange = getDateRangeForFilter(currentFilter);

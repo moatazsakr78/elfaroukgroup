@@ -40,6 +40,7 @@ import {
   ArrowsRightLeftIcon
 } from '@heroicons/react/24/outline'
 import { ranks } from '@/app/lib/data/ranks'
+import { useActivityLogger } from "@/app/lib/hooks/useActivityLogger"
 import Image from 'next/image'
 
 // Supplier groups interface is now imported from the hook
@@ -259,6 +260,7 @@ export default function SuppliersPage() {
   // Use the real-time hooks for supplier groups and suppliers
   const { groups, isLoading: groupsLoading, error: groupsError, toggleGroup } = useSupplierGroups()
   const { suppliers, isLoading: suppliersLoading, error: suppliersError, isDefaultSupplier } = useSuppliers()
+  const activityLog = useActivityLogger();
 
   // Fetch all supplier balances efficiently
   const fetchAllSupplierBalances = useCallback(async () => {
@@ -508,7 +510,8 @@ export default function SuppliersPage() {
 
       // Clear selection after successful deletion
       setSelectedSupplier(null)
-      
+      activityLog({ entityType: 'supplier', actionType: 'delete', entityId: selectedSupplier.id, entityName: selectedSupplier.name });
+
     } catch (err) {
       console.error('Unexpected error:', err)
       alert('حدث خطأ غير متوقع أثناء حذف المورد')
@@ -627,9 +630,10 @@ export default function SuppliersPage() {
       // Clear selection and close confirmation
       setSelectedSupplierGroup(null)
       setShowDeleteConfirm(false)
-      
+
       // Refresh groups list
       await fetchSupplierGroups()
+      activityLog({ entityType: 'category', actionType: 'delete', entityId: selectedSupplierGroup.id, entityName: selectedSupplierGroup.name, description: 'حذف مجموعة موردين: ' + selectedSupplierGroup.name });
       
     } catch (error) {
       console.error('Error deleting supplier group:', error)

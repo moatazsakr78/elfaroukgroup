@@ -8,6 +8,7 @@ import { ranks } from '@/app/lib/data/ranks'
 import { egyptianGovernorates } from '@/app/lib/data/governorates'
 import { supabase } from '@/app/lib/supabase/client'
 import { Supplier } from '@/app/lib/hooks/useSuppliers'
+import { useActivityLogger } from "@/app/lib/hooks/useActivityLogger"
 
 interface EditSupplierModalProps {
   isOpen: boolean
@@ -16,6 +17,7 @@ interface EditSupplierModalProps {
 }
 
 export default function EditSupplierModal({ isOpen, onClose, supplier }: EditSupplierModalProps) {
+  const activityLog = useActivityLogger()
   const [activeTab, setActiveTab] = useState('details')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -150,7 +152,8 @@ export default function EditSupplierModal({ isOpen, onClose, supplier }: EditSup
       }
 
       setSuccess('تم تحديث المورد بنجاح!')
-      
+      activityLog({ entityType: 'supplier', actionType: 'update', entityId: supplier.id, entityName: formData.name.trim() });
+
       // Close modal after 1.5 seconds
       setTimeout(() => {
         onClose()

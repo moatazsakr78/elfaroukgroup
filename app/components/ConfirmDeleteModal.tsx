@@ -10,6 +10,10 @@ interface ConfirmDeleteModalProps {
   title?: string
   message?: string
   itemName?: string
+  variant?: 'delete' | 'cancel'
+  confirmButtonText?: string
+  loadingText?: string
+  warningText?: string
 }
 
 export default function ConfirmDeleteModal({ 
@@ -19,8 +23,16 @@ export default function ConfirmDeleteModal({
   isDeleting = false,
   title = 'تأكيد الحذف',
   message = 'هل أنت متأكد أنك تريد حذف هذه الفاتورة؟',
-  itemName = ''
+  itemName = '',
+  variant = 'delete',
+  confirmButtonText,
+  loadingText,
+  warningText
 }: ConfirmDeleteModalProps) {
+  const isCancel = variant === 'cancel'
+  const btnText = confirmButtonText || (isCancel ? 'نعم، الغِ' : 'نعم، احذف')
+  const btnLoadingText = loadingText || (isCancel ? 'جاري الإلغاء...' : 'جاري الحذف...')
+  const warnText = warningText || (isCancel ? 'تحذير: سيتم إرجاع المخزون وعكس معاملات الخزنة' : 'تحذير: لا يمكن التراجع عن هذا الإجراء')
   if (!isOpen) return null
 
   return (
@@ -36,7 +48,7 @@ export default function ConfirmDeleteModal({
         <div className="bg-[#2B3544] border border-gray-600 rounded-lg shadow-xl w-full max-w-md mx-4">
           {/* Header */}
           <div className="flex items-center gap-3 p-6 border-b border-gray-600">
-            <ExclamationTriangleIcon className="h-6 w-6 text-red-400 flex-shrink-0" />
+            <ExclamationTriangleIcon className={`h-6 w-6 flex-shrink-0 ${isCancel ? 'text-orange-400' : 'text-red-400'}`} />
             <h3 className="text-lg font-medium text-white text-right flex-1">
               {title}
             </h3>
@@ -48,14 +60,14 @@ export default function ConfirmDeleteModal({
               {message}
             </p>
             {itemName && (
-              <div className="mt-3 p-3 bg-gray-700/50 rounded border-r-4 border-red-500">
+              <div className={`mt-3 p-3 bg-gray-700/50 rounded border-r-4 ${isCancel ? 'border-orange-500' : 'border-red-500'}`}>
                 <p className="text-white text-sm text-right font-medium">
                   {itemName}
                 </p>
               </div>
             )}
-            <p className="text-red-400 text-sm text-right mt-4">
-              تحذير: لا يمكن التراجع عن هذا الإجراء
+            <p className={`text-sm text-right mt-4 ${isCancel ? 'text-orange-400' : 'text-red-400'}`}>
+              {warnText}
             </p>
           </div>
 
@@ -74,15 +86,15 @@ export default function ConfirmDeleteModal({
             <button
               onClick={onConfirm}
               disabled={isDeleting}
-              className="flex-1 px-4 py-2 text-white bg-red-600 hover:bg-red-700 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className={`flex-1 px-4 py-2 text-white rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${isCancel ? 'bg-orange-600 hover:bg-orange-700' : 'bg-red-600 hover:bg-red-700'}`}
             >
               {isDeleting ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  <span>جاري الحذف...</span>
+                  <span>{btnLoadingText}</span>
                 </>
               ) : (
-                'نعم، احذف'
+                btnText
               )}
             </button>
           </div>

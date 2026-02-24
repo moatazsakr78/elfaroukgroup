@@ -14,6 +14,7 @@ import {
 import { KPIData, SalesTrendPoint, TopProductData, TopCustomerData, CategoryDistribution, DateFilter, SaleTypeBreakdownData } from '../../reports/types/reports';
 import { getDateRangeFromFilter } from '@/app/lib/utils/dateFilters';
 import { toEgyptDateString } from '@/app/lib/utils/date-utils';
+import type { ActivityLog } from '../components/RecentActivityCard';
 import {
   SimpleFiltersResult,
   MultiFiltersResult,
@@ -57,6 +58,7 @@ export interface DashboardData {
   recentOrders: RecentOrder[];
   capitalData: CapitalData | null;
   saleTypeBreakdown: SaleTypeBreakdownData | null;
+  recentActivity: ActivityLog[];
 }
 
 // Initial empty state
@@ -69,6 +71,7 @@ const initialData: DashboardData = {
   recentOrders: [],
   capitalData: null,
   saleTypeBreakdown: null,
+  recentActivity: [],
 };
 
 // Fetch recent orders
@@ -102,6 +105,22 @@ const fetchRecentOrders = async (dateFilter: DateFilter, limit: number = 5): Pro
     status: order.status || 'pending',
     created_at: order.created_at,
   }));
+};
+
+// Fetch recent activity logs
+const fetchRecentActivity = async (limit: number = 7): Promise<ActivityLog[]> => {
+  const { data, error } = await (supabase as any)
+    .from('activity_logs')
+    .select('id, user_name, entity_type, action_type, description, created_at')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error('Error fetching recent activity:', error);
+    return [];
+  }
+
+  return (data || []) as ActivityLog[];
 };
 
 // Fetch period purchases: sum of net_amount from purchase_invoices per branch/warehouse
@@ -191,7 +210,8 @@ async function fetchRawSalesData(dateFilter: DateFilter) {
 
   let salesQuery = supabase
     .from('sales')
-    .select('id, total_amount, profit, customer_id, cashier_id, branch_id, record_id, created_at, invoice_type, sale_type, shipping_amount, payment_method');
+    .select('id, total_amount, profit, customer_id, cashier_id, branch_id, record_id, created_at, invoice_type, sale_type, shipping_amount, payment_method')
+    .neq('status', 'cancelled');
 
   if (startDate) salesQuery = salesQuery.gte('created_at', startDate.toISOString());
   if (endDate) salesQuery = salesQuery.lte('created_at', endDate.toISOString());
@@ -312,7 +332,7 @@ function applyFiltersToSales(
 function computeFilteredDashboardData(
   filteredSales: any[],
   filteredItems: any[],
-): Omit<DashboardData, 'recentOrders' | 'capitalData'> {
+): Omit<DashboardData, 'recentOrders' | 'capitalData' | 'recentActivity'> {
   // KPIs
   const totalSales = filteredSales.reduce((sum, s) => sum + (parseFloat(String(s.total_amount)) || 0), 0);
   const totalProfit = filteredSales.reduce((sum, s) => sum + (parseFloat(String(s.profit ?? 0)) || 0), 0);
@@ -606,11 +626,12 @@ export function useDashboardData(
           customerGroupCustomerIds = await fetchCustomerIdsByGroups(groupIds);
         }
 
-        // Fetch raw data + recent orders + capital in parallel
-        const [rawResult, recentOrdersResult, capitalResult] = await Promise.allSettled([
+        // Fetch raw data + recent orders + capital + activity in parallel
+        const [rawResult, recentOrdersResult, capitalResult, activityResult] = await Promise.allSettled([
           fetchRawSalesData(dateFilter),
           fetchRecentOrders(dateFilter, 5),
           fetchPeriodPurchases(dateFilter),
+          fetchRecentActivity(7),
         ]);
 
         if (rawResult.status === 'rejected') throw rawResult.reason;
@@ -639,6 +660,7 @@ export function useDashboardData(
           saleTypeBreakdown: computed.saleTypeBreakdown,
           recentOrders: recentOrdersResult.status === 'fulfilled' ? recentOrdersResult.value : [],
           capitalData: capitalResult.status === 'fulfilled' ? capitalResult.value : null,
+          recentActivity: activityResult.status === 'fulfilled' ? activityResult.value : [],
         };
       } else {
         // UNFILTERED MODE: Use existing service functions (no change from original)
@@ -651,6 +673,7 @@ export function useDashboardData(
           recentOrdersResult,
           capitalResult,
           saleTypeResult,
+          activityResult2,
         ] = await Promise.allSettled([
           fetchKPIs(dateFilter),
           fetchSalesTrend(dateFilter, 30),
@@ -660,6 +683,7 @@ export function useDashboardData(
           fetchRecentOrders(dateFilter, 5),
           fetchPeriodPurchases(dateFilter),
           fetchSaleTypeBreakdown(dateFilter),
+          fetchRecentActivity(7),
         ]);
 
         newData = {
@@ -671,6 +695,7 @@ export function useDashboardData(
           recentOrders: recentOrdersResult.status === 'fulfilled' ? recentOrdersResult.value : [],
           capitalData: capitalResult.status === 'fulfilled' ? capitalResult.value : null,
           saleTypeBreakdown: saleTypeResult.status === 'fulfilled' ? saleTypeResult.value : null,
+          recentActivity: activityResult2.status === 'fulfilled' ? activityResult2.value : [],
         };
       }
 

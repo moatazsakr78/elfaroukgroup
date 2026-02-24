@@ -10,6 +10,7 @@ import { Product } from '../lib/hooks/useProducts'
 import { checkProductPurchaseHistory, PurchaseHistoryCheck, getLastPurchaseInfo, LastPurchaseInfo } from '../lib/utils/purchase-cost-management'
 import PurchaseHistoryModal from './PurchaseHistoryModal'
 import { useAuth } from '../lib/hooks/useAuth'
+import { useActivityLogger } from "@/app/lib/hooks/useActivityLogger"
 import { useProductVideos, ProductVideo } from '../lib/hooks/useProductVideos'
 import ProductVideoUpload from './ProductVideoUpload'
 
@@ -230,6 +231,7 @@ const ImageUploadArea = ({ onImageSelect, images, onImageRemove, label, multiple
 
 export default function ProductSidebar({ isOpen, onClose, onProductCreated, createProduct, updateProduct, categories, editProduct, selectedCategory }: ProductSidebarProps) {
   const { isAdmin } = useAuth()
+  const activityLog = useActivityLogger()
   const [activeTab, setActiveTab] = useState('تفاصيل المنتج')
   const [activeShapeColorTab, setActiveShapeColorTab] = useState('شكل وصف')
   const [branches, setBranches] = useState<Branch[]>([])
@@ -1997,6 +1999,7 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
           // Success - clear form and close AFTER everything is saved
           handleClearFields()
           alert('تم تحديث المنتج بنجاح!')
+          activityLog({ entityType: 'product', actionType: 'update', entityId: editProduct.id, entityName: formData.name })
         }
       } else {
         // Create new product
@@ -2161,6 +2164,7 @@ export default function ProductSidebar({ isOpen, onClose, onProductCreated, crea
           // Success - clear form and close AFTER everything is saved
           handleClearFields()
           alert('تم إنشاء المنتج بنجاح!')
+          activityLog({ entityType: 'product', actionType: 'create', entityId: savedProduct?.id, entityName: formData.name })
         }
       }
     } catch (error) {

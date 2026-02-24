@@ -1,11 +1,12 @@
 'use client'
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
-import { MagnifyingGlassIcon, XMarkIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon, ChevronUpIcon, PlusIcon, PencilSquareIcon, TrashIcon, TableCellsIcon, CalendarDaysIcon, PrinterIcon, EllipsisVerticalIcon } from '@heroicons/react/24/outline'
+import { MagnifyingGlassIcon, XMarkIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon, ChevronUpIcon, PlusIcon, PencilSquareIcon, TrashIcon, TableCellsIcon, CalendarDaysIcon, PrinterIcon, EllipsisVerticalIcon, XCircleIcon } from '@heroicons/react/24/outline'
 import ResizableTable from './tables/ResizableTable'
 import { supabase } from '../lib/supabase/client'
 import { roundMoney } from '../lib/utils/money'
 import ConfirmDeleteModal from './ConfirmDeleteModal'
+import { cancelSalesInvoice } from '../lib/invoices/cancelSalesInvoice'
 import SimpleDateFilterModal, { DateFilter } from './SimpleDateFilterModal'
 import ContextMenu, { createEditContextMenuItems } from './ContextMenu'
 import EditInvoiceModal from './EditInvoiceModal'
@@ -376,6 +377,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
           created_at,
           time,
           invoice_type,
+          status,
           customer:customers(
             name,
             phone
@@ -1494,26 +1496,16 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
       setIsDeleting(true)
 
       if (transactionToDelete.transactionType === 'sale') {
-        // Delete sale items first (foreign key constraint)
-        const { error: saleItemsError } = await supabase
-          .from('sale_items')
-          .delete()
-          .eq('sale_id', transactionToDelete.id)
+        // Use cancelSalesInvoice to properly restore inventory and reverse cash drawer
+        const result = await cancelSalesInvoice({
+          saleId: transactionToDelete.id,
+          userId: null,
+          userName: null
+        })
 
-        if (saleItemsError) {
-          console.error('Error deleting sale items:', saleItemsError)
-          throw saleItemsError
-        }
-
-        // Delete the sale
-        const { error: saleError } = await supabase
-          .from('sales')
-          .delete()
-          .eq('id', transactionToDelete.id)
-
-        if (saleError) {
-          console.error('Error deleting sale:', saleError)
-          throw saleError
+        if (!result.success) {
+          console.error('Error cancelling sale:', result.message)
+          return
         }
       } else if (transactionToDelete.transactionType === 'purchase') {
         // Delete purchase invoice items first (foreign key constraint)
@@ -1542,19 +1534,18 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
       // Close modal and reset state
       setShowDeleteModal(false)
       setTransactionToDelete(null)
-      
+
       // Refresh data (real-time will handle it but this ensures immediate update)
       fetchSales()
       fetchPurchaseInvoices()
-      
+
       // Reset selected transaction if needed
       if (selectedTransaction >= allTransactions.length - 1) {
         setSelectedTransaction(Math.max(0, allTransactions.length - 2))
       }
 
     } catch (error) {
-      console.error('Error deleting transaction:', error)
-      // You could add a toast notification here for error feedback
+      console.error('Error deleting/cancelling transaction:', error)
     } finally {
       setIsDeleting(false)
     }
@@ -2094,17 +2085,24 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
         <span className="text-gray-400">{index + 1}</span>
       )
     },
-    { 
-      id: 'invoice_number', 
-      header: 'رقم الفاتورة', 
-      accessor: 'invoice_number', 
+    {
+      id: 'invoice_number',
+      header: 'رقم الفاتورة',
+      accessor: 'invoice_number',
       width: 180,
-      render: (value: string) => <span className="text-blue-400">{value}</span>
+      render: (value: string, item: any) => (
+        <span className={`flex items-center gap-1 ${item.status === 'cancelled' ? 'opacity-60' : ''}`}>
+          <span className="text-blue-400">{value}</span>
+          {item.status === 'cancelled' && (
+            <span className="text-[10px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded">ملغاة</span>
+          )}
+        </span>
+      )
     },
-    { 
-      id: 'created_at', 
-      header: 'التاريخ', 
-      accessor: 'created_at', 
+    {
+      id: 'created_at',
+      header: 'التاريخ',
+      accessor: 'created_at',
       width: 120,
       render: (value: string) => {
         const date = new Date(value)
@@ -3064,11 +3062,15 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
                         handleDeleteTransaction(allTransactions[selectedTransaction])
                       }
                     }}
-                    disabled={allTransactions.length === 0 || selectedTransaction >= allTransactions.length}
-                    className="flex flex-col items-center p-2 text-red-400 hover:text-red-300 disabled:text-gray-500 disabled:cursor-not-allowed cursor-pointer min-w-[80px] transition-colors"
+                    disabled={allTransactions.length === 0 || selectedTransaction >= allTransactions.length || (allTransactions.length > 0 && selectedTransaction < allTransactions.length && allTransactions[selectedTransaction]?.transactionType === 'sale' && allTransactions[selectedTransaction]?.status === 'cancelled')}
+                    className={`flex flex-col items-center p-2 disabled:text-gray-500 disabled:cursor-not-allowed cursor-pointer min-w-[80px] transition-colors ${allTransactions.length > 0 && selectedTransaction < allTransactions.length && allTransactions[selectedTransaction]?.transactionType === 'sale' ? 'text-orange-400 hover:text-orange-300' : 'text-red-400 hover:text-red-300'}`}
                   >
-                    <TrashIcon className="h-5 w-5 mb-1" />
-                    <span className="text-sm">حذف الفاتورة</span>
+                    {allTransactions.length > 0 && selectedTransaction < allTransactions.length && allTransactions[selectedTransaction]?.transactionType === 'sale' ? (
+                      <XCircleIcon className="h-5 w-5 mb-1" />
+                    ) : (
+                      <TrashIcon className="h-5 w-5 mb-1" />
+                    )}
+                    <span className="text-sm">{allTransactions.length > 0 && selectedTransaction < allTransactions.length && allTransactions[selectedTransaction]?.transactionType === 'sale' ? 'إلغاء الفاتورة' : 'حذف الفاتورة'}</span>
                   </button>
 
                   <button
@@ -3766,15 +3768,16 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
         )}
       </div>
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete/Cancel Confirmation Modal */}
       <ConfirmDeleteModal
         isOpen={showDeleteModal}
         onClose={cancelDelete}
         onConfirm={confirmDeleteTransaction}
         isDeleting={isDeleting}
-        title={transactionToDelete?.transactionType === 'purchase' ? 'تأكيد حذف فاتورة الشراء' : 'تأكيد حذف فاتورة البيع'}
-        message={transactionToDelete?.transactionType === 'purchase' ? 'هل أنت متأكد أنك تريد حذف هذه فاتورة الشراء؟' : 'هل أنت متأكد أنك تريد حذف هذه فاتورة البيع؟'}
+        title={transactionToDelete?.transactionType === 'purchase' ? 'تأكيد حذف فاتورة الشراء' : 'تأكيد إلغاء فاتورة البيع'}
+        message={transactionToDelete?.transactionType === 'purchase' ? 'هل أنت متأكد أنك تريد حذف هذه فاتورة الشراء؟' : 'هل أنت متأكد أنك تريد إلغاء هذه الفاتورة؟ سيتم إرجاع المخزون وعكس معاملات الخزنة.'}
         itemName={transactionToDelete ? `فاتورة رقم: ${transactionToDelete.invoice_number} (${transactionToDelete.transactionType === 'purchase' ? 'شراء' : 'بيع'})` : ''}
+        variant={transactionToDelete?.transactionType === 'sale' ? 'cancel' : 'delete'}
       />
 
       {/* Date Filter Modal */}

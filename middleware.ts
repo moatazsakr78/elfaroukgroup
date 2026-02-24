@@ -48,6 +48,7 @@ const adminOnlyPaths = [
   '/shipping',
   '/products', // النظام (مش المتجر)
   '/settings',
+  '/activity-logs',
 ]
 
 // Paths for customers only (admins should use customer-orders instead)

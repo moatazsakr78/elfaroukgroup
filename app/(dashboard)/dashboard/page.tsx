@@ -21,6 +21,7 @@ import {
   TopCustomersCard,
   QuickActions,
   DashboardSkeleton,
+  RecentActivityCard,
 } from './components';
 
 // Report Charts (reusing from reports module)
@@ -251,6 +252,12 @@ export default function DashboardPage() {
                   loading={loading}
                 />
               </div>
+
+              {/* Recent Activity */}
+              <RecentActivityCard
+                activities={data.recentActivity}
+                loading={loading}
+              />
 
               {/* Capital Card */}
               <CapitalCard

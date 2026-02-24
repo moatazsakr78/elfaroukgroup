@@ -16,6 +16,7 @@ import {
   ShieldCheckIcon,
   XMarkIcon,
   ClipboardDocumentListIcon,
+  ClipboardDocumentCheckIcon,
   CogIcon,
   ChatBubbleLeftRightIcon
 } from '@heroicons/react/24/outline'
@@ -34,6 +35,7 @@ const allSidebarItems = [
   { href: '/whatsapp', label: 'محادثات واتساب', icon: ChatBubbleLeftRightIcon },
   { href: '/safes', label: 'الخزن', icon: BanknotesIcon },
   { href: '/reports', label: 'التقارير', icon: ChartBarIcon },
+  { href: '/activity-logs', label: 'سجل النشاط', icon: ClipboardDocumentCheckIcon },
   { href: '/permissions', label: 'الصلاحيات', icon: ShieldCheckIcon },
   { href: '/settings', label: 'الإعدادات', icon: CogIcon },
 ]

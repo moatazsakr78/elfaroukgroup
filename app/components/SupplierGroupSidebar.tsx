@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { ArrowRightIcon, ChevronDownIcon } from '@heroicons/react/24/outline'
 import { supabase } from '../lib/supabase/client'
+import { useActivityLogger } from "@/app/lib/hooks/useActivityLogger"
 
 interface SupplierGroup {
   id: string
@@ -33,6 +34,7 @@ export default function SupplierGroupSidebar({
   isEditing = false,
   selectedGroup
 }: SupplierGroupSidebarProps) {
+  const activityLog = useActivityLogger()
   const [activeTab, setActiveTab] = useState('details')
   const [formData, setFormData] = useState({
     name: '',
@@ -98,6 +100,7 @@ export default function SupplierGroupSidebar({
           .eq('id', editGroup.id)
         
         if (error) throw error
+        activityLog({ entityType: 'category', actionType: 'update', entityId: editGroup!.id, entityName: formData.name, description: 'عدّل مجموعة موردين: ' + formData.name });
       } else {
         // Create new group
         const { error } = await supabase
@@ -110,8 +113,9 @@ export default function SupplierGroupSidebar({
           }])
         
         if (error) throw error
+        activityLog({ entityType: 'category', actionType: 'create', entityName: formData.name, description: 'أضاف مجموعة موردين: ' + formData.name });
       }
-      
+
       // Reset form and close
       setFormData({
         name: '',

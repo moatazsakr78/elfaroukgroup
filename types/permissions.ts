@@ -216,6 +216,7 @@ export const PAGE_ACCESS_MAP: Record<string, string> = {
   '/reports': 'page_access.reports',
   '/permissions': 'page_access.permissions',
   '/settings': 'page_access.settings',
+  '/activity-logs': 'page_access.activity_logs',
   // صفحات المتجر
   '/admin/products': 'page_access.store_products',
   '/shipping': 'page_access.shipping_details',

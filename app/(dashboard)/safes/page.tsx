@@ -32,6 +32,7 @@ import { useScrollDetection } from '../../lib/hooks/useScrollDetection'
 import { getDateRangeFromFilter, getDateFilterLabel } from '../../lib/utils/dateFilters'
 import { getAllPendingSales } from '../../lib/offline/db'
 import type { PendingSale } from '../../lib/offline/types'
+import { useActivityLogger } from "@/app/lib/hooks/useActivityLogger"
 
 // Types
 interface Safe {
@@ -60,6 +61,7 @@ type TransactionType = 'all' | 'sale' | 'return' | 'withdrawal' | 'deposit' | 'a
 
 export default function SafesPage() {
   const formatPrice = useFormatPrice()
+  const activityLog = useActivityLogger()
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
 
   // Offline support
@@ -216,6 +218,8 @@ export default function SafesPage() {
           alert('حدث خطأ أثناء حذف الخزنة')
           return
         }
+
+        activityLog({ entityType: 'cash_drawer', actionType: 'delete', entityId: safe.id, entityName: safe.name, description: 'حذف خزنة' })
       }
     } catch (error) {
       console.error('Error deleting safe:', error)
@@ -272,10 +276,12 @@ export default function SafesPage() {
 
   const handleSafeAdded = () => {
     fetchSafes()
+    activityLog({ entityType: 'cash_drawer', actionType: 'create', description: 'أضاف خزنة جديدة' })
   }
 
   const handleSafeUpdated = () => {
     fetchSafes()
+    activityLog({ entityType: 'cash_drawer', actionType: 'update', description: 'عدّل بيانات خزنة' })
   }
 
   // ==================== Records Tab Functions ====================
@@ -369,6 +375,7 @@ export default function SafesPage() {
         }
 
         fetchPaymentMethods()
+        activityLog({ entityType: 'payment_method', actionType: 'delete', entityId: paymentMethod.id, entityName: paymentMethod.name, description: 'حذف طريقة دفع' })
       } catch (error) {
         console.error('Error deleting payment method:', error)
         alert('حدث خطأ أثناء حذف طريقة الدفع')
@@ -378,6 +385,7 @@ export default function SafesPage() {
 
   const handlePaymentMethodAdded = () => {
     fetchPaymentMethods()
+    activityLog({ entityType: 'payment_method', actionType: 'create', description: 'أضاف طريقة دفع جديدة' })
   }
 
   const handlePaymentMethodUpdated = () => {

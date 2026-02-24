@@ -21,6 +21,7 @@ import ExcelProductModal from '../../components/ExcelProductModal'
 import BarcodePrintModal from '../../components/BarcodePrintModal'
 import MissingDataFilterModal, { filterProductsByMissingData } from '../../components/MissingDataFilterModal'
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline'
+import { useActivityLogger } from "@/app/lib/hooks/useActivityLogger"
 import { useBranches, Branch, ProductVariant } from '../../lib/hooks/useBranches'
 import { useProductsAdmin } from '../../../lib/hooks/useProductsAdmin'
 import { Product } from '../../lib/hooks/useProductsOptimized'
@@ -137,6 +138,7 @@ export default function ProductsPage() {
   // ✨ OPTIMIZED: Use super-optimized admin hook (reduces queries significantly!)
   const { products, setProducts, branches, isLoading, error, fetchProducts, createProduct, updateProduct, deleteProduct, hideProduct, getProductUsageStats } = useProductsAdmin()
   const { fetchBranchInventory, fetchProductVariants } = useBranches()
+  const activityLog = useActivityLogger()
 
   // Device detection for tablet and mobile optimization
   useEffect(() => {
@@ -659,7 +661,8 @@ export default function ProductsPage() {
       
       // Refresh categories list
       await fetchCategories()
-      
+      activityLog({ entityType: 'category', actionType: 'delete', entityId: selectedCategory.id, entityName: selectedCategory.name })
+
     } catch (error) {
       console.error('Error deleting category:', error)
       alert('حدث خطأ أثناء حذف المجموعة')
@@ -718,6 +721,7 @@ export default function ProductsPage() {
     try {
       // Pass true to force soft delete if product has usage
       await deleteProduct(selectedProduct.id, productUsageStats?.hasUsage || false)
+      activityLog({ entityType: 'product', actionType: 'delete', entityId: selectedProduct.id, entityName: selectedProduct.name })
 
       // Clear selection and close confirmation
       setSelectedProduct(null)
@@ -751,6 +755,7 @@ export default function ProductsPage() {
     setIsHidingProduct(true)
     try {
       await hideProduct(selectedProduct.id)
+      activityLog({ entityType: 'product', actionType: 'delete', entityId: selectedProduct.id, entityName: selectedProduct.name, description: 'أخفى منتج: ' + selectedProduct.name })
       setSelectedProduct(null)
       setShowHideProductConfirm(false)
     } catch (error) {

@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { supabase } from '../lib/supabase/client'
 import { uploadCategoryImage } from '../lib/supabase/storage'
 import { ArrowRightIcon, PhotoIcon, ChevronDownIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import { useActivityLogger } from "@/app/lib/hooks/useActivityLogger"
 
 interface Category {
   id: string
@@ -28,6 +29,7 @@ interface CategorySidebarProps {
 }
 
 export default function CategorySidebar({ isOpen, onClose, categories, onCategoryCreated, editCategory, isEditing, selectedCategory }: CategorySidebarProps) {
+  const activityLog = useActivityLogger()
   const [activeTab, setActiveTab] = useState('details')
   const [formData, setFormData] = useState({
     name: '',
@@ -174,6 +176,7 @@ export default function CategorySidebar({ isOpen, onClose, categories, onCategor
           .eq('id', editCategory.id)
         
         if (error) throw error
+        activityLog({ entityType: 'category', actionType: 'update', entityId: editCategory!.id, entityName: formData.name })
       } else {
         // Create new category
         const { error } = await supabase
@@ -187,8 +190,9 @@ export default function CategorySidebar({ isOpen, onClose, categories, onCategor
           })
         
         if (error) throw error
+        activityLog({ entityType: 'category', actionType: 'create', entityName: formData.name })
       }
-      
+
       // Reset form and close
       setFormData({
         name: '',

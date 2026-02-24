@@ -21,6 +21,7 @@ import { usePerformanceMonitor } from "../../lib/utils/performanceMonitor";
 import { useSystemCurrency, useFormatPrice } from "@/lib/hooks/useCurrency";
 import { preloadImagesInBackground, getPreloadStats } from "@/lib/utils/imagePreloader";
 import { getLastPurchaseInfo, LastPurchaseInfo } from "@/app/lib/utils/purchase-cost-management";
+import { useActivityLogger } from "@/app/lib/hooks/useActivityLogger";
 const CartModal = dynamic(() => import("@/app/components/CartModal"), { ssr: false });
 const PurchaseHistoryModal = dynamic(() => import("@/app/components/PurchaseHistoryModal"), { ssr: false });
 
@@ -182,6 +183,9 @@ function POSPageContent() {
   // Permission check for changing branch
   const { can: hasPermission } = usePermissionCheck();
   const canChangeBranch = isAdmin || hasPermission('pos.change_branch');
+
+  // Activity logger
+  const activityLog = useActivityLogger();
 
   // Search is handled by POSSearchInput component - receives debounced value directly
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
@@ -2827,6 +2831,7 @@ function POSPageContent() {
 
         // Success! Show message
         alert(`تم تعديل الفاتورة رقم ${tabEditInvoiceData.invoiceNumber} بنجاح`);
+        activityLog({ entityType: 'sale', actionType: 'update', entityId: saleId, entityName: `فاتورة #${tabEditInvoiceData.invoiceNumber}` });
 
         // Clear cart and close the edit tab
         clearCart();
@@ -2879,6 +2884,7 @@ function POSPageContent() {
 
         // Show print confirmation modal
         setShowPrintReceiptModal(true);
+        activityLog({ entityType: 'purchase', actionType: 'create', entityId: transferInvoice.invoiceId, entityName: `نقل #${transferInvoice.invoiceNumber}` });
 
         // Clear cart and exit transfer mode
         clearCart();
@@ -2939,6 +2945,7 @@ function POSPageContent() {
 
         // Show print confirmation modal
         setShowPrintReceiptModal(true);
+        activityLog({ entityType: 'purchase', actionType: 'create', entityId: result.invoiceId, entityName: `فاتورة شراء #${result.invoiceNumber}` });
       } else {
         // Handle sales invoice creation (or return)
         // Transform cartItems to match sales invoice CartItem interface
@@ -3071,6 +3078,7 @@ function POSPageContent() {
 
         // Show print confirmation modal
         setShowPrintReceiptModal(true);
+        activityLog({ entityType: 'sale', actionType: 'create', entityId: result.invoiceId, entityName: `فاتورة ${isReturnMode ? 'مرتجع' : ''} #${result.invoiceNumber}` });
       }
 
       // Clear cart after successful invoice creation

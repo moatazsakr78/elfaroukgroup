@@ -93,6 +93,7 @@ export const fetchKPIs = async (filter: DateFilter): Promise<KPIData> => {
   let currentQuery = supabase
     .from('sales')
     .select('id, total_amount, profit, customer_id, invoice_type, payment_method')
+    .neq('status', 'cancelled')
     .gte('created_at', startDate)
     .lte('created_at', endDate);
 
@@ -104,6 +105,7 @@ export const fetchKPIs = async (filter: DateFilter): Promise<KPIData> => {
   let prevQuery = supabase
     .from('sales')
     .select('id, total_amount, profit, customer_id, invoice_type, payment_method')
+    .neq('status', 'cancelled')
     .gte('created_at', prevPeriod.startDate)
     .lte('created_at', prevPeriod.endDate);
 
@@ -161,6 +163,7 @@ export const fetchSalesTrend = async (filter: DateFilter, days: number = 30): Pr
   let query = supabase
     .from('sales')
     .select('created_at, total_amount, profit')
+    .neq('status', 'cancelled')
     .gte('created_at', startDate)
     .lte('created_at', endDate)
     .order('created_at', { ascending: true });
@@ -262,6 +265,7 @@ export const fetchTopCustomers = async (filter: DateFilter, limit: number = 10):
       total_amount,
       customers!inner(id, name, phone, account_balance)
     `)
+    .neq('status', 'cancelled')
     .gte('created_at', startDate)
     .lte('created_at', endDate)
     .not('customer_id', 'is', null);
@@ -361,6 +365,7 @@ export const fetchPaymentMethods = async (filter: DateFilter): Promise<PaymentMe
   let query = supabase
     .from('sales')
     .select('payment_method, total_amount')
+    .neq('status', 'cancelled')
     .gte('created_at', startDate)
     .lte('created_at', endDate);
 
@@ -408,6 +413,7 @@ export const fetchHourlySales = async (filter: DateFilter): Promise<HourlySalesD
   let query = supabase
     .from('sales')
     .select('created_at, total_amount')
+    .neq('status', 'cancelled')
     .gte('created_at', startDate)
     .lte('created_at', endDate);
 
@@ -459,6 +465,7 @@ export const fetchDayOfWeekSales = async (filter: DateFilter): Promise<DayOfWeek
   let query = supabase
     .from('sales')
     .select('created_at, total_amount')
+    .neq('status', 'cancelled')
     .gte('created_at', startDate)
     .lte('created_at', endDate);
 
@@ -595,6 +602,7 @@ export const fetchRevenueVsProfit = async (filter: DateFilter): Promise<RevenueV
   let query = supabase
     .from('sales')
     .select('created_at, total_amount, profit')
+    .neq('status', 'cancelled')
     .gte('created_at', startDate)
     .lte('created_at', endDate)
     .order('created_at', { ascending: true });
@@ -634,6 +642,7 @@ export const fetchSaleTypeBreakdown = async (filter: DateFilter): Promise<SaleTy
   let query = supabase
     .from('sales')
     .select('id, total_amount, profit, sale_type, shipping_amount, invoice_type')
+    .neq('status', 'cancelled')
     .gte('created_at', startDate)
     .lte('created_at', endDate);
 

@@ -9,6 +9,7 @@ import { useCompanySettings } from '@/lib/hooks/useCompanySettings';
 import { useStoreTheme } from '@/lib/hooks/useStoreTheme';
 import { paymentService, PaymentReceipt } from '@/lib/services/paymentService';
 import { useOrders, Order, OrderStatus, DeliveryType } from '../../lib/hooks/useOrders';
+import { useActivityLogger } from "@/app/lib/hooks/useActivityLogger";
 
 const statusTranslations: Record<OrderStatus, string> = {
   pending: 'معلق',
@@ -52,6 +53,7 @@ export default function CustomerOrdersPage() {
 
   // ✨ OPTIMIZED: Use optimized orders hook
   const { orders, setOrders, branches, records, isLoading, error } = useOrders();
+  const activityLog = useActivityLogger();
   const loading = isLoading; // Alias for compatibility
 
   const [activeTab, setActiveTab] = useState<'all' | 'preparation' | 'followup' | 'completed' | 'issues'>('all');
@@ -856,6 +858,7 @@ export default function CustomerOrdersPage() {
       );
 
       alert('تم تحديث حالة الطلب إلى ملغي');
+      activityLog({ entityType: 'order', actionType: 'update', entityId: orderId, entityName: orderId, description: 'غيّر حالة الطلب إلى ملغي' });
     } catch (error) {
       console.error('Error marking order as cancelled:', error);
       alert('خطأ في تحديث حالة الطلب');
@@ -890,6 +893,7 @@ export default function CustomerOrdersPage() {
       );
 
       alert('تم تحديث حالة الطلب إلى مشكله');
+      activityLog({ entityType: 'order', actionType: 'update', entityId: orderId, entityName: orderId, description: 'غيّر حالة الطلب إلى مشكله' });
     } catch (error) {
       console.error('Error marking order as issue:', error);
       alert('خطأ في تحديث حالة الطلب');
@@ -1213,6 +1217,7 @@ export default function CustomerOrdersPage() {
         )
       );
 
+      activityLog({ entityType: 'order', actionType: 'update', entityId: selectedOrderForEdit.id, entityName: selectedOrderForEdit.id, description: 'عدّل تفاصيل الطلب' });
       closeEditModal();
     } catch (error) {
       console.error('Error saving order changes:', error);
@@ -1237,13 +1242,15 @@ export default function CustomerOrdersPage() {
       }
 
       // Update local state
-      setOrders(prevOrders => 
-        prevOrders.map(order => 
-          order.id === orderId 
+      setOrders(prevOrders =>
+        prevOrders.map(order =>
+          order.id === orderId
             ? { ...order, status: newStatus }
             : order
         )
       );
+
+      activityLog({ entityType: 'order', actionType: 'update', entityId: orderId, entityName: orderId, description: `غيّر حالة الطلب إلى ${statusTranslations[newStatus] || newStatus}` });
     } catch (error) {
       console.error('Error updating order status:', error);
     }

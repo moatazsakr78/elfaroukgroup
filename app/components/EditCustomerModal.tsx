@@ -7,6 +7,7 @@ import { useCustomerGroups } from '@/app/lib/hooks/useCustomerGroups'
 import { ranks } from '@/app/lib/data/ranks'
 import { egyptianGovernorates } from '@/app/lib/data/governorates'
 import { supabase } from '@/app/lib/supabase/client'
+import { useActivityLogger } from "@/app/lib/hooks/useActivityLogger"
 import { Customer } from '@/app/lib/hooks/useCustomers'
 
 // Price type options
@@ -26,6 +27,7 @@ interface EditCustomerModalProps {
 }
 
 export default function EditCustomerModal({ isOpen, onClose, customer }: EditCustomerModalProps) {
+  const activityLog = useActivityLogger()
   const [activeTab, setActiveTab] = useState('details')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -203,7 +205,8 @@ export default function EditCustomerModal({ isOpen, onClose, customer }: EditCus
       }
 
       setSuccess('تم تحديث العميل بنجاح!')
-      
+      activityLog({ entityType: 'customer', actionType: 'update', entityId: customer.id, entityName: formData.name.trim() })
+
       // Close modal after 1.5 seconds
       setTimeout(() => {
         onClose()

@@ -88,6 +88,11 @@ export default function EditInvoiceModal({
 
     try {
       const sale = await getSaleDetails(saleId)
+      if (sale && sale.status === 'cancelled') {
+        setError('لا يمكن تعديل فاتورة ملغاة')
+        setIsLoading(false)
+        return
+      }
       if (sale) {
         // استخدام initialRecordId من الـ transaction إذا كان موجوداً (أكثر دقة)
         // لأن جدول cash_drawer_transactions هو مصدر الحقيقة للخزنة المعروضة في السجلات

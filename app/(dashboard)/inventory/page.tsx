@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import POSSearchInput from '@/app/components/pos/POSSearchInput'
+import { useActivityLogger } from "@/app/lib/hooks/useActivityLogger"
 
 // Local storage key for inventory column visibility
 const INVENTORY_COLUMN_VISIBILITY_KEY = 'inventory-column-visibility-v2'
@@ -93,6 +94,8 @@ export default function InventoryPage() {
   const [quantityModalMode, setQuantityModalMode] = useState<'add' | 'edit'>('add')
   const [selectedProductForQuantity, setSelectedProductForQuantity] = useState<any>(null)
   const [selectedBranchForQuantity, setSelectedBranchForQuantity] = useState<string>('')
+
+  const activityLog = useActivityLogger();
 
   // PDF Export modal states
   const [showPDFExportModal, setShowPDFExportModal] = useState(false)
@@ -1079,7 +1082,8 @@ export default function InventoryPage() {
       // Show success message
       const successMessage = quantityModalMode === 'add' ? 'تم إضافة الكمية بنجاح' : 'تم تعديل الكمية بنجاح'
       alert(successMessage)
-      
+      activityLog({ entityType: 'inventory', actionType: 'update', entityId: selectedProductForQuantity.id, entityName: selectedProductForQuantity.name });
+
     } catch (error) {
       console.error('Complete error details:', error)
       const errorMessage = error instanceof Error ? error.message : 'خطأ غير معروف'

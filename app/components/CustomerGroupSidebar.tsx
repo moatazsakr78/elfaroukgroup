@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { supabase } from '../lib/supabase/client'
+import { useActivityLogger } from "@/app/lib/hooks/useActivityLogger"
 import { ArrowRightIcon, ChevronDownIcon } from '@heroicons/react/24/outline'
 
 interface CustomerGroup {
@@ -25,6 +26,7 @@ interface CustomerGroupSidebarProps {
 }
 
 export default function CustomerGroupSidebar({ isOpen, onClose, customerGroups, onGroupCreated, editGroup, isEditing, selectedGroup }: CustomerGroupSidebarProps) {
+  const activityLog = useActivityLogger()
   const [activeTab, setActiveTab] = useState('details')
   const [formData, setFormData] = useState({
     name: '',
@@ -98,8 +100,9 @@ export default function CustomerGroupSidebar({ isOpen, onClose, customerGroups, 
             updated_at: new Date().toISOString()
           })
           .eq('id', editGroup.id)
-        
+
         if (error) throw error
+        activityLog({ entityType: 'category', actionType: 'update', entityId: editGroup!.id, entityName: formData.name, description: 'عدّل مجموعة عملاء: ' + formData.name })
       } else {
         // Create new group
         const { error } = await supabase
@@ -110,8 +113,9 @@ export default function CustomerGroupSidebar({ isOpen, onClose, customerGroups, 
             is_active: true,
             sort_order: 0
           })
-        
+
         if (error) throw error
+        activityLog({ entityType: 'category', actionType: 'create', entityName: formData.name, description: 'أضاف مجموعة عملاء: ' + formData.name })
       }
       
       // Reset form and close

@@ -209,6 +209,164 @@ export async function updateSalesInvoice({
       })
     }
 
+    // 5b. نقل المخزون عند تغيير الفرع
+    if (newBranchId !== undefined && newBranchId !== sale.branch_id && newBranchId) {
+      const oldBranchId = sale.branch_id
+
+      // Fetch sale items to adjust inventory
+      const { data: saleItems, error: itemsError } = await supabase
+        .from('sale_items')
+        .select('id, product_id, quantity, notes, branch_id')
+        .eq('sale_id', saleId)
+
+      if (!itemsError && saleItems && saleItems.length > 0) {
+        const inventoryPromises = saleItems.map(async (item) => {
+          try {
+            const itemOldBranch = item.branch_id || oldBranchId
+
+            // Return quantity to old branch: +quantity for sales (was -), -quantity for returns (was +)
+            // item.quantity is positive for sales, negative for returns
+            // So adding item.quantity back reverses the original deduction
+            await supabase.rpc(
+              'atomic_adjust_inventory' as any,
+              {
+                p_product_id: item.product_id,
+                p_branch_id: itemOldBranch,
+                p_warehouse_id: null,
+                p_change: item.quantity,
+                p_allow_negative: true
+              }
+            )
+
+            // Deduct from new branch: opposite direction
+            await supabase.rpc(
+              'atomic_adjust_inventory' as any,
+              {
+                p_product_id: item.product_id,
+                p_branch_id: newBranchId,
+                p_warehouse_id: null,
+                p_change: -item.quantity,
+                p_allow_negative: true
+              }
+            )
+          } catch (err) {
+            console.warn(`Error adjusting inventory for product ${item.product_id} during branch change:`, err)
+          }
+        })
+
+        // Handle variant quantities (colors and shapes from notes)
+        const variantPromises = saleItems
+          .filter(item => item.notes)
+          .flatMap(item => {
+            const itemOldBranch = item.branch_id || oldBranchId
+            const isReturn = item.quantity < 0
+            const promises: Promise<void>[] = []
+
+            // Parse colors
+            const colorMatch = item.notes.match(/الألوان المحددة:\s*(.+?)(?:\s*\||$)/)
+            if (colorMatch) {
+              const colorEntries = colorMatch[1].split(',').map((e: string) => e.trim()).filter(Boolean)
+              for (const entry of colorEntries) {
+                const lastColon = entry.lastIndexOf(':')
+                if (lastColon === -1) continue
+                const colorName = entry.substring(0, lastColon).trim()
+                const colorQty = parseInt(entry.substring(lastColon + 1).trim(), 10)
+                if (!colorName || isNaN(colorQty) || colorQty <= 0) continue
+
+                promises.push((async () => {
+                  try {
+                    const { data: varDef } = await supabase
+                      .from('product_color_shape_definitions')
+                      .select('id')
+                      .eq('product_id', item.product_id)
+                      .eq('name', colorName)
+                      .eq('variant_type', 'color')
+                      .single()
+
+                    if (!varDef) return
+
+                    // Restore to old branch
+                    const restoreChange = isReturn ? -colorQty : colorQty
+                    await supabase.rpc('atomic_adjust_variant_quantity' as any, {
+                      p_variant_definition_id: varDef.id,
+                      p_branch_id: itemOldBranch,
+                      p_change: restoreChange,
+                      p_allow_negative: true
+                    })
+
+                    // Deduct from new branch
+                    await supabase.rpc('atomic_adjust_variant_quantity' as any, {
+                      p_variant_definition_id: varDef.id,
+                      p_branch_id: newBranchId,
+                      p_change: -restoreChange,
+                      p_allow_negative: true
+                    })
+                  } catch (err) {
+                    console.warn(`Error adjusting color variant ${colorName}:`, err)
+                  }
+                })())
+              }
+            }
+
+            // Parse shapes
+            const shapeMatch = item.notes.match(/الأشكال المحددة:\s*(.+?)(?:\s*\||$)/)
+            if (shapeMatch) {
+              const shapeEntries = shapeMatch[1].split(',').map((e: string) => e.trim()).filter(Boolean)
+              for (const entry of shapeEntries) {
+                const lastColon = entry.lastIndexOf(':')
+                if (lastColon === -1) continue
+                const shapeName = entry.substring(0, lastColon).trim()
+                const shapeQty = parseInt(entry.substring(lastColon + 1).trim(), 10)
+                if (!shapeName || isNaN(shapeQty) || shapeQty <= 0) continue
+
+                promises.push((async () => {
+                  try {
+                    const { data: varDef } = await supabase
+                      .from('product_color_shape_definitions')
+                      .select('id')
+                      .eq('product_id', item.product_id)
+                      .eq('name', shapeName)
+                      .eq('variant_type', 'shape')
+                      .single()
+
+                    if (!varDef) return
+
+                    const restoreChange = isReturn ? -shapeQty : shapeQty
+                    await supabase.rpc('atomic_adjust_variant_quantity' as any, {
+                      p_variant_definition_id: varDef.id,
+                      p_branch_id: itemOldBranch,
+                      p_change: restoreChange,
+                      p_allow_negative: true
+                    })
+
+                    await supabase.rpc('atomic_adjust_variant_quantity' as any, {
+                      p_variant_definition_id: varDef.id,
+                      p_branch_id: newBranchId,
+                      p_change: -restoreChange,
+                      p_allow_negative: true
+                    })
+                  } catch (err) {
+                    console.warn(`Error adjusting shape variant ${shapeName}:`, err)
+                  }
+                })())
+              }
+            }
+
+            return promises
+          })
+
+        await Promise.all([...inventoryPromises, ...variantPromises])
+
+        // Update branch_id in all sale_items
+        await supabase
+          .from('sale_items')
+          .update({ branch_id: newBranchId })
+          .eq('sale_id', saleId)
+
+        console.log(`✅ Inventory moved from branch ${oldBranchId} to ${newBranchId} for sale ${saleId}`)
+      }
+    }
+
     // 6. تعديل طريقة الدفع (إذا تم تغييرها)
     if (newPaymentMethod !== undefined && newPaymentMethod !== sale.payment_method) {
       changes.payment_method = {

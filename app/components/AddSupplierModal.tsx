@@ -7,6 +7,7 @@ import { useSupplierGroups } from '@/app/lib/hooks/useSupplierGroups'
 import { ranks } from '@/app/lib/data/ranks'
 import { egyptianGovernorates } from '@/app/lib/data/governorates'
 import { supabase } from '@/app/lib/supabase/client'
+import { useActivityLogger } from "@/app/lib/hooks/useActivityLogger"
 
 interface AddSupplierModalProps {
   isOpen: boolean
@@ -14,6 +15,7 @@ interface AddSupplierModalProps {
 }
 
 export default function AddSupplierModal({ isOpen, onClose }: AddSupplierModalProps) {
+  const activityLog = useActivityLogger()
   const [activeTab, setActiveTab] = useState('details')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -124,7 +126,8 @@ export default function AddSupplierModal({ isOpen, onClose }: AddSupplierModalPr
       }
 
       setSuccess('تم إضافة المورد بنجاح!')
-      
+      activityLog({ entityType: 'supplier', actionType: 'create', entityId: data[0]?.id, entityName: formData.name.trim() });
+
       // Reset form after 1.5 seconds and close modal
       setTimeout(() => {
         resetForm()

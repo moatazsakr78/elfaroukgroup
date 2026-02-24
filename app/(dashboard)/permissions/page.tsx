@@ -48,6 +48,7 @@ import { useRoleRestrictions } from '@/lib/hooks/useRoleRestrictions';
 import { usePermissionTemplates, PermissionTemplate } from '@/lib/hooks/usePermissionTemplates';
 import { RoleType, ROLE_TYPES, ROLE_TYPE_COLORS } from '@/types/permissions';
 import UserBranchSelector from '@/app/components/UserBranchSelector';
+import { useActivityLogger } from "@/app/lib/hooks/useActivityLogger";
 
 // Map icon names to components
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -109,6 +110,7 @@ interface ActionButton {
 export default function PermissionsPage() {
   // استخدام hooks للحصول على بيانات المستخدم الحالي
   const { profile: currentUserProfile, isAdmin } = useUserProfile();
+  const activityLog = useActivityLogger();
   const { user: authUser, isAuthenticated } = useAuth();
 
   // استخدام hook الصلاحيات لجلب التصنيفات والصلاحيات
@@ -211,6 +213,7 @@ export default function PermissionsPage() {
   // دالة حفظ صلاحيات الدور
   const handleSaveRolePermissions = () => {
     // الحفظ يتم تلقائياً عند كل تغيير عبر toggleRestriction
+    activityLog({ entityType: 'permission', actionType: 'update', entityId: selectedRoleForPermissions || undefined, description: 'عدّل صلاحيات الدور' });
     setIsEditingRolePermissions(false);
     setSelectedRoleForPermissions(null);
     setSelectedPermissionCategoryId(null);
@@ -244,6 +247,7 @@ export default function PermissionsPage() {
         setNewTemplateName('');
         setNewTemplateDescription('');
         setIsAddTemplateModalOpen(false);
+        activityLog({ entityType: 'permission', actionType: 'create', entityId: newTemplate.id, entityName: newTemplateName.trim(), description: 'أنشأ صلاحية جديدة' });
         // فتح شاشة تعديل صلاحيات القالب الجديد
         handleStartEditTemplatePermissions(newTemplate.id);
       } else {
@@ -271,6 +275,7 @@ export default function PermissionsPage() {
 
     const success = await updateTemplate(selectedTemplateId, newTemplateName.trim(), newTemplateDescription.trim());
     if (success) {
+      activityLog({ entityType: 'permission', actionType: 'update', entityId: selectedTemplateId, entityName: newTemplateName.trim(), description: 'عدّل بيانات الصلاحية' });
       setNewTemplateName('');
       setNewTemplateDescription('');
       setSelectedTemplateId(null);
@@ -285,8 +290,11 @@ export default function PermissionsPage() {
     }
 
     const success = await deleteTemplate(templateId);
-    if (success && selectedTemplateId === templateId) {
-      setSelectedTemplateId(null);
+    if (success) {
+      activityLog({ entityType: 'permission', actionType: 'delete', entityId: templateId, description: 'حذف صلاحية' });
+      if (selectedTemplateId === templateId) {
+        setSelectedTemplateId(null);
+      }
     }
   };
 
@@ -313,6 +321,7 @@ export default function PermissionsPage() {
 
     const success = await setTemplateRestrictions(selectedTemplateId, editingTemplateRestrictions);
     if (success) {
+      activityLog({ entityType: 'permission', actionType: 'update', entityId: selectedTemplateId, description: 'عدّل قيود صلاحيات القالب' });
       handleCancelEditTemplatePermissions();
     }
   };
@@ -426,8 +435,9 @@ export default function PermissionsPage() {
           parentRole: 'جملة',
           priceLevel: data[0].price_level
         };
-        
+
         setDerivedRoles(prev => [...prev, newRole]);
+        activityLog({ entityType: 'permission', actionType: 'create', entityId: data[0].id, entityName: data[0].name, description: 'أضاف دور جديد' });
       }
 
       // Clear form
@@ -476,8 +486,8 @@ export default function PermissionsPage() {
       }
 
       if (data && data[0]) {
-        setDerivedRoles(prev => prev.map(role => 
-          role.id === editingRoleId 
+        setDerivedRoles(prev => prev.map(role =>
+          role.id === editingRoleId
             ? {
                 ...role,
                 name: data[0].name,
@@ -487,6 +497,7 @@ export default function PermissionsPage() {
               }
             : role
         ));
+        activityLog({ entityType: 'permission', actionType: 'update', entityId: editingRoleId, entityName: data[0].name, description: 'عدّل بيانات الدور' });
       }
 
       // Clear form and close modal
@@ -520,8 +531,9 @@ export default function PermissionsPage() {
       }
 
       // Remove from local state
+      activityLog({ entityType: 'permission', actionType: 'delete', entityId: roleId, description: 'حذف دور' });
       setDerivedRoles(prev => prev.filter(role => role.id !== roleId));
-      
+
       // إلغاء التحديد إذا كان الدور المحذوف محدداً
       if (selectedRoleId === roleId) {
         setSelectedRoleId(null);
@@ -643,6 +655,7 @@ export default function PermissionsPage() {
 
         // رسالة مهمة: المستخدم المُحدّث رتبته يحتاج لتسجيل الخروج والدخول
         alert('✅ تم تحديث الدور بنجاح!\n\n⚠️ ملاحظة مهمة: المستخدم الذي تم تغيير رتبته يحتاج لتسجيل الخروج وإعادة تسجيل الدخول لتفعيل الصلاحيات الجديدة.');
+        activityLog({ entityType: 'permission', actionType: 'update', entityId: userId, entityName: data[0].full_name, description: `غيّر رتبة المستخدم إلى ${newRole}` });
 
         return true;
       } else {
@@ -727,6 +740,7 @@ export default function PermissionsPage() {
         console.log('✅ تم تحديث صلاحية المستخدم بنجاح');
 
         alert('✅ تم تحديث الصلاحية بنجاح!\n\n⚠️ ملاحظة: المستخدم يحتاج لتسجيل الخروج وإعادة تسجيل الدخول لتفعيل الصلاحية الجديدة.');
+        activityLog({ entityType: 'permission', actionType: 'update', entityId: userId, entityName: data[0].full_name, description: `غيّر صلاحية المستخدم` });
 
         return true;
       } else {
