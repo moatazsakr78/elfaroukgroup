@@ -1441,12 +1441,6 @@ export default function InventoryTabletView({
           display: none; /* WebKit */
         }
 
-        /* Touch-friendly interactions */
-        @media (max-width: 1024px) {
-          button, .cursor-pointer {
-            min-height: 44px;
-          }
-        }
 
         /* Line clamp utility */
         .line-clamp-2 {
