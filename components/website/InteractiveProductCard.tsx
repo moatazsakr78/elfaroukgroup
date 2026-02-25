@@ -12,6 +12,7 @@ import { useProductVoting } from '@/app/lib/hooks/useProductVoting';
 import { useFavorites } from '@/lib/contexts/FavoritesContext';
 import ProductVoteModal from './ProductVoteModal';
 import ShapeSelector from './ShapeSelector';
+import { getTransformedImageUrl, getPresetForDevice } from '@/lib/utils/supabaseImageTransform';
 
 interface InteractiveProductCardProps {
   product: Product;
@@ -309,19 +310,19 @@ export default function InteractiveProductCard({
       case 'desktop':
         return {
           containerClass: 'bg-custom-gray rounded-lg p-4 hover:bg-gray-300 transition-colors border border-gray-300 shadow-md cursor-pointer group',
-          imageClass: 'w-full h-72 object-cover rounded-lg scale-105',
+          imageClass: 'w-full h-72 object-cover rounded-lg',
           titleClass: 'font-semibold mb-2 text-gray-800 truncate transition-colors group-hover:text-[var(--primary-color)]'
         };
       case 'tablet':
         return {
           containerClass: 'bg-custom-gray rounded-lg p-4 hover:bg-gray-300 transition-colors border border-gray-300 shadow-md cursor-pointer group',
-          imageClass: 'w-full h-64 object-cover rounded-lg scale-105',
+          imageClass: 'w-full h-64 object-cover rounded-lg',
           titleClass: 'font-semibold mb-2 text-gray-800 truncate transition-colors group-hover:text-[var(--primary-color)]'
         };
       case 'mobile':
         return {
           containerClass: 'bg-custom-gray rounded-lg p-3 hover:bg-gray-300 transition-colors border border-gray-300 shadow-md cursor-pointer group',
-          imageClass: 'w-full h-40 object-cover rounded-lg scale-105',
+          imageClass: 'w-full h-40 object-cover rounded-lg',
           titleClass: 'font-semibold mb-2 text-sm text-gray-800 truncate transition-colors group-hover:text-[var(--primary-color)]'
         };
     }
@@ -356,8 +357,9 @@ export default function InteractiveProductCard({
         onTouchEnd={deviceType === 'tablet' ? handleTouchEnd : undefined}
       >
         <img
-          src={getCurrentDisplayImage()}
+          src={getTransformedImageUrl(getCurrentDisplayImage(), getPresetForDevice(deviceType))}
           alt={product.name}
+          loading="lazy"
           className={`${classes.imageClass} transition-opacity duration-200 ${isVotingMode && isOutOfStock ? 'opacity-50' : ''}`}
           onError={(e) => {
             const target = e.target as HTMLImageElement;

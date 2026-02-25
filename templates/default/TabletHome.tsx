@@ -25,6 +25,8 @@ import { useStoreTheme } from '@/lib/hooks/useStoreTheme';
 import { useStoreBackHandler } from '@/lib/hooks/useBackButton';
 import { useSocialMediaPublic } from '@/lib/hooks/useSocialMedia';
 import WhatsAppFloatingButton from '@/app/components/WhatsAppFloatingButton';
+import { preloadImagesInBackground } from '@/lib/utils/imagePreloader';
+import { getTransformedUrls } from '@/lib/utils/supabaseImageTransform';
 
 interface TabletHomeProps {
   userInfo: UserInfo;
@@ -440,6 +442,17 @@ export default function TabletHome({
   useEffect(() => {
     setIsClient(true);
   }, []);
+
+  // Background preload all product images (card + search thumbnails)
+  useEffect(() => {
+    if (websiteProducts.length === 0) return;
+    const allImageSrcs = websiteProducts.map(p => p.image);
+    // Preload card-sized images for tablet
+    const cardUrls = getTransformedUrls(allImageSrcs, 'card_tablet');
+    // Preload search thumbnails
+    const thumbUrls = getTransformedUrls(allImageSrcs, 'search_thumb');
+    preloadImagesInBackground([...cardUrls, ...thumbUrls]);
+  }, [websiteProducts]);
 
   // Set CSS variables for colors
   useEffect(() => {

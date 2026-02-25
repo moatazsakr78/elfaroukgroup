@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Product } from '@/components/website/shared/types';
 import { useWebsiteCurrency } from '@/lib/hooks/useCurrency';
+import { getTransformedImageUrl } from '@/lib/utils/supabaseImageTransform';
 
 interface SearchOverlayProps {
   isOpen: boolean;
@@ -156,8 +157,9 @@ export default function SearchOverlay({
                         <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100">
                           {product.image ? (
                             <img
-                              src={product.image}
+                              src={getTransformedImageUrl(product.image, 'search_thumb')}
                               alt={product.name}
+                              loading="lazy"
                               className="w-full h-full object-cover"
                             />
                           ) : (

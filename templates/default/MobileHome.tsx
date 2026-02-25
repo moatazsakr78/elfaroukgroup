@@ -23,6 +23,8 @@ import { useStoreTheme } from '@/lib/hooks/useStoreTheme';
 import { useStoreBackHandler } from '@/lib/hooks/useBackButton';
 import { useSocialMediaPublic } from '@/lib/hooks/useSocialMedia';
 import WhatsAppFloatingButton from '@/app/components/WhatsAppFloatingButton';
+import { preloadImagesInBackground } from '@/lib/utils/imagePreloader';
+import { getTransformedUrls } from '@/lib/utils/supabaseImageTransform';
 
 interface MobileHomeProps {
   userInfo: UserInfo;
@@ -434,6 +436,17 @@ export default function MobileHome({
   useEffect(() => {
     setIsClient(true);
   }, []);
+
+  // Background preload all product images (card + search thumbnails)
+  useEffect(() => {
+    if (websiteProducts.length === 0) return;
+    const allImageSrcs = websiteProducts.map(p => p.image);
+    // Preload card-sized images for mobile
+    const cardUrls = getTransformedUrls(allImageSrcs, 'card_mobile');
+    // Preload search thumbnails
+    const thumbUrls = getTransformedUrls(allImageSrcs, 'search_thumb');
+    preloadImagesInBackground([...cardUrls, ...thumbUrls]);
+  }, [websiteProducts]);
 
   // Set CSS variables for colors
   useEffect(() => {
