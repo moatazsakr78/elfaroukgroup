@@ -4,7 +4,8 @@
  * This serves resized/WebP images server-side, dramatically reducing image size
  */
 
-export type ImagePreset = 'card_desktop' | 'card_tablet' | 'card_mobile' | 'search_thumb';
+export type ImagePreset = 'card_desktop' | 'card_tablet' | 'card_mobile' | 'search_thumb'
+  | 'detail_main' | 'detail_thumb' | 'detail_shape';
 
 interface TransformOptions {
   width: number;
@@ -16,6 +17,9 @@ const PRESETS: Record<ImagePreset, TransformOptions> = {
   card_tablet: { width: 350, quality: 75 },
   card_mobile: { width: 250, quality: 70 },
   search_thumb: { width: 128, quality: 70 },
+  detail_main:  { width: 800, quality: 80 },
+  detail_thumb: { width: 100, quality: 70 },
+  detail_shape: { width: 80,  quality: 70 },
 };
 
 /**

@@ -10,6 +10,7 @@ import { useStoreDisplaySettings } from '../../../lib/hooks/useStoreDisplaySetti
 import { useCart } from '../../../lib/contexts/CartContext';
 import { useFormatPrice } from '../../../lib/hooks/useCurrency';
 import { useCompanySettings } from '../../../lib/hooks/useCompanySettings';
+import { getTransformedImageUrl } from '@/lib/utils/supabaseImageTransform';
 import CartModal from '../../components/CartModal';
 
 interface DatabaseProduct {
@@ -960,7 +961,8 @@ export default function ProductDetailContent({ productId, serverData }: ProductD
                   }`}
                 >
                   <img
-                    src={image}
+                    src={getTransformedImageUrl(image, 'detail_thumb')}
+                    loading="lazy"
                     alt={`${productDetails.name} ${index + 1}`}
                     className="w-full h-full object-cover"
                   />
@@ -1041,7 +1043,7 @@ export default function ProductDetailContent({ productId, serverData }: ProductD
               ) : (
                 <>
                   <img
-                    src={currentGallery[selectedImage]}
+                    src={getTransformedImageUrl(currentGallery[selectedImage], 'detail_main')}
                     alt={productDetails.name}
                     className={`w-full h-full object-cover transition-transform duration-200 ${
                       isZooming && !selectedVideo ? 'scale-150' : 'scale-100'
@@ -1081,7 +1083,8 @@ export default function ProductDetailContent({ productId, serverData }: ProductD
                     }`}
                   >
                     <img
-                      src={image}
+                      src={getTransformedImageUrl(image, 'detail_thumb')}
+                      loading="lazy"
                       alt={`${productDetails.name} ${index + 1}`}
                       className="w-full h-full object-cover"
                     />
@@ -1222,7 +1225,8 @@ export default function ProductDetailContent({ productId, serverData }: ProductD
                         <div className="flex flex-col items-center gap-1">
                           <div className="relative">
                             <img
-                              src={shape.image_url}
+                              src={getTransformedImageUrl(shape.image_url, 'detail_shape')}
+                              loading="lazy"
                               alt={shape.name || 'شكل'}
                               className="w-16 h-16 object-cover rounded"
                               onClick={(e) => {
