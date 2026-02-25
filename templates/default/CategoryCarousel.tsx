@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { getTransformedImageUrl } from '@/lib/utils/supabaseImageTransform';
 
 interface Category {
   id: number;
@@ -111,8 +112,9 @@ export default function CategoryCarousel({
                 {/* الصورة تملأ معظم المكون */}
                 <div className="flex-1 relative overflow-hidden">
                   <img
-                    src={category.image || '/placeholder-category.jpg'}
+                    src={getTransformedImageUrl(category.image, 'card_desktop') || '/placeholder-category.jpg'}
                     alt={category.name}
+                    loading="lazy"
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                   />
                 </div>

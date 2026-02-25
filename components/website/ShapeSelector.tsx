@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { ProductShape } from './shared/types';
+import { getTransformedImageUrl } from '@/lib/utils/supabaseImageTransform';
 
 interface ShapeSelectorProps {
   shapes: ProductShape[];
@@ -56,7 +57,7 @@ export default function ShapeSelector({
       <div className="flex items-center gap-2">
         {selectedShape.image_url && (
           <img
-            src={selectedShape.image_url}
+            src={getTransformedImageUrl(selectedShape.image_url, 'detail_shape')}
             alt={getShapeDisplayName(selectedShape)}
             className="w-6 h-6 object-cover rounded border border-gray-300"
           />
@@ -146,7 +147,7 @@ export default function ShapeSelector({
                 {/* Image - Always show if available */}
                 {hasImage && (
                   <img
-                    src={shape.image_url}
+                    src={getTransformedImageUrl(shape.image_url, 'detail_shape')}
                     alt={displayName}
                     className={`${imageSize} object-cover rounded border border-gray-300 flex-shrink-0`}
                     onError={(e) => {

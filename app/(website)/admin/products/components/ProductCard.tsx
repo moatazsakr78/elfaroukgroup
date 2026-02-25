@@ -1,5 +1,7 @@
 'use client';
 
+import { getTransformedImageUrl } from '@/lib/utils/supabaseImageTransform';
+
 interface ProductManagementItem {
   id: string;
   name: string;
@@ -80,7 +82,7 @@ export default function ProductCard({
       {/* Product Image */}
       <div className="relative mb-3">
         <img
-          src={product.image}
+          src={getTransformedImageUrl(product.image, 'card_desktop')}
           alt={product.name}
           loading="lazy"
           className="w-full h-60 object-cover rounded-lg"

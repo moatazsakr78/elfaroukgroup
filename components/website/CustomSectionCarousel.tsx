@@ -6,6 +6,7 @@ import { Product } from './shared/types';
 import { useUserProfile } from '../../lib/hooks/useUserProfile';
 import { useWebsiteCurrency } from '@/lib/hooks/useCurrency';
 import { useRatingsDisplay } from '../../lib/hooks/useRatingSettings';
+import { getTransformedImageUrl } from '@/lib/utils/supabaseImageTransform';
 
 interface CustomSectionCarouselProps {
   sectionName: string;
@@ -112,8 +113,9 @@ export default function CustomSectionCarousel({
                 }
               }}>
                 <img
-                  src={product.image || '/placeholder-product.svg'}
+                  src={getTransformedImageUrl(product.image, 'card_desktop') || '/placeholder-product.svg'}
                   alt={product.name}
+                  loading="lazy"
                   className="w-full h-72 object-cover rounded-lg group-hover:scale-110 transition-transform duration-500"
                   onError={(e) => {
                     const target = e.target as HTMLImageElement;

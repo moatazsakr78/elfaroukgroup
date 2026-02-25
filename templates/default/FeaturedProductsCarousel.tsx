@@ -6,6 +6,7 @@ import { Product } from '@/components/website/shared/types';
 import { useUserProfile } from '@/lib/hooks/useUserProfile';
 import { useWebsiteCurrency } from '@/lib/hooks/useCurrency';
 import { useRatingsDisplay } from '@/lib/hooks/useRatingSettings';
+import { getTransformedImageUrl } from '@/lib/utils/supabaseImageTransform';
 
 interface FeaturedProductsCarouselProps {
   products: Product[];
@@ -104,9 +105,10 @@ export default function FeaturedProductsCarousel({
                   router.push(`/product/${product.id}`);
                 }
               }}>
-                <img 
-                  src={product.image || '/placeholder-product.svg'} 
-                  alt={product.name} 
+                <img
+                  src={getTransformedImageUrl(product.image, 'card_desktop') || '/placeholder-product.svg'}
+                  alt={product.name}
+                  loading="lazy"
                   className="w-full h-72 object-cover rounded-lg group-hover:scale-110 transition-transform duration-500"
                   onError={(e) => {
                     const target = e.target as HTMLImageElement;
