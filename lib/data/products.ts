@@ -46,40 +46,58 @@ export async function getWebsiteProducts() {
     console.log('🎛️ Display mode:', displayMode);
     console.log('🏢 Selected branches:', selectedBranches.length);
 
-    let query = supabase
-      .from('products')
-      .select(`
-        id,
-        name,
-        description,
-        price,
-        main_image_url,
-        sub_image_url,
-        additional_images_urls,
-        category_id,
-        is_active,
-        is_hidden,
-        is_featured,
-        discount_percentage,
-        discount_amount,
-        discount_start_date,
-        discount_end_date,
-        rating,
-        rating_count,
-        display_order,
-        stock,
-        categories (
+    // Paginated fetch to avoid Supabase 1000-row limit
+    const PAGE_SIZE = 1000;
+    const allProducts: any[] = [];
+    let offset = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+      const { data, error: pageError } = await supabase
+        .from('products')
+        .select(`
           id,
-          name
-        )
-      `)
-      .eq('is_active', true)
-      .eq('is_hidden', false)
-      .order('display_order', { ascending: true });
+          name,
+          description,
+          price,
+          main_image_url,
+          sub_image_url,
+          additional_images_urls,
+          category_id,
+          is_active,
+          is_hidden,
+          is_featured,
+          discount_percentage,
+          discount_amount,
+          discount_start_date,
+          discount_end_date,
+          rating,
+          rating_count,
+          display_order,
+          stock,
+          categories (
+            id,
+            name
+          )
+        `)
+        .eq('is_active', true)
+        .eq('is_hidden', false)
+        .order('display_order', { ascending: true })
+        .range(offset, offset + PAGE_SIZE - 1);
 
-    const { data: products, error } = await query;
+      if (pageError) throw pageError;
 
-    if (error) throw error;
+      if (data && data.length > 0) {
+        allProducts.push(...data);
+        offset += data.length;
+        if (data.length < PAGE_SIZE) hasMore = false;
+      } else {
+        hasMore = false;
+      }
+    }
+
+    const products = allProducts;
+    console.log(`📦 Total products fetched: ${products.length}`);
 
     // Get product colors & inventory for all products in ONE optimized query
     if (products && products.length > 0) {
@@ -92,19 +110,44 @@ export async function getWebsiteProducts() {
         .eq('variant_type', 'color')
         .order('sort_order', { ascending: true });
 
-      // Query 2: Fetch inventory totals
+      // Query 2: Fetch inventory totals (paginated - inventory can exceed 1000 rows)
       // ✨ If display_mode requires stock filtering, only fetch from selected branches
-      let inventoryQuery = supabase
-        .from('inventory')
-        .select('product_id, quantity, branch_id');
+      const allInventory: any[] = [];
+      let invOffset = 0;
+      let invHasMore = true;
+      let inventoryError: any = null;
 
-      // Filter by selected branches if display_mode is not 'show_all' and branches are selected
       if (displayMode !== 'show_all' && allSelectedLocations.length > 0) {
-        inventoryQuery = inventoryQuery.in('branch_id', allSelectedLocations);
         console.log('🔍 Filtering inventory by selected branches:', allSelectedLocations.length);
       }
 
-      const { data: inventoryData, error: inventoryError } = await inventoryQuery;
+      while (invHasMore) {
+        let inventoryQuery = supabase
+          .from('inventory')
+          .select('product_id, quantity, branch_id')
+          .range(invOffset, invOffset + PAGE_SIZE - 1);
+
+        if (displayMode !== 'show_all' && allSelectedLocations.length > 0) {
+          inventoryQuery = inventoryQuery.in('branch_id', allSelectedLocations);
+        }
+
+        const { data: invPage, error: invError } = await inventoryQuery;
+
+        if (invError) {
+          inventoryError = invError;
+          break;
+        }
+
+        if (invPage && invPage.length > 0) {
+          allInventory.push(...invPage);
+          invOffset += invPage.length;
+          if (invPage.length < PAGE_SIZE) invHasMore = false;
+        } else {
+          invHasMore = false;
+        }
+      }
+
+      const inventoryData = allInventory;
 
       if (inventoryError) {
         console.error('Error fetching inventory data:', inventoryError);
