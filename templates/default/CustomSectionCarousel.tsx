@@ -72,7 +72,7 @@ export default function CustomSectionCarousel({
       {canGoPrevious && (
         <button
           onClick={goToPrevious}
-          className="absolute -left-6 top-1/2 transform -translate-y-1/2 z-10 w-12 h-12 rounded-full flex items-center justify-center bg-white shadow-lg hover:shadow-xl hover:scale-110 cursor-pointer transition-all duration-300"
+          className="absolute -right-6 top-1/2 transform -translate-y-1/2 z-10 w-12 h-12 rounded-full flex items-center justify-center bg-white shadow-lg hover:shadow-xl hover:scale-110 cursor-pointer transition-all duration-300"
         >
           <svg
             className="w-6 h-6 text-gray-700"
@@ -84,7 +84,7 @@ export default function CustomSectionCarousel({
               strokeLinecap="round"
               strokeLinejoin="round"
               strokeWidth={2}
-              d="M15 19l-7-7 7-7"
+              d="M9 5l7 7-7 7"
             />
           </svg>
         </button>
@@ -197,7 +197,7 @@ export default function CustomSectionCarousel({
       {canGoNext && (
         <button
           onClick={goToNext}
-          className="absolute -right-6 top-1/2 transform -translate-y-1/2 z-10 w-12 h-12 rounded-full flex items-center justify-center bg-white shadow-lg hover:shadow-xl hover:scale-110 cursor-pointer transition-all duration-300"
+          className="absolute -left-6 top-1/2 transform -translate-y-1/2 z-10 w-12 h-12 rounded-full flex items-center justify-center bg-white shadow-lg hover:shadow-xl hover:scale-110 cursor-pointer transition-all duration-300"
         >
           <svg
             className="w-6 h-6 text-gray-700"
@@ -209,7 +209,7 @@ export default function CustomSectionCarousel({
               strokeLinecap="round"
               strokeLinejoin="round"
               strokeWidth={2}
-              d="M9 5l7 7-7 7"
+              d="M15 19l-7-7 7-7"
             />
           </svg>
         </button>
