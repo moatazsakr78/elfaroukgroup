@@ -117,11 +117,13 @@ export function useCustomSections() {
       }
 
       // Step 2: Collect all unique product IDs from all sections
-      const allProductIds = [...new Set(
+      const allProductIds = Array.from(new Set(
         (sectionsResponse.data || []).flatMap((section: any) =>
-          Array.isArray(section.products) ? section.products : []
+          Array.isArray(section.products)
+            ? section.products.map((p: any) => typeof p === 'string' ? p : p.product_id)
+            : []
         )
-      )] as string[];
+      )) as string[];
 
       if (allProductIds.length === 0) {
         setSections(sectionsResponse.data || []);
@@ -159,7 +161,9 @@ export function useCustomSections() {
 
       // Map sections to their products using the products map
       const sectionsWithProducts = (sectionsResponse.data || []).map((section: any) => {
-        const productIds = Array.isArray(section.products) ? section.products : [];
+        const productIds = Array.isArray(section.products)
+          ? section.products.map((p: any) => typeof p === 'string' ? p : p.product_id)
+          : [];
 
         const productDetails = productIds
           .map((id: string) => productsMap.get(id))

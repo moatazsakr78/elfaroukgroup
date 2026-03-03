@@ -473,14 +473,75 @@ export async function getStoreCategoriesWithProducts() {
 
 /**
  * Get custom sections with their products
- * Used for custom product sections
- *
- * Note: Custom sections table doesn't exist yet in this database
- * Returning empty array for now - can be implemented when table is created
+ * Used for custom product sections on the homepage (ISR)
  */
 export async function getCustomSections() {
-  // TODO: Implement when custom_sections table is created
-  return [];
+  try {
+    // Step 1: Fetch active sections ordered by display_order
+    const sectionsResponse = await (supabase as any)
+      .from('custom_sections')
+      .select('*')
+      .eq('is_active', true)
+      .order('display_order', { ascending: true });
+
+    if (sectionsResponse.error) {
+      console.error('Error fetching custom sections:', sectionsResponse.error);
+      return [];
+    }
+
+    const sections = sectionsResponse.data || [];
+    if (sections.length === 0) return [];
+
+    // Step 2: Collect all unique product IDs from all sections
+    const allProductIds = Array.from(new Set(
+      sections.flatMap((section: any) =>
+        Array.isArray(section.products)
+          ? section.products.map((p: any) => typeof p === 'string' ? p : p.product_id)
+          : []
+      )
+    )) as string[];
+
+    if (allProductIds.length === 0) return sections;
+
+    // Step 3: Batch-fetch products by ID
+    const productsResponse = await supabase
+      .from('products')
+      .select('id, name, description, main_image_url, sub_image_url, price, discount_percentage, discount_amount, is_hidden, rating, rating_count')
+      .in('id', allProductIds)
+      .eq('is_hidden', false);
+
+    if (productsResponse.error) {
+      console.error('Error fetching products for custom sections:', productsResponse.error);
+    }
+
+    const allProducts = productsResponse.data || [];
+
+    // Step 4: Build product map with computed fields
+    const productsMap = new Map(
+      allProducts.map(product => {
+        const hasDiscount = product.discount_percentage && product.discount_percentage > 0;
+        const finalPrice = hasDiscount
+          ? Number(product.price) * (1 - Number(product.discount_percentage) / 100)
+          : Number(product.price);
+
+        return [product.id, { ...product, finalPrice, hasDiscount }];
+      })
+    );
+
+    // Step 5: Attach productDetails to each section
+    return sections.map((section: any) => {
+      const productIds = Array.isArray(section.products)
+        ? section.products.map((p: any) => typeof p === 'string' ? p : p.product_id)
+        : [];
+      const productDetails = productIds
+        .map((id: string) => productsMap.get(id))
+        .filter(Boolean);
+      return { ...section, productDetails };
+    });
+  } catch (err) {
+    console.error('Error in getCustomSections:', err);
+    return [];
+  }
 }
 
 /**
