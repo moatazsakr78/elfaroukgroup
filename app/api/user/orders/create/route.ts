@@ -36,6 +36,7 @@ interface OrderData {
   subtotal: number
   shipping: number
   total: number
+  guest_session_id?: string
 }
 
 export async function POST(request: Request) {
@@ -43,15 +44,9 @@ export async function POST(request: Request) {
     // Check authentication using NextAuth
     const session = await auth()
 
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: 'Unauthorized - Please login first' },
-        { status: 401 }
-      )
-    }
-
-    const userId = session.user.id
-    const userEmail = session.user.email
+    const isAuthenticated = !!session?.user?.id
+    const userId = isAuthenticated ? session.user.id : null
+    const userEmail = isAuthenticated ? session.user.email : null
 
     // Parse request body
     const orderData: OrderData = await request.json()
@@ -164,7 +159,7 @@ export async function POST(request: Request) {
         serverSubtotal,
         clientShipping: orderData.shipping,
         serverShipping,
-        userId
+        userId: userId || 'guest'
       })
     }
 
@@ -182,11 +177,20 @@ export async function POST(request: Request) {
     // and NextAuth user.id is a text string
     let customerId = null
 
-    // Check if customer already exists by email or phone
-    const { data: existingCustomer, error: customerCheckError } = await supabaseAdmin
+    // Check if customer already exists
+    // Authenticated: search by email OR phone
+    // Guest: search by phone only
+    let customerQuery = supabaseAdmin
       .from('customers')
       .select('id')
-      .or(`email.eq.${userEmail},phone.eq.${orderData.customer.phone}`)
+
+    if (isAuthenticated && userEmail) {
+      customerQuery = customerQuery.or(`email.eq.${userEmail},phone.eq.${orderData.customer.phone}`)
+    } else {
+      customerQuery = customerQuery.eq('phone', orderData.customer.phone)
+    }
+
+    const { data: existingCustomer, error: customerCheckError } = await customerQuery
       .limit(1)
       .single()
 
@@ -197,16 +201,20 @@ export async function POST(request: Request) {
     if (existingCustomer) {
       // Customer exists, update their information
       customerId = existingCustomer.id
+      const updateData: any = {
+        name: orderData.customer.name,
+        phone: orderData.customer.phone,
+        backup_phone: orderData.customer.altPhone || null,
+        address: orderData.customer.address || null,
+        updated_at: new Date().toISOString()
+      }
+      if (userEmail) {
+        updateData.email = userEmail
+      }
+
       const { error: updateError } = await supabaseAdmin
         .from('customers')
-        .update({
-          name: orderData.customer.name,
-          phone: orderData.customer.phone,
-          backup_phone: orderData.customer.altPhone || null,
-          address: orderData.customer.address || null,
-          email: userEmail,
-          updated_at: new Date().toISOString()
-        })
+        .update(updateData)
         .eq('id', customerId)
 
       if (updateError) {
@@ -214,7 +222,6 @@ export async function POST(request: Request) {
       }
     } else {
       // Customer doesn't exist, create new one
-      // Note: user_id is omitted because it's uuid type and we have text user ID
       const { data: newCustomer, error: createCustomerError } = await supabaseAdmin
         .from('customers')
         .insert({
@@ -222,7 +229,7 @@ export async function POST(request: Request) {
           phone: orderData.customer.phone,
           backup_phone: orderData.customer.altPhone || null,
           address: orderData.customer.address || null,
-          email: userEmail,
+          email: userEmail || null,
           is_active: true,
           loyalty_points: 0,
           account_balance: 0,
@@ -256,7 +263,7 @@ export async function POST(request: Request) {
       .insert({
         order_number: orderNumber,
         customer_id: customerId,
-        user_session: userId, // Store NextAuth user ID in user_session (text field)
+        user_session: userId || orderData.guest_session_id || null,
         customer_name: orderData.customer.name,
         customer_phone: orderData.customer.phone,
         customer_address: orderData.customer.address || null,
@@ -301,7 +308,7 @@ export async function POST(request: Request) {
       )
     }
 
-    console.log('✅ Order created successfully:', orderResult.order_number, 'for user:', userId)
+    console.log('✅ Order created successfully:', orderResult.order_number, 'for:', userId ? `user ${userId}` : 'guest')
 
     return NextResponse.json({
       success: true,

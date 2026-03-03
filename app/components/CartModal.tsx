@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { CartService } from '@/lib/cart-service';
 import { CartSession, CartItemData } from '@/lib/cart-utils';
 import { useCart } from '@/lib/contexts/CartContext';
+import { CartSessionManager } from '@/lib/cart-session-manager';
 import { useFormatPrice } from '@/lib/hooks/useCurrency';
 import { useCompanySettings } from '@/lib/hooks/useCompanySettings';
 
@@ -480,9 +481,11 @@ const CartModal = ({ isOpen, onClose, onCartChange }: CartModalProps) => {
     await clearCart();
   };
   
-  // Save order to database via API (uses NextAuth session for proper user_id)
+  // Save order to database via API
   const saveOrderToDatabase = async (orderData: any) => {
     try {
+      const sessionId = CartSessionManager.getSessionId();
+
       const response = await fetch('/api/user/orders/create', {
         method: 'POST',
         headers: {
@@ -500,7 +503,8 @@ const CartModal = ({ isOpen, onClose, onCartChange }: CartModalProps) => {
           shipping_details: orderData.shipping_details,
           subtotal: orderData.subtotal,
           shipping: orderData.shipping,
-          total: orderData.total
+          total: orderData.total,
+          guest_session_id: sessionId || undefined
         }),
       });
 
