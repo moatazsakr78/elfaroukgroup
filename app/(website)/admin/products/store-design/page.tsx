@@ -33,6 +33,7 @@ export default function StoreDesignPage() {
   const [isEditSectionModalOpen, setIsEditSectionModalOpen] = useState(false);
   const [editingSection, setEditingSection] = useState<any | null>(null);
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   // Set client-side flag after component mounts
   useEffect(() => {
@@ -245,117 +246,130 @@ export default function StoreDesignPage() {
     <div className="h-screen flex flex-col text-gray-800" style={{ backgroundColor: '#c0c0c0' }}>
       {/* Header - Fixed */}
       <header className="flex-shrink-0 border-b border-gray-700 py-1" style={{ backgroundColor: 'var(--primary-color)' }}>
-        <div className="w-full px-6 flex items-center justify-between">
+        <div className="w-full px-3 md:px-6 flex items-center justify-between">
           {/* Right side - Title and Action buttons */}
-          <div className="flex items-center gap-1">
-            <h1 className="text-2xl font-bold text-white">تصميم المتجر</h1>
+          <div className="flex items-center gap-1 min-w-0">
+            {/* Mobile sidebar toggle */}
+            <button
+              onClick={() => setIsMobileSidebarOpen(true)}
+              className="md:hidden text-white p-2 flex-shrink-0"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+
+            <h1 className="text-lg md:text-2xl font-bold text-white whitespace-nowrap flex-shrink-0">تصميم المتجر</h1>
 
             {/* White separator line */}
-            <div className="w-px h-8 bg-white/30 mx-3"></div>
+            <div className="w-px h-8 bg-white/30 mx-1 md:mx-3 flex-shrink-0"></div>
 
-            {/* Drag Mode Button */}
-            <button
-              onClick={toggleDragMode}
-              className={`flex flex-col items-center justify-center p-4 transition-colors group min-w-[100px] ${isDragMode
-                  ? 'hover:text-yellow-200'
-                  : 'hover:text-gray-200'
-                }`}
-            >
-              <svg
-                className={`w-8 h-8 mb-2 transition-colors ${isDragMode
+            {/* Action buttons - scrollable on mobile */}
+            <div className="flex items-center gap-0 overflow-x-auto scrollbar-hide">
+              {/* Drag Mode Button */}
+              <button
+                onClick={toggleDragMode}
+                className={`flex flex-col items-center justify-center p-2 md:p-4 transition-colors group min-w-[44px] md:min-w-[100px] flex-shrink-0 ${isDragMode
+                    ? 'hover:text-yellow-200'
+                    : 'hover:text-gray-200'
+                  }`}
+              >
+                <svg
+                  className={`w-6 h-6 md:w-8 md:h-8 md:mb-2 transition-colors ${isDragMode
+                      ? 'text-yellow-300 group-hover:text-yellow-200'
+                      : 'text-white group-hover:text-gray-200'
+                    }`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2.5}
+                    d="M4 6h16M4 10h16M4 14h16M4 18h16"
+                  />
+                </svg>
+                <span className={`text-sm font-bold text-center leading-tight transition-colors hidden md:block ${isDragMode
                     ? 'text-yellow-300 group-hover:text-yellow-200'
                     : 'text-white group-hover:text-gray-200'
-                  }`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+                  }`}>
+                  {isDragMode ? 'إلغاء تبديل' : 'تبديل المراكز'}
+                </span>
+              </button>
+
+              <div className="w-px h-8 bg-white/30 mx-1 md:mx-2 flex-shrink-0 hidden md:block"></div>
+
+              {/* Add Section Button */}
+              <button
+                onClick={() => setIsAddSectionModalOpen(true)}
+                className="flex flex-col items-center justify-center p-2 md:p-4 transition-colors group min-w-[44px] md:min-w-[100px] flex-shrink-0 hover:bg-white/10"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2.5}
-                  d="M4 6h16M4 10h16M4 14h16M4 18h16"
-                />
-              </svg>
-              <span className={`text-sm font-bold text-center leading-tight transition-colors ${isDragMode
-                  ? 'text-yellow-300 group-hover:text-yellow-200'
-                  : 'text-white group-hover:text-gray-200'
-                }`}>
-                {isDragMode ? 'إلغاء تبديل' : 'تبديل المراكز'}
-              </span>
-            </button>
+                <svg className="w-6 h-6 md:w-8 md:h-8 md:mb-2 text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                </svg>
+                <span className="text-sm font-bold text-center leading-tight text-white transition-colors hidden md:block">
+                  إضافة قسم
+                </span>
+              </button>
 
-            <div className="w-px h-8 bg-white/30 mx-2"></div>
+              <div className="w-px h-8 bg-white/30 mx-1 flex-shrink-0 hidden md:block"></div>
 
-            {/* Add Section Button */}
-            <button
-              onClick={() => setIsAddSectionModalOpen(true)}
-              className="flex flex-col items-center justify-center p-4 transition-colors group min-w-[100px] hover:bg-white/10"
-            >
-              <svg className="w-8 h-8 mb-2 text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-              </svg>
-              <span className="text-sm font-bold text-center leading-tight text-white transition-colors">
-                إضافة قسم
-              </span>
-            </button>
+              {/* Edit Section Button */}
+              <button
+                onClick={handleEditSection}
+                disabled={!selectedSectionId}
+                className={`flex flex-col items-center justify-center p-2 md:p-4 transition-colors group min-w-[44px] md:min-w-[100px] flex-shrink-0 ${selectedSectionId
+                    ? 'hover:bg-white/10 text-white'
+                    : 'text-white/30 cursor-not-allowed'
+                  }`}
+              >
+                <svg className="w-6 h-6 md:w-8 md:h-8 md:mb-2 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                <span className="text-sm font-bold text-center leading-tight transition-colors hidden md:block">
+                  تعديل قسم
+                </span>
+              </button>
 
-            <div className="w-px h-8 bg-white/30 mx-1"></div>
+              <div className="w-px h-8 bg-white/30 mx-1 flex-shrink-0 hidden md:block"></div>
 
-            {/* Edit Section Button */}
-            <button
-              onClick={handleEditSection}
-              disabled={!selectedSectionId}
-              className={`flex flex-col items-center justify-center p-4 transition-colors group min-w-[100px] ${selectedSectionId
-                  ? 'hover:bg-white/10 text-white'
-                  : 'text-white/30 cursor-not-allowed'
-                }`}
-            >
-              <svg className="w-8 h-8 mb-2 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-              <span className="text-sm font-bold text-center leading-tight transition-colors">
-                تعديل قسم
-              </span>
-            </button>
+              {/* Delete Section Button */}
+              <button
+                onClick={handleDeleteSection}
+                disabled={!selectedSectionId}
+                className={`flex flex-col items-center justify-center p-2 md:p-4 transition-colors group min-w-[44px] md:min-w-[100px] flex-shrink-0 ${selectedSectionId
+                    ? 'hover:bg-white/10 text-white'
+                    : 'text-white/30 cursor-not-allowed'
+                  }`}
+              >
+                <svg className="w-6 h-6 md:w-8 md:h-8 md:mb-2 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                <span className="text-sm font-bold text-center leading-tight transition-colors hidden md:block">
+                  حذف قسم
+                </span>
+              </button>
 
-            <div className="w-px h-8 bg-white/30 mx-1"></div>
-
-            {/* Delete Section Button */}
-            <button
-              onClick={handleDeleteSection}
-              disabled={!selectedSectionId}
-              className={`flex flex-col items-center justify-center p-4 transition-colors group min-w-[100px] ${selectedSectionId
-                  ? 'hover:bg-white/10 text-white'
-                  : 'text-white/30 cursor-not-allowed'
-                }`}
-            >
-              <svg className="w-8 h-8 mb-2 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-              <span className="text-sm font-bold text-center leading-tight transition-colors">
-                حذف قسم
-              </span>
-            </button>
-
-            {/* Save Order Button - appears when in drag mode */}
-            {isDragMode && (
-              <>
-                <div className="w-px h-8 bg-white/30 mx-2"></div>
-                <button
-                  onClick={saveAllChanges}
-                  disabled={isSaving}
-                  className="flex flex-col items-center justify-center p-4 transition-colors group min-w-[100px] hover:text-green-200"
-                >
-                  <svg className="w-8 h-8 mb-2 text-green-300 group-hover:text-green-200 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                  </svg>
-                  <span className="text-sm font-bold text-center leading-tight text-green-300 group-hover:text-green-200 transition-colors">
-                    {isSaving ? 'جاري الحفظ' : 'حفظ الترتيب'}
-                  </span>
-                </button>
-              </>
-            )}
+              {/* Save Order Button - appears when in drag mode */}
+              {isDragMode && (
+                <>
+                  <div className="w-px h-8 bg-white/30 mx-1 md:mx-2 flex-shrink-0 hidden md:block"></div>
+                  <button
+                    onClick={saveAllChanges}
+                    disabled={isSaving}
+                    className="flex flex-col items-center justify-center p-2 md:p-4 transition-colors group min-w-[44px] md:min-w-[100px] flex-shrink-0 hover:text-green-200"
+                  >
+                    <svg className="w-6 h-6 md:w-8 md:h-8 md:mb-2 text-green-300 group-hover:text-green-200 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span className="text-sm font-bold text-center leading-tight text-green-300 group-hover:text-green-200 transition-colors hidden md:block">
+                      {isSaving ? 'جاري الحفظ' : 'حفظ الترتيب'}
+                    </span>
+                  </button>
+                </>
+              )}
+            </div>
           </div>
 
           {/* Center - Empty space */}
@@ -364,7 +378,7 @@ export default function StoreDesignPage() {
           {/* Left side - Exit button */}
           <button
             onClick={() => router.back()}
-            className="text-white hover:text-red-300 transition-colors"
+            className="text-white hover:text-red-300 transition-colors flex-shrink-0"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -377,21 +391,21 @@ export default function StoreDesignPage() {
       <div className="flex-1 flex min-h-0">
         {/* Save Changes Bar - Fixed at Bottom */}
         {hasUnsavedChanges && (
-          <div className="fixed bottom-0 left-0 right-0 z-40 bg-amber-50 border-t-2 border-amber-200 px-6 py-3" style={{ marginRight: '320px' }}>
-            <div className="flex items-center justify-between">
+          <div className="fixed bottom-0 left-0 right-0 z-30 bg-amber-50 border-t-2 border-amber-200 px-3 md:px-6 py-2 md:py-3 md:mr-80">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-3 h-3 bg-amber-500 rounded-full animate-pulse"></div>
-                <span className="text-amber-800 font-semibold">
+                <div className="w-3 h-3 bg-amber-500 rounded-full animate-pulse flex-shrink-0"></div>
+                <span className="text-amber-800 font-semibold text-sm md:text-base">
                   لديك تغييرات غير محفوظة
                 </span>
-                <span className="text-sm text-amber-600">
+                <span className="text-xs md:text-sm text-amber-600 hidden md:inline">
                   احفظ التغييرات لتطبيقها على المتجر
                 </span>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 md:gap-3">
                 <button
                   onClick={discardChanges}
-                  className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="flex-1 md:flex-initial px-3 md:px-4 py-2 text-sm md:text-base text-gray-600 hover:text-gray-800 font-medium border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                   disabled={isSaving}
                 >
                   إلغاء التغييرات
@@ -399,7 +413,7 @@ export default function StoreDesignPage() {
                 <button
                   onClick={saveAllChanges}
                   disabled={isSaving}
-                  className="px-6 py-2 text-white font-semibold rounded-lg transition-colors flex items-center gap-2"
+                  className="flex-1 md:flex-initial px-4 md:px-6 py-2 text-sm md:text-base text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
                   style={{
                     backgroundColor: 'var(--primary-color)'
                   }}
@@ -429,15 +443,44 @@ export default function StoreDesignPage() {
           </div>
         )}
 
-        {/* Sidebar - Fixed */}
-        <div className="flex-shrink-0 w-80 bg-white border-l border-gray-300 flex flex-col">
+        {/* Mobile Sidebar Backdrop */}
+        {isMobileSidebarOpen && (
+          <div
+            className="fixed inset-0 bg-black/50 z-40 md:hidden"
+            onClick={() => setIsMobileSidebarOpen(false)}
+          />
+        )}
+
+        {/* Sidebar */}
+        <div className={`
+          fixed top-0 right-0 h-full w-72 z-50 bg-white border-l border-gray-300 flex flex-col
+          transform transition-transform duration-300 ease-in-out
+          ${isMobileSidebarOpen ? 'translate-x-0' : 'translate-x-full'}
+          md:relative md:w-80 md:transform-none md:z-auto md:flex-shrink-0
+        `}>
+          {/* Mobile close button */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 md:hidden">
+            <h2 className="text-lg font-bold text-gray-800">لوحة التحكم</h2>
+            <button
+              onClick={() => setIsMobileSidebarOpen(false)}
+              className="text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
           <div className="flex-1 overflow-y-auto scrollbar-hide p-6">
             <div className="mb-6">
-              <h2 className="text-xl font-bold text-gray-800 mb-4">لوحة التحكم</h2>
+              <h2 className="text-xl font-bold text-gray-800 mb-4 hidden md:block">لوحة التحكم</h2>
 
               <div className="space-y-3">
                 <button
-                  onClick={() => setIsAddSectionModalOpen(true)}
+                  onClick={() => {
+                    setIsAddSectionModalOpen(true);
+                    setIsMobileSidebarOpen(false);
+                  }}
                   className="w-full flex items-center justify-between px-4 py-3 text-right rounded-lg transition-colors bg-red-100 border-2 border-red-300"
                 >
                   <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -466,7 +509,7 @@ export default function StoreDesignPage() {
 
         {/* Sections Content - Scrollable Main Area */}
         <main className="flex-1 flex flex-col min-h-0">
-          <div className="flex-1 overflow-y-auto scrollbar-hide p-6">
+          <div className={`flex-1 overflow-y-auto scrollbar-hide p-3 md:p-6 ${hasUnsavedChanges ? 'pb-24' : ''}`}>
             {/* Custom Sections Management Grid with Drag & Drop */}
             <DragDropProvider>
               <CustomSectionManagementGrid

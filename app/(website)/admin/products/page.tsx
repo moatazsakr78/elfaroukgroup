@@ -48,6 +48,7 @@ export default function ProductManagementPage() {
   const [isProductSizeModalOpen, setIsProductSizeModalOpen] = useState(false);
   const [isManageSizeGroupsModalOpen, setIsManageSizeGroupsModalOpen] = useState(false);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   // Set client-side flag after component mounts
   useEffect(() => {
@@ -516,181 +517,191 @@ export default function ProductManagementPage() {
     <div className="h-screen flex flex-col text-gray-800" style={{backgroundColor: '#c0c0c0'}}>
       {/* Header - Fixed */}
       <header className="flex-shrink-0 border-b border-gray-700 py-1" style={{backgroundColor: 'var(--primary-color)'}}>
-        <div className="w-full px-6 flex items-center justify-between">
+        <div className="w-full px-3 md:px-6 flex items-center justify-between">
           {/* Right side - Title and Action buttons */}
-          <div className="flex items-center gap-1">
-            <h1 className="text-2xl font-bold text-white">
+          <div className="flex items-center gap-1 min-w-0 flex-1">
+            {/* Mobile sidebar toggle */}
+            <button
+              onClick={() => setIsMobileSidebarOpen(true)}
+              className="md:hidden text-white p-2 flex-shrink-0"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+
+            <h1 className="text-lg md:text-2xl font-bold text-white whitespace-nowrap flex-shrink-0">
               {managementMode === 'products' ? 'إدارة المنتجات' : 'إدارة الفئات'}
             </h1>
-            
+
             {/* White separator line */}
-            <div className="w-px h-8 bg-white/30 mx-3"></div>
-            
-            {/* Switch Centers Button - System Style */}
-            <button
-              onClick={toggleDragMode}
-              className={`flex flex-col items-center justify-center p-4 transition-colors group min-w-[100px] ${
-                isDragMode
-                  ? 'hover:text-yellow-200'
-                  : 'hover:text-gray-200'
-              }`}
-            >
-              <svg
-                className={`w-8 h-8 mb-2 transition-colors ${
+            <div className="w-px h-8 bg-white/30 mx-3 hidden md:block flex-shrink-0"></div>
+
+            {/* Action buttons - scrollable on mobile */}
+            <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide">
+              {/* Switch Centers Button - System Style */}
+              <button
+                onClick={toggleDragMode}
+                className={`flex flex-col items-center justify-center p-2 md:p-4 transition-colors group min-w-[44px] md:min-w-[100px] flex-shrink-0 ${
+                  isDragMode
+                    ? 'hover:text-yellow-200'
+                    : 'hover:text-gray-200'
+                }`}
+              >
+                <svg
+                  className={`w-6 h-6 md:w-8 md:h-8 md:mb-2 transition-colors ${
+                    isDragMode
+                      ? 'text-yellow-300 group-hover:text-yellow-200'
+                      : 'text-white group-hover:text-gray-200'
+                  }`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2.5}
+                    d="M4 6h16M4 10h16M4 14h16M4 18h16"
+                  />
+                </svg>
+                <span className={`hidden md:block text-sm font-bold text-center leading-tight transition-colors ${
                   isDragMode
                     ? 'text-yellow-300 group-hover:text-yellow-200'
                     : 'text-white group-hover:text-gray-200'
-                }`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2.5}
-                  d="M4 6h16M4 10h16M4 14h16M4 18h16"
-                />
-              </svg>
-              <span className={`text-sm font-bold text-center leading-tight transition-colors ${
-                isDragMode
-                  ? 'text-yellow-300 group-hover:text-yellow-200'
-                  : 'text-white group-hover:text-gray-200'
-              }`}>
-                {isDragMode ? 'إلغاء تبديل' : 'تبديل المراكز'}
-              </span>
-            </button>
+                }`}>
+                  {isDragMode ? 'إلغاء تبديل' : 'تبديل المراكز'}
+                </span>
+              </button>
 
-            {/* Product Size Button - Only show in products mode */}
-            {managementMode === 'products' && (
-              <>
-                <div className="w-px h-8 bg-white/30 mx-2"></div>
+              {/* Product Size Button - Only show in products mode */}
+              {managementMode === 'products' && (
+                <>
+                  <div className="w-px h-8 bg-white/30 mx-2 hidden md:block flex-shrink-0"></div>
 
-                <button
-                  onClick={() => setIsProductSizeModalOpen(true)}
-                  className="flex flex-col items-center justify-center p-4 transition-colors group min-w-[100px] hover:bg-white/10"
-                >
-                  <svg className="w-8 h-8 mb-2 text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                  </svg>
-                  <span className="text-sm font-bold text-center leading-tight text-white transition-colors">
-                    حجم المنتج
-                  </span>
-                </button>
+                  <button
+                    onClick={() => setIsProductSizeModalOpen(true)}
+                    className="flex flex-col items-center justify-center p-2 md:p-4 transition-colors group min-w-[44px] md:min-w-[100px] flex-shrink-0 hover:bg-white/10"
+                  >
+                    <svg className="w-6 h-6 md:w-8 md:h-8 md:mb-2 text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                    </svg>
+                    <span className="hidden md:block text-sm font-bold text-center leading-tight text-white transition-colors">
+                      حجم المنتج
+                    </span>
+                  </button>
 
-                <div className="w-px h-8 bg-white/30 mx-2"></div>
+                  <div className="w-px h-8 bg-white/30 mx-2 hidden md:block flex-shrink-0"></div>
 
-                <button
-                  onClick={() => setIsManageSizeGroupsModalOpen(true)}
-                  className="flex flex-col items-center justify-center p-4 transition-colors group min-w-[100px] hover:bg-white/10"
-                >
-                  <svg className="w-8 h-8 mb-2 text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                  </svg>
-                  <span className="text-sm font-bold text-center leading-tight text-white transition-colors">
-                    فك الربط
-                  </span>
-                </button>
+                  <button
+                    onClick={() => setIsManageSizeGroupsModalOpen(true)}
+                    className="flex flex-col items-center justify-center p-2 md:p-4 transition-colors group min-w-[44px] md:min-w-[100px] flex-shrink-0 hover:bg-white/10"
+                  >
+                    <svg className="w-6 h-6 md:w-8 md:h-8 md:mb-2 text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                    </svg>
+                    <span className="hidden md:block text-sm font-bold text-center leading-tight text-white transition-colors">
+                      فك الربط
+                    </span>
+                  </button>
 
-              </>
-            )}
+                </>
+              )}
 
-            {/* Category Management Buttons - Only show in categories mode */}
-            {managementMode === 'categories' && (
-              <>
-                <div className="w-px h-8 bg-white/30 mx-2"></div>
+              {/* Category Management Buttons - Only show in categories mode */}
+              {managementMode === 'categories' && (
+                <>
+                  <div className="w-px h-8 bg-white/30 mx-2 hidden md:block flex-shrink-0"></div>
 
-                {/* Add Category Button */}
-                <button
-                  onClick={() => setIsAddCategoryModalOpen(true)}
-                  className="flex flex-col items-center justify-center p-4 transition-colors group min-w-[100px] hover:bg-white/10"
-                >
-                  <svg className="w-8 h-8 mb-2 text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-                  </svg>
-                  <span className="text-sm font-bold text-center leading-tight text-white transition-colors">
-                    إضافة فئة
-                  </span>
-                </button>
+                  {/* Add Category Button */}
+                  <button
+                    onClick={() => setIsAddCategoryModalOpen(true)}
+                    className="flex flex-col items-center justify-center p-2 md:p-4 transition-colors group min-w-[44px] md:min-w-[100px] flex-shrink-0 hover:bg-white/10"
+                  >
+                    <svg className="w-6 h-6 md:w-8 md:h-8 md:mb-2 text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                    </svg>
+                    <span className="hidden md:block text-sm font-bold text-center leading-tight text-white transition-colors">
+                      إضافة فئة
+                    </span>
+                  </button>
 
-                <div className="w-px h-8 bg-white/30 mx-1"></div>
+                  <div className="w-px h-8 bg-white/30 mx-1 hidden md:block flex-shrink-0"></div>
 
-                {/* Edit Category Button */}
-                <button
-                  onClick={handleEditCategory}
-                  disabled={!selectedCategoryId}
-                  className={`flex flex-col items-center justify-center p-4 transition-colors group min-w-[100px] ${
-                    selectedCategoryId
-                      ? 'hover:bg-white/10 text-white'
-                      : 'text-white/30 cursor-not-allowed'
-                  }`}
-                >
-                  <svg className="w-8 h-8 mb-2 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
-                  <span className="text-sm font-bold text-center leading-tight transition-colors">
-                    تعديل فئة
-                  </span>
-                </button>
+                  {/* Edit Category Button */}
+                  <button
+                    onClick={handleEditCategory}
+                    disabled={!selectedCategoryId}
+                    className={`flex flex-col items-center justify-center p-2 md:p-4 transition-colors group min-w-[44px] md:min-w-[100px] flex-shrink-0 ${
+                      selectedCategoryId
+                        ? 'hover:bg-white/10 text-white'
+                        : 'text-white/30 cursor-not-allowed'
+                    }`}
+                  >
+                    <svg className="w-6 h-6 md:w-8 md:h-8 md:mb-2 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                    <span className="hidden md:block text-sm font-bold text-center leading-tight transition-colors">
+                      تعديل فئة
+                    </span>
+                  </button>
 
-                <div className="w-px h-8 bg-white/30 mx-1"></div>
+                  <div className="w-px h-8 bg-white/30 mx-1 hidden md:block flex-shrink-0"></div>
 
-                {/* Delete Category Button - Hidden for "الكل" category */}
-                {(() => {
-                  const selectedCategory = categories.find(c => c.id === selectedCategoryId);
-                  const isAllCategory = (selectedCategory as any)?.is_all_category;
-                  const canDelete = selectedCategoryId && !isAllCategory;
+                  {/* Delete Category Button - Hidden for "الكل" category */}
+                  {(() => {
+                    const selectedCategory = categories.find(c => c.id === selectedCategoryId);
+                    const isAllCategory = (selectedCategory as any)?.is_all_category;
+                    const canDelete = selectedCategoryId && !isAllCategory;
 
-                  return (
-                    <button
-                      onClick={handleDeleteCategory}
-                      disabled={!canDelete}
-                      title={isAllCategory ? 'لا يمكن حذف فئة الكل' : 'حذف فئة'}
-                      className={`flex flex-col items-center justify-center p-4 transition-colors group min-w-[100px] ${
-                        canDelete
-                          ? 'hover:bg-white/10 text-white'
-                          : 'text-white/30 cursor-not-allowed'
-                      }`}
-                    >
-                      <svg className="w-8 h-8 mb-2 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                      <span className="text-sm font-bold text-center leading-tight transition-colors">
-                        حذف فئة
-                      </span>
-                    </button>
-                  );
-                })()}
-              </>
-            )}
+                    return (
+                      <button
+                        onClick={handleDeleteCategory}
+                        disabled={!canDelete}
+                        title={isAllCategory ? 'لا يمكن حذف فئة الكل' : 'حذف فئة'}
+                        className={`flex flex-col items-center justify-center p-2 md:p-4 transition-colors group min-w-[44px] md:min-w-[100px] flex-shrink-0 ${
+                          canDelete
+                            ? 'hover:bg-white/10 text-white'
+                            : 'text-white/30 cursor-not-allowed'
+                        }`}
+                      >
+                        <svg className="w-6 h-6 md:w-8 md:h-8 md:mb-2 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        <span className="hidden md:block text-sm font-bold text-center leading-tight transition-colors">
+                          حذف فئة
+                        </span>
+                      </button>
+                    );
+                  })()}
+                </>
+              )}
 
-            {/* Save Order Button - appears when in drag mode */}
-            {isDragMode && (
-              <>
-                <div className="w-px h-8 bg-white/30 mx-2"></div>
-                <button
-                  onClick={saveAllChanges}
-                  disabled={isSaving}
-                  className="flex flex-col items-center justify-center p-4 transition-colors group min-w-[100px] hover:text-green-200"
-                >
-                  <svg className="w-8 h-8 mb-2 text-green-300 group-hover:text-green-200 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                  </svg>
-                  <span className="text-sm font-bold text-center leading-tight text-green-300 group-hover:text-green-200 transition-colors">
-                    {isSaving ? 'جاري الحفظ' : 'حفظ الترتيب'}
-                  </span>
-                </button>
-              </>
-            )}
+              {/* Save Order Button - appears when in drag mode */}
+              {isDragMode && (
+                <>
+                  <div className="w-px h-8 bg-white/30 mx-2 hidden md:block flex-shrink-0"></div>
+                  <button
+                    onClick={saveAllChanges}
+                    disabled={isSaving}
+                    className="flex flex-col items-center justify-center p-2 md:p-4 transition-colors group min-w-[44px] md:min-w-[100px] flex-shrink-0 hover:text-green-200"
+                  >
+                    <svg className="w-6 h-6 md:w-8 md:h-8 md:mb-2 text-green-300 group-hover:text-green-200 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span className="hidden md:block text-sm font-bold text-center leading-tight text-green-300 group-hover:text-green-200 transition-colors">
+                      {isSaving ? 'جاري الحفظ' : 'حفظ الترتيب'}
+                    </span>
+                  </button>
+                </>
+              )}
+            </div>
           </div>
-          
-          {/* Center - Empty space */}
-          <div></div>
-          
+
           {/* Left side - Exit button */}
           <button
             onClick={() => router.back()}
-            className="text-white hover:text-red-300 transition-colors"
+            className="text-white hover:text-red-300 transition-colors flex-shrink-0"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -703,21 +714,21 @@ export default function ProductManagementPage() {
       <div className="flex-1 flex min-h-0">
         {/* Save Changes Bar - Fixed at Bottom */}
         {hasUnsavedChanges && (
-          <div className="fixed bottom-0 left-0 right-0 z-40 bg-amber-50 border-t-2 border-amber-200 px-6 py-3" style={{marginRight: '320px'}}>
-          <div className="flex items-center justify-between">
+          <div className="fixed bottom-0 left-0 right-0 z-30 md:mr-80 bg-amber-50 border-t-2 border-amber-200 px-3 md:px-6 py-2 md:py-3">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-3 h-3 bg-amber-500 rounded-full animate-pulse"></div>
-              <span className="text-amber-800 font-semibold">
+              <div className="w-3 h-3 bg-amber-500 rounded-full animate-pulse flex-shrink-0"></div>
+              <span className="text-sm md:text-base text-amber-800 font-semibold">
                 لديك تغييرات غير محفوظة
               </span>
-              <span className="text-sm text-amber-600">
+              <span className="hidden md:inline text-sm text-amber-600">
                 احفظ التغييرات لتطبيقها على المتجر
               </span>
             </div>
             <div className="flex items-center gap-3">
               <button
                 onClick={discardChanges}
-                className="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                className="flex-1 md:flex-initial px-4 py-2 text-sm md:text-base text-gray-600 hover:text-gray-800 font-medium border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 disabled={isSaving}
               >
                 إلغاء التغييرات
@@ -725,7 +736,7 @@ export default function ProductManagementPage() {
               <button
                 onClick={saveAllChanges}
                 disabled={isSaving}
-                className="px-6 py-2 text-white font-semibold rounded-lg transition-colors flex items-center gap-2"
+                className="flex-1 md:flex-initial px-6 py-2 text-sm md:text-base text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
                 style={{
                   backgroundColor: 'var(--primary-color)'
                 }}
@@ -755,20 +766,46 @@ export default function ProductManagementPage() {
           </div>
         )}
 
-        {/* Sidebar - Fixed */}
-        <div className="flex-shrink-0 w-80 bg-white border-l border-gray-300 flex flex-col">
+        {/* Mobile sidebar backdrop */}
+        {isMobileSidebarOpen && (
+          <div
+            className="fixed inset-0 bg-black/50 z-40 md:hidden"
+            onClick={() => setIsMobileSidebarOpen(false)}
+          />
+        )}
+
+        {/* Sidebar */}
+        <div className={`
+          fixed top-0 right-0 h-full w-72 z-50 bg-white border-l border-gray-300 flex flex-col
+          transform transition-transform duration-300 ease-in-out
+          ${isMobileSidebarOpen ? 'translate-x-0' : 'translate-x-full'}
+          md:relative md:w-80 md:transform-none md:z-auto md:flex-shrink-0
+        `}>
+          {/* Mobile close button */}
+          <div className="flex items-center justify-between p-4 border-b border-gray-200 md:hidden">
+            <h2 className="text-lg font-bold text-gray-800">لوحة التحكم</h2>
+            <button
+              onClick={() => setIsMobileSidebarOpen(false)}
+              className="text-gray-500 hover:text-gray-700 p-1"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
           <div className="flex-1 overflow-y-auto scrollbar-hide p-6">
           <div className="mb-6">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">لوحة التحكم</h2>
-            
-            
+            <h2 className="hidden md:block text-xl font-bold text-gray-800 mb-4">لوحة التحكم</h2>
+
+
             {/* Management Mode Buttons */}
             <div className="space-y-3">
-              <button 
-                onClick={() => setManagementMode('products')}
+              <button
+                onClick={() => { setManagementMode('products'); setIsMobileSidebarOpen(false); }}
                 className={`w-full flex items-center justify-between px-4 py-3 text-right rounded-lg transition-colors ${
-                  managementMode === 'products' 
-                    ? 'bg-red-100 border-2 border-red-300' 
+                  managementMode === 'products'
+                    ? 'bg-red-100 border-2 border-red-300'
                     : 'bg-gray-50 hover:bg-gray-100'
                 }`}
               >
@@ -777,9 +814,9 @@ export default function ProductManagementPage() {
                 </svg>
                 <span className={`font-medium ${managementMode === 'products' ? 'text-red-600' : 'text-gray-700'}`}>إدارة المنتجات</span>
               </button>
-              
+
               <button
-                onClick={() => setManagementMode('categories')}
+                onClick={() => { setManagementMode('categories'); setIsMobileSidebarOpen(false); }}
                 className={`w-full flex items-center justify-between px-4 py-3 text-right rounded-lg transition-colors ${
                   managementMode === 'categories'
                     ? 'bg-red-100 border-2 border-red-300'
@@ -793,7 +830,7 @@ export default function ProductManagementPage() {
               </button>
 
               <button
-                onClick={() => router.push('/admin/products/store-design')}
+                onClick={() => { router.push('/admin/products/store-design'); setIsMobileSidebarOpen(false); }}
                 className="w-full flex items-center justify-between px-4 py-3 text-right rounded-lg transition-colors bg-gradient-to-r from-purple-50 to-blue-50 hover:from-purple-100 hover:to-blue-100 border-2 border-purple-200"
               >
                 <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -803,7 +840,7 @@ export default function ProductManagementPage() {
               </button>
 
               <button
-                onClick={() => router.push('/admin/products/social-media')}
+                onClick={() => { router.push('/admin/products/social-media'); setIsMobileSidebarOpen(false); }}
                 className="w-full flex items-center justify-between px-4 py-3 text-right rounded-lg transition-colors bg-gradient-to-r from-pink-50 to-red-50 hover:from-pink-100 hover:to-red-100 border-2 border-pink-200"
               >
                 <svg className="w-5 h-5 text-pink-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -819,12 +856,12 @@ export default function ProductManagementPage() {
 
         {/* Products Content - Scrollable Main Area */}
         <main className="flex-1 flex flex-col min-h-0">
-          <div className="flex-1 overflow-y-auto scrollbar-hide p-6">
+          <div className={`flex-1 overflow-y-auto scrollbar-hide p-3 md:p-6 ${hasUnsavedChanges ? 'pb-24' : ''}`}>
           {/* Search and View Controls Bar */}
-          <div className="bg-white border border-gray-300 rounded-lg py-3 px-4 mb-6">
-            <div className="flex items-center justify-between gap-4">
+          <div className="bg-white border border-gray-300 rounded-lg py-2 px-3 md:py-3 md:px-4 mb-6">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between md:gap-4">
               {/* Search Bar */}
-              <div className="flex-1 max-w-md">
+              <div className="flex-1 md:max-w-md">
                 <div className="relative">
                   <input
                     type="text"
@@ -856,7 +893,7 @@ export default function ProductManagementPage() {
 
               {/* View Mode Toggle Buttons */}
               <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-600 mr-3">وضع العرض:</span>
+                <span className="hidden md:inline text-sm text-gray-600 mr-3">وضع العرض:</span>
                 
                 {/* Grid View Button */}
                 <button
@@ -892,7 +929,7 @@ export default function ProductManagementPage() {
               </div>
 
               {/* Search Results Count */}
-              <div className="text-sm text-gray-500">
+              <div className="hidden md:block text-sm text-gray-500">
                 {searchTerm && (
                   <span>
                     {managementMode === 'products' 

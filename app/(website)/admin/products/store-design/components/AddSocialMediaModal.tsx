@@ -140,8 +140,8 @@ export default function AddSocialMediaModal({
       />
 
       {/* Modal */}
-      <div className="flex min-h-full items-center justify-center p-4">
-        <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg transform transition-all">
+      <div className="flex min-h-full items-end md:items-center justify-center md:p-4">
+        <div className="relative bg-white rounded-t-2xl md:rounded-2xl shadow-xl w-full max-w-lg transform transition-all">
           {/* Header */}
           <div className="flex items-center justify-between p-6 border-b border-gray-200">
             <h2 className="text-xl font-bold text-gray-800">
@@ -171,7 +171,7 @@ export default function AddSocialMediaModal({
               <label className="block text-sm font-medium text-gray-700 mb-3">
                 اختر المنصة
               </label>
-              <div className="grid grid-cols-4 sm:grid-cols-5 gap-3">
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
                 {Object.entries(PLATFORM_ICONS).map(([key, info]) => {
                   const color = PLATFORM_COLORS[key];
                   const isSelected = selectedPlatform === key;

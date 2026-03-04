@@ -62,7 +62,7 @@ export default function ManageSizeGroupsModal({
       <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
 
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 flex-shrink-0">
+        <div className="flex items-center justify-between p-4 md:p-6 border-b border-gray-200 flex-shrink-0">
           <h2 className="text-xl font-bold text-gray-800">إدارة مجموعات الأحجام</h2>
           <button
             onClick={onClose}
@@ -85,7 +85,7 @@ export default function ManageSizeGroupsModal({
         )}
 
         {/* Content */}
-        <div className="flex-1 p-6 overflow-y-auto scrollbar-hide">
+        <div className="flex-1 p-4 md:p-6 overflow-y-auto scrollbar-hide">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <div className="text-center">
@@ -202,7 +202,7 @@ export default function ManageSizeGroupsModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between p-6 border-t border-gray-200 flex-shrink-0">
+        <div className="flex items-center justify-between px-4 md:px-6 py-4 border-t border-gray-200 flex-shrink-0">
           <div className="text-sm text-gray-600">
             {!isLoading && (
               <span>

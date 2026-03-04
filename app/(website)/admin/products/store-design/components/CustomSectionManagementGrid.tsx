@@ -6,6 +6,7 @@ import {
   closestCenter,
   KeyboardSensor,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   DragEndEvent,
@@ -72,7 +73,7 @@ function SortableCustomSectionCard({ section, index, onToggleVisibility, isDragg
       {...attributes}
       {...listeners}
       className={`
-        bg-white rounded-lg p-4 border relative
+        bg-white rounded-lg p-3 md:p-4 border relative
         transition-all duration-200 cursor-move
         ${isSortableDragging || isDragging
           ? 'shadow-2xl rotate-3 scale-105 bg-white border-blue-400 z-50 opacity-90'
@@ -85,8 +86,8 @@ function SortableCustomSectionCard({ section, index, onToggleVisibility, isDragg
     >
       {/* Section Icon */}
       <div className="mb-4 flex items-center justify-center">
-        <div className="w-24 h-24 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--primary-color)' }}>
-          <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="w-20 h-20 md:w-24 md:h-24 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--primary-color)' }}>
+          <svg className="w-10 h-10 md:w-12 md:h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
           </svg>
         </div>
@@ -173,6 +174,12 @@ export default function CustomSectionManagementGrid({
         distance: 8,
       },
     }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 250,
+        tolerance: 5,
+      },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
@@ -243,10 +250,10 @@ export default function CustomSectionManagementGrid({
 
       <DragOverlay>
         {activeId && activeSectionItem ? (
-          <div className="bg-white rounded-lg p-4 border border-blue-400 shadow-2xl opacity-90 rotate-3 scale-105">
+          <div className="bg-white rounded-lg p-3 md:p-4 border border-blue-400 shadow-2xl opacity-90 rotate-3 scale-105">
             <div className="mb-4 flex items-center justify-center">
-              <div className="w-24 h-24 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--primary-color)' }}>
-                <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-20 h-20 md:w-24 md:h-24 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--primary-color)' }}>
+                <svg className="w-10 h-10 md:w-12 md:h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                 </svg>
               </div>
