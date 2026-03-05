@@ -187,6 +187,7 @@ export function useProducts() {
             )
           `)
           .eq('is_active', true)
+          .eq('is_hidden', false)
           .or('is_deleted.is.null,is_deleted.eq.false')
           .order('display_order', { ascending: true })
           .order('name', { ascending: true })
