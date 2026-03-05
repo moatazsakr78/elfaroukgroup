@@ -1,7 +1,13 @@
 'use client'
 
 import { useState, useEffect, useMemo, useRef } from 'react'
+import dynamic from 'next/dynamic'
 import { supabase } from '../lib/supabase/client'
+
+const MobileProductDetailsModal = dynamic(
+  () => import("@/app/components/pos/MobileProductDetailsModal"),
+  { ssr: false }
+)
 import ResizableTable from './tables/ResizableTable'
 import Sidebar from './layout/Sidebar'
 import TopHeader from './layout/TopHeader'
@@ -89,6 +95,7 @@ export default function ProductsTabletView({
   const [showProductModal, setShowProductModal] = useState(false)
   const [modalProduct, setModalProduct] = useState<Product | null>(null)
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
+  const [showPurchasePrice, setShowPurchasePrice] = useState(false)
   const [showColorAssignmentModal, setShowColorAssignmentModal] = useState(false)
   const [showColorChangeModal, setShowColorChangeModal] = useState(false)
   const [showColumnsModal, setShowColumnsModal] = useState(false)
@@ -1235,81 +1242,24 @@ export default function ProductsTabletView({
 
       {/* Product Details Modal */}
       {showProductModal && modalProduct && (
-        <>
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => setShowProductModal(false)} />
-          
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="bg-[#2B3544] rounded-2xl shadow-2xl border border-[#4A5568] max-w-6xl w-full max-h-[90vh] overflow-y-auto scrollbar-hide">
-              <div className="sticky top-0 bg-[#2B3544] px-8 py-6 border-b border-[#4A5568] flex items-center justify-between rounded-t-2xl">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center">
-                    <span className="text-white font-bold text-lg">📦</span>
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-bold text-white">تفاصيل المنتج</h2>
-                    <p className="text-blue-400 font-medium">{modalProduct.name}</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setShowProductModal(false)}
-                  className="p-2 text-gray-400 hover:text-white hover:bg-gray-600/30 rounded-full transition-colors"
-                >
-                  <XMarkIcon className="h-6 w-6" />
-                </button>
-              </div>
-              
-              {/* Modal Content - Simplified for tablet */}
-              <div className="p-6">
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="space-y-4">
-                    <div className="bg-[#374151] rounded-xl p-4 border border-[#4A5568]">
-                      <h3 className="text-lg font-semibold text-white mb-3">معلومات المنتج</h3>
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-gray-400">المجموعة</span>
-                          <span className="text-white">{modalProduct.category?.name || 'غير محدد'}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-400">سعر البيع</span>
-                          <span className="text-green-400 font-bold">{(modalProduct.price || 0).toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-400">الكمية الإجمالية</span>
-                          <span className="text-blue-400 font-bold">
-                            {modalProduct.inventoryData && Object.values(modalProduct.inventoryData).reduce((sum: number, inv: any) => sum + (inv?.quantity || 0), 0) || 0}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-4">
-                    <div className="bg-[#374151] rounded-xl p-4 border border-[#4A5568]">
-                      <h3 className="text-lg font-semibold text-white mb-3">صورة المنتج</h3>
-                      <div className="w-full h-48 bg-[#2B3544] rounded-lg flex items-center justify-center overflow-hidden">
-                        {modalProduct.main_image_url ? (
-                          <img
-                            src={modalProduct.main_image_url}
-                            alt={modalProduct.name}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              const target = e.target as HTMLImageElement
-                              target.style.display = 'none'
-                              target.nextElementSibling?.classList.remove('hidden')
-                            }}
-                          />
-                        ) : null}
-                        <div className={`w-16 h-16 bg-yellow-400 rounded-full flex items-center justify-center ${modalProduct.main_image_url ? 'hidden' : ''}`}>
-                          <span className="text-3xl">😊</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </>
+        <MobileProductDetailsModal
+          product={modalProduct}
+          onClose={() => setShowProductModal(false)}
+          branches={branches}
+          showPurchasePrice={showPurchasePrice}
+          onTogglePurchasePrice={() => setShowPurchasePrice(!showPurchasePrice)}
+          selectedImage={selectedImage}
+          onSelectImage={(url) => setSelectedImage(url)}
+          rating={modalProduct.rating}
+          ratingCount={modalProduct.rating_count}
+          isDiscounted={modalProduct.isDiscounted}
+          finalPrice={modalProduct.finalPrice}
+          discountLabel={modalProduct.discountLabel}
+          price2={modalProduct.price2}
+          showImageLabels={true}
+          mainImageUrl={modalProduct.main_image_url}
+          subImageUrl={modalProduct.sub_image_url}
+        />
       )}
 
       {/* Color Assignment Modal */}

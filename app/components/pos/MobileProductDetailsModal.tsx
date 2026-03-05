@@ -105,8 +105,14 @@ export default function MobileProductDetailsModal({
     <div className="fixed inset-0 z-50 flex flex-col bg-[#1F2937] animate-slide-up">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 bg-[#2B3544] border-b border-[#4A5568] shrink-0">
-        <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shrink-0">
-          <span className="text-white text-xs">📦</span>
+        <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0">
+          {product.main_image_url ? (
+            <img src={product.main_image_url} alt={product.name} className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full bg-blue-600 flex items-center justify-center">
+              <span className="text-white text-xs">📦</span>
+            </div>
+          )}
         </div>
         <h2 className="text-white font-semibold text-sm truncate flex-1">
           {product.name}

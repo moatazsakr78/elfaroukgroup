@@ -7143,8 +7143,14 @@ function POSPageContent() {
               {/* Header */}
               <div className="sticky top-0 bg-[#2B3544] px-8 py-6 border-b border-[#4A5568] flex items-center justify-between rounded-t-2xl">
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center">
-                    <span className="text-white font-bold text-lg">📦</span>
+                  <div className="w-12 h-12 rounded-full overflow-hidden">
+                    {modalProduct.main_image_url ? (
+                      <img src={modalProduct.main_image_url} alt={modalProduct.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full bg-blue-600 flex items-center justify-center">
+                        <span className="text-white font-bold text-lg">📦</span>
+                      </div>
+                    )}
                   </div>
                   <div>
                     <h2 className="text-xl font-bold text-white">

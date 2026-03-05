@@ -21,11 +21,6 @@ import ExcelProductModal from '../../components/ExcelProductModal'
 import BarcodePrintModal from '../../components/BarcodePrintModal'
 import MissingDataFilterModal, { filterProductsByMissingData } from '../../components/MissingDataFilterModal'
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline'
-import dynamic from 'next/dynamic'
-const MobileProductDetailsModal = dynamic(
-  () => import("@/app/components/pos/MobileProductDetailsModal"),
-  { ssr: false }
-)
 import { useActivityLogger } from "@/app/lib/hooks/useActivityLogger"
 import { useBranches, Branch, ProductVariant } from '../../lib/hooks/useBranches'
 import { useProductsAdmin } from '../../../lib/hooks/useProductsAdmin'
@@ -1823,9 +1818,7 @@ export default function ProductsPage() {
 
       {/* Product Details Modal */}
       {showProductModal && modalProduct && (
-        <>
-          {/* Desktop Modal */}
-          <div className="hidden md:block">
+          <>
             {/* Backdrop */}
             <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => setShowProductModal(false)} />
 
@@ -1835,8 +1828,14 @@ export default function ProductsPage() {
                 {/* Header */}
                 <div className="sticky top-0 bg-[#2B3544] px-8 py-6 border-b border-[#4A5568] flex items-center justify-between rounded-t-2xl">
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center">
-                      <span className="text-white font-bold text-lg">📦</span>
+                    <div className="w-12 h-12 rounded-full overflow-hidden">
+                      {modalProduct.main_image_url ? (
+                        <img src={modalProduct.main_image_url} alt={modalProduct.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full bg-blue-600 flex items-center justify-center">
+                          <span className="text-white font-bold text-lg">📦</span>
+                        </div>
+                      )}
                     </div>
                     <div>
                       <h2 className="text-xl font-bold text-white">تفاصيل المنتج</h2>
@@ -2184,30 +2183,7 @@ export default function ProductsPage() {
                 </div>
               </div>
             </div>
-          </div>
-
-          {/* Mobile Modal */}
-          <div className="block md:hidden">
-            <MobileProductDetailsModal
-              product={modalProduct}
-              onClose={() => setShowProductModal(false)}
-              branches={branches}
-              showPurchasePrice={showPurchasePrice}
-              onTogglePurchasePrice={() => setShowPurchasePrice(!showPurchasePrice)}
-              selectedImage={selectedImage}
-              onSelectImage={(url) => setSelectedImage(url)}
-              rating={modalProduct.rating}
-              ratingCount={modalProduct.rating_count}
-              isDiscounted={modalProduct.isDiscounted}
-              finalPrice={modalProduct.finalPrice}
-              discountLabel={modalProduct.discountLabel}
-              price2={modalProduct.price2}
-              showImageLabels={true}
-              mainImageUrl={modalProduct.main_image_url}
-              subImageUrl={modalProduct.sub_image_url}
-            />
-          </div>
-        </>
+          </>
       )}
 
       {/* New Color Assignment Modal */}

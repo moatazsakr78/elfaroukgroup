@@ -4,11 +4,6 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import POSSearchInput from '@/app/components/pos/POSSearchInput'
 import { useActivityLogger } from "@/app/lib/hooks/useActivityLogger"
 import { useCurrentBranch } from '@/lib/contexts/CurrentBranchContext'
-import dynamic from 'next/dynamic'
-const MobileProductDetailsModal = dynamic(
-  () => import("@/app/components/pos/MobileProductDetailsModal"),
-  { ssr: false }
-)
 
 // Local storage key for inventory column visibility
 const INVENTORY_COLUMN_VISIBILITY_KEY = 'inventory-column-visibility-v2'
@@ -1952,9 +1947,7 @@ export default function InventoryPage() {
 
       {/* Product Details Modal */}
       {showProductModal && modalProduct && (
-        <>
-          {/* Desktop Modal */}
-          <div className="hidden md:block">
+          <>
             {/* Backdrop */}
             <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => setShowProductModal(false)} />
 
@@ -1964,8 +1957,14 @@ export default function InventoryPage() {
                 {/* Header */}
                 <div className="sticky top-0 bg-[#2B3544] px-8 py-6 border-b border-[#4A5568] flex items-center justify-between rounded-t-2xl">
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center">
-                      <span className="text-white font-bold text-lg">📦</span>
+                    <div className="w-12 h-12 rounded-full overflow-hidden">
+                      {modalProduct.main_image_url ? (
+                        <img src={modalProduct.main_image_url} alt={modalProduct.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full bg-blue-600 flex items-center justify-center">
+                          <span className="text-white font-bold text-lg">📦</span>
+                        </div>
+                      )}
                     </div>
                     <div>
                       <h2 className="text-xl font-bold text-white">تفاصيل المنتج</h2>
@@ -2257,26 +2256,7 @@ export default function InventoryPage() {
                 </div>
               </div>
             </div>
-          </div>
-
-          {/* Mobile Modal */}
-          <div className="block md:hidden">
-            <MobileProductDetailsModal
-              product={modalProduct}
-              onClose={() => setShowProductModal(false)}
-              branches={branches}
-              showPurchasePrice={showPurchasePrice}
-              onTogglePurchasePrice={() => setShowPurchasePrice(!showPurchasePrice)}
-              selectedImage={selectedImage}
-              onSelectImage={(url) => setSelectedImage(url)}
-              selectedBranches={selectedBranches}
-              calculateTotalQuantity={calculateTotalQuantity}
-              showImageLabels={true}
-              mainImageUrl={modalProduct.main_image_url}
-              subImageUrl={modalProduct.sub_image_url}
-            />
-          </div>
-        </>
+          </>
       )}
 
       {/* Remove scrollbars globally */}

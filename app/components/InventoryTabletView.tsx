@@ -1,7 +1,13 @@
 'use client'
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import dynamic from 'next/dynamic'
 import { ProductGridImage } from './ui/OptimizedImage'
+
+const MobileProductDetailsModal = dynamic(
+  () => import("@/app/components/pos/MobileProductDetailsModal"),
+  { ssr: false }
+)
 import ResizableTable from './tables/ResizableTable'
 import Sidebar from './layout/Sidebar'
 import TopHeader from './layout/TopHeader'
@@ -107,6 +113,7 @@ export default function InventoryTabletView({
   const [showProductModal, setShowProductModal] = useState(false)
   const [modalProduct, setModalProduct] = useState<any>(null)
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
+  const [showPurchasePrice, setShowPurchasePrice] = useState(false)
   const [showColumnsModal, setShowColumnsModal] = useState(false)
   const [visibleColumns, setVisibleColumns] = useState<{[key: string]: boolean}>({})
   const [isCategoriesHidden, setIsCategoriesHidden] = useState(true)
@@ -1634,6 +1641,24 @@ export default function InventoryTabletView({
         branches={branches}
         onConfirm={handleTransferConfirm}
       />
+
+      {/* Product Details Modal */}
+      {showProductModal && modalProduct && (
+        <MobileProductDetailsModal
+          product={modalProduct}
+          onClose={() => setShowProductModal(false)}
+          branches={branches}
+          showPurchasePrice={showPurchasePrice}
+          onTogglePurchasePrice={() => setShowPurchasePrice(!showPurchasePrice)}
+          selectedImage={selectedImage}
+          onSelectImage={(url) => setSelectedImage(url)}
+          selectedBranches={selectedBranches}
+          calculateTotalQuantity={calculateTotalQuantity}
+          showImageLabels={true}
+          mainImageUrl={modalProduct.main_image_url}
+          subImageUrl={modalProduct.sub_image_url}
+        />
+      )}
 
       {/* Tablet-optimized styles - EXACT COPY FROM PRODUCTS */}
       <style jsx global>{`
