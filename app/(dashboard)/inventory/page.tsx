@@ -4,6 +4,11 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import POSSearchInput from '@/app/components/pos/POSSearchInput'
 import { useActivityLogger } from "@/app/lib/hooks/useActivityLogger"
 import { useCurrentBranch } from '@/lib/contexts/CurrentBranchContext'
+import dynamic from 'next/dynamic'
+const MobileProductDetailsModal = dynamic(
+  () => import("@/app/components/pos/MobileProductDetailsModal"),
+  { ssr: false }
+)
 
 // Local storage key for inventory column visibility
 const INVENTORY_COLUMN_VISIBILITY_KEY = 'inventory-column-visibility-v2'
@@ -1948,307 +1953,328 @@ export default function InventoryPage() {
       {/* Product Details Modal */}
       {showProductModal && modalProduct && (
         <>
-          {/* Backdrop */}
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => setShowProductModal(false)} />
-          
-          {/* Modal */}
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="bg-[#2B3544] rounded-2xl shadow-2xl border border-[#4A5568] max-w-6xl w-full max-h-[90vh] overflow-y-auto scrollbar-hide">
-              {/* Header */}
-              <div className="sticky top-0 bg-[#2B3544] px-8 py-6 border-b border-[#4A5568] flex items-center justify-between rounded-t-2xl">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center">
-                    <span className="text-white font-bold text-lg">📦</span>
+          {/* Desktop Modal */}
+          <div className="hidden md:block">
+            {/* Backdrop */}
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => setShowProductModal(false)} />
+
+            {/* Modal */}
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div className="bg-[#2B3544] rounded-2xl shadow-2xl border border-[#4A5568] max-w-6xl w-full max-h-[90vh] overflow-y-auto scrollbar-hide">
+                {/* Header */}
+                <div className="sticky top-0 bg-[#2B3544] px-8 py-6 border-b border-[#4A5568] flex items-center justify-between rounded-t-2xl">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center">
+                      <span className="text-white font-bold text-lg">📦</span>
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold text-white">تفاصيل المنتج</h2>
+                      <p className="text-blue-400 font-medium">{modalProduct.name}</p>
+                    </div>
                   </div>
-                  <div>
-                    <h2 className="text-xl font-bold text-white">تفاصيل المنتج</h2>
-                    <p className="text-blue-400 font-medium">{modalProduct.name}</p>
-                  </div>
+                  <button
+                    onClick={() => setShowProductModal(false)}
+                    className="p-2 text-gray-400 hover:text-white hover:bg-gray-600/30 rounded-full transition-colors"
+                  >
+                    <XMarkIcon className="h-6 w-6" />
+                  </button>
                 </div>
-                <button
-                  onClick={() => setShowProductModal(false)}
-                  className="p-2 text-gray-400 hover:text-white hover:bg-gray-600/30 rounded-full transition-colors"
-                >
-                  <XMarkIcon className="h-6 w-6" />
-                </button>
-              </div>
-              
-              {/* Content */}
-              <div className="p-8">
-                <div className="grid grid-cols-3 gap-8">
-                  
-                  {/* Left Column - Product Info */}
-                  <div className="space-y-6">
-                    
-                    {/* Basic Info Card */}
-                    <div className="bg-[#374151] rounded-xl p-6 border border-[#4A5568]">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="w-8 h-8 bg-blue-600/20 rounded-lg flex items-center justify-center">
-                          <span className="text-blue-400 text-sm">ℹ️</span>
-                        </div>
-                        <h3 className="text-lg font-semibold text-white">معلومات المنتج</h3>
-                      </div>
-                      <div className="space-y-4">
-                        <div className="flex justify-between items-center py-2 border-b border-gray-600/50">
-                          <span className="text-gray-400">المجموعة</span>
-                          <span className="text-white font-medium">{modalProduct.category?.name || 'غير محدد'}</span>
-                        </div>
-                        <div className="flex justify-between items-center py-2 border-b border-gray-600/50">
-                          <span className="text-gray-400">الوحدة</span>
-                          <span className="text-white font-medium">{modalProduct.unit || 'قطعة'}</span>
-                        </div>
-                        <div className="flex justify-between items-center py-2 border-b border-gray-600/50">
-                          <span className="text-gray-400">الحد الأدنى</span>
-                          <span className="text-white font-medium">{modalProduct.min_stock || 0}</span>
-                        </div>
-                        <div className="flex justify-between items-center py-2">
-                          <span className="text-gray-400">الباركود</span>
-                          <span className="text-white font-mono text-sm">{modalProduct.barcode || 'غير متوفر'}</span>
-                        </div>
-                      </div>
-                    </div>
 
-                    {/* Pricing Card */}
-                    <div className="bg-[#374151] rounded-xl p-6 border border-[#4A5568]">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="w-8 h-8 bg-green-600/20 rounded-lg flex items-center justify-center">
-                          <span className="text-green-400 text-sm">💰</span>
-                        </div>
-                        <h3 className="text-lg font-semibold text-white">الأسعار</h3>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="bg-[#2B3544] rounded-lg p-4 text-center">
-                          <p className="text-gray-400 text-sm mb-1">سعر البيع</p>
-                          <p className="text-green-400 font-bold text-xl">{(modalProduct.price || 0).toFixed(2)}</p>
-                        </div>
-                        <div
-                          onClick={() => setShowPurchasePrice(!showPurchasePrice)}
-                          className="bg-[#2B3544] rounded-lg p-4 text-center cursor-pointer hover:bg-[#374151] transition-colors relative"
-                        >
-                          {showPurchasePrice ? (
-                            <>
-                              <p className="text-gray-400 text-sm mb-1">سعر الشراء</p>
-                              <p className="text-orange-400 font-bold text-xl">{(modalProduct.cost_price || 0).toFixed(2)}</p>
-                            </>
-                          ) : (
-                            <div className="flex items-center justify-center h-full min-h-[52px]">
-                              <EyeSlashIcon className="h-6 w-6 text-gray-500" />
-                            </div>
-                          )}
-                        </div>
-                        <div className="bg-[#2B3544] rounded-lg p-4 text-center">
-                          <p className="text-gray-400 text-sm mb-1">سعر الجملة</p>
-                          <p className="text-blue-400 font-bold text-lg">{(modalProduct.wholesale_price || 0).toFixed(2)}</p>
-                        </div>
-                        <div className="bg-[#2B3544] rounded-lg p-4 text-center">
-                          <p className="text-gray-400 text-sm mb-1">سعر 1</p>
-                          <p className="text-purple-400 font-bold text-lg">{(modalProduct.price1 || 0).toFixed(2)}</p>
-                        </div>
-                      </div>
-                    </div>
+                {/* Content */}
+                <div className="p-8">
+                  <div className="grid grid-cols-3 gap-8">
 
-                    {/* Description Card */}
-                    {modalProduct.description && (
+                    {/* Left Column - Product Info */}
+                    <div className="space-y-6">
+
+                      {/* Basic Info Card */}
                       <div className="bg-[#374151] rounded-xl p-6 border border-[#4A5568]">
                         <div className="flex items-center gap-3 mb-4">
-                          <div className="w-8 h-8 bg-purple-600/20 rounded-lg flex items-center justify-center">
-                            <span className="text-purple-400 text-sm">📝</span>
+                          <div className="w-8 h-8 bg-blue-600/20 rounded-lg flex items-center justify-center">
+                            <span className="text-blue-400 text-sm">ℹ️</span>
                           </div>
-                          <h3 className="text-lg font-semibold text-white">وصف المنتج</h3>
+                          <h3 className="text-lg font-semibold text-white">معلومات المنتج</h3>
                         </div>
-                        <p className="text-gray-300 leading-relaxed">{modalProduct.description}</p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Middle Column - Inventory */}
-                  <div className="space-y-6">
-                    
-                    {/* Total Inventory Card */}
-                    <div className="bg-[#374151] rounded-xl p-6 border border-[#4A5568]">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="w-8 h-8 bg-blue-600/20 rounded-lg flex items-center justify-center">
-                          <span className="text-blue-400 text-sm">📊</span>
+                        <div className="space-y-4">
+                          <div className="flex justify-between items-center py-2 border-b border-gray-600/50">
+                            <span className="text-gray-400">المجموعة</span>
+                            <span className="text-white font-medium">{modalProduct.category?.name || 'غير محدد'}</span>
+                          </div>
+                          <div className="flex justify-between items-center py-2 border-b border-gray-600/50">
+                            <span className="text-gray-400">الوحدة</span>
+                            <span className="text-white font-medium">{modalProduct.unit || 'قطعة'}</span>
+                          </div>
+                          <div className="flex justify-between items-center py-2 border-b border-gray-600/50">
+                            <span className="text-gray-400">الحد الأدنى</span>
+                            <span className="text-white font-medium">{modalProduct.min_stock || 0}</span>
+                          </div>
+                          <div className="flex justify-between items-center py-2">
+                            <span className="text-gray-400">الباركود</span>
+                            <span className="text-white font-mono text-sm">{modalProduct.barcode || 'غير متوفر'}</span>
+                          </div>
                         </div>
-                        <h3 className="text-lg font-semibold text-white">المخازن والفروع</h3>
-                      </div>
-                      
-                      {/* Total Quantity Display */}
-                      <div className="bg-blue-600/10 rounded-lg p-4 mb-4 text-center border border-blue-600/20">
-                        <p className="text-blue-400 text-sm mb-1">الكمية الإجمالية</p>
-                        <p className="text-blue-400 font-bold text-3xl">
-                          {calculateTotalQuantity(modalProduct)}
-                        </p>
                       </div>
 
-                      {/* Branch/Warehouse Details - only selected branches */}
-                      <div className="space-y-3">
-                        {modalProduct.inventoryData && Object.entries(modalProduct.inventoryData)
-                          .filter(([locationId]) => selectedBranches[locationId])
-                          .map(([locationId, inventory]: [string, any]) => {
-                          const branch = branches.find(b => b.id === locationId)
-                          const locationName = branch?.name || `موقع ${locationId.slice(0, 8)}`
-                          
-                          return (
-                            <div key={locationId} className="bg-[#2B3544] rounded-lg p-4 border border-gray-600/30">
-                              <div className="flex justify-between items-center mb-2">
-                                <span className="text-white font-medium">{locationName}</span>
-                                <span className="text-blue-400 font-bold text-lg">{inventory?.quantity || 0}</span>
-                              </div>
-                              <div className="flex justify-between items-center text-sm">
-                                <span className="text-gray-400">الحد الأدنى</span>
-                                <span className="text-orange-400">{inventory?.min_stock || 0}</span>
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Variants Card */}
-                    {modalProduct.variantsData && Object.keys(modalProduct.variantsData).length > 0 && (
+                      {/* Pricing Card */}
                       <div className="bg-[#374151] rounded-xl p-6 border border-[#4A5568]">
                         <div className="flex items-center gap-3 mb-4">
-                          <div className="w-8 h-8 bg-purple-600/20 rounded-lg flex items-center justify-center">
-                            <span className="text-purple-400 text-sm">🎨</span>
+                          <div className="w-8 h-8 bg-green-600/20 rounded-lg flex items-center justify-center">
+                            <span className="text-green-400 text-sm">💰</span>
                           </div>
-                          <h3 className="text-lg font-semibold text-white">الألوان والأشكال</h3>
+                          <h3 className="text-lg font-semibold text-white">الأسعار</h3>
                         </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="bg-[#2B3544] rounded-lg p-4 text-center">
+                            <p className="text-gray-400 text-sm mb-1">سعر البيع</p>
+                            <p className="text-green-400 font-bold text-xl">{(modalProduct.price || 0).toFixed(2)}</p>
+                          </div>
+                          <div
+                            onClick={() => setShowPurchasePrice(!showPurchasePrice)}
+                            className="bg-[#2B3544] rounded-lg p-4 text-center cursor-pointer hover:bg-[#374151] transition-colors relative"
+                          >
+                            {showPurchasePrice ? (
+                              <>
+                                <p className="text-gray-400 text-sm mb-1">سعر الشراء</p>
+                                <p className="text-orange-400 font-bold text-xl">{(modalProduct.cost_price || 0).toFixed(2)}</p>
+                              </>
+                            ) : (
+                              <div className="flex items-center justify-center h-full min-h-[52px]">
+                                <EyeSlashIcon className="h-6 w-6 text-gray-500" />
+                              </div>
+                            )}
+                          </div>
+                          <div className="bg-[#2B3544] rounded-lg p-4 text-center">
+                            <p className="text-gray-400 text-sm mb-1">سعر الجملة</p>
+                            <p className="text-blue-400 font-bold text-lg">{(modalProduct.wholesale_price || 0).toFixed(2)}</p>
+                          </div>
+                          <div className="bg-[#2B3544] rounded-lg p-4 text-center">
+                            <p className="text-gray-400 text-sm mb-1">سعر 1</p>
+                            <p className="text-purple-400 font-bold text-lg">{(modalProduct.price1 || 0).toFixed(2)}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Description Card */}
+                      {modalProduct.description && (
+                        <div className="bg-[#374151] rounded-xl p-6 border border-[#4A5568]">
+                          <div className="flex items-center gap-3 mb-4">
+                            <div className="w-8 h-8 bg-purple-600/20 rounded-lg flex items-center justify-center">
+                              <span className="text-purple-400 text-sm">📝</span>
+                            </div>
+                            <h3 className="text-lg font-semibold text-white">وصف المنتج</h3>
+                          </div>
+                          <p className="text-gray-300 leading-relaxed">{modalProduct.description}</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Middle Column - Inventory */}
+                    <div className="space-y-6">
+
+                      {/* Total Inventory Card */}
+                      <div className="bg-[#374151] rounded-xl p-6 border border-[#4A5568]">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="w-8 h-8 bg-blue-600/20 rounded-lg flex items-center justify-center">
+                            <span className="text-blue-400 text-sm">📊</span>
+                          </div>
+                          <h3 className="text-lg font-semibold text-white">المخازن والفروع</h3>
+                        </div>
+
+                        {/* Total Quantity Display */}
+                        <div className="bg-blue-600/10 rounded-lg p-4 mb-4 text-center border border-blue-600/20">
+                          <p className="text-blue-400 text-sm mb-1">الكمية الإجمالية</p>
+                          <p className="text-blue-400 font-bold text-3xl">
+                            {calculateTotalQuantity(modalProduct)}
+                          </p>
+                        </div>
+
+                        {/* Branch/Warehouse Details - only selected branches */}
                         <div className="space-y-3">
-                          {Object.entries(modalProduct.variantsData)
+                          {modalProduct.inventoryData && Object.entries(modalProduct.inventoryData)
                             .filter(([locationId]) => selectedBranches[locationId])
-                            .map(([locationId, variants]: [string, any]) => {
+                            .map(([locationId, inventory]: [string, any]) => {
                             const branch = branches.find(b => b.id === locationId)
                             const locationName = branch?.name || `موقع ${locationId.slice(0, 8)}`
 
-                            // Helper functions
-                            const getVariantColor = (variant: any) => {
-                              if (variant.variant_type === 'color') {
-                                const productColor = modalProduct.productColors?.find((c: any) => c.name === variant.name)
-                                if (productColor?.color) return productColor.color
-                                if (variant.value) return variant.value
-                                if (variant.color_hex) return variant.color_hex
-                              }
-                              return '#6B7280'
-                            }
-
-                            const getTextColor = (bgColor: string) => {
-                              const hex = bgColor.replace('#', '')
-                              const r = parseInt(hex.substr(0, 2), 16)
-                              const g = parseInt(hex.substr(2, 2), 16)
-                              const b = parseInt(hex.substr(4, 2), 16)
-                              const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-                              return luminance > 0.5 ? '#000000' : '#FFFFFF'
-                            }
-
-                            // Calculate unassigned quantity
-                            const totalInventoryQuantity = modalProduct.inventoryData?.[locationId]?.quantity || 0
-                            const assignedQuantity = variants.reduce((sum: number, v: any) => sum + (v.quantity || 0), 0)
-                            const unassignedQuantity = totalInventoryQuantity - assignedQuantity
-
                             return (
-                              <div key={locationId} className="bg-[#2B3544] rounded-lg p-4">
-                                <p className="text-white font-medium mb-3">{locationName}</p>
-                                <div className="flex flex-wrap gap-2">
-                                  {/* Show specified variants (colors, shapes with names) */}
-                                  {variants
-                                    .filter((v: any) => v.name !== 'غير محدد')
-                                    .map((variant: any, index: number) => {
-                                      const bgColor = getVariantColor(variant)
-                                      const textColor = getTextColor(bgColor)
-
-                                      return (
-                                        <span
-                                          key={index}
-                                          className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border"
-                                          style={{
-                                            backgroundColor: bgColor,
-                                            color: textColor,
-                                            borderColor: bgColor === '#6B7280' ? '#6B7280' : bgColor
-                                          }}
-                                        >
-                                          {variant.name} ({variant.quantity})
-                                        </span>
-                                      )
-                                    })}
-
-                                  {/* Show unassigned quantity if any */}
-                                  {unassignedQuantity > 0 && (
-                                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium text-white bg-gray-600 border border-gray-600">
-                                      غير محدد ({unassignedQuantity})
-                                    </span>
-                                  )}
+                              <div key={locationId} className="bg-[#2B3544] rounded-lg p-4 border border-gray-600/30">
+                                <div className="flex justify-between items-center mb-2">
+                                  <span className="text-white font-medium">{locationName}</span>
+                                  <span className="text-blue-400 font-bold text-lg">{inventory?.quantity || 0}</span>
+                                </div>
+                                <div className="flex justify-between items-center text-sm">
+                                  <span className="text-gray-400">الحد الأدنى</span>
+                                  <span className="text-orange-400">{inventory?.min_stock || 0}</span>
                                 </div>
                               </div>
                             )
                           })}
                         </div>
                       </div>
-                    )}
-                  </div>
 
-                  {/* Right Column - Images */}
-                  <div className="space-y-6">
-                    
-                    {/* Main Image Preview */}
-                    <div className="bg-[#374151] rounded-xl p-6 border border-[#4A5568]">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="w-8 h-8 bg-indigo-600/20 rounded-lg flex items-center justify-center">
-                          <span className="text-indigo-400 text-sm">🖼️</span>
-                        </div>
-                        <h3 className="text-lg font-semibold text-white">صور المنتج</h3>
-                      </div>
-                      
-                      {/* Large Image Preview - OPTIMIZED */}
-                      <div className="mb-4">
-                        <ProductModalImage
-                          src={selectedImage}
-                          alt={modalProduct.name}
-                          priority={true}
-                        />
-                      </div>
-
-                      {/* Thumbnail Gallery - OPTIMIZED */}
-                      <div className="grid grid-cols-4 gap-2 max-h-48 overflow-y-auto scrollbar-hide">
-                        {modalProduct.allImages && modalProduct.allImages.length > 0 ? (
-                          modalProduct.allImages.map((imageUrl: string, index: number) => {
-                            // Determine if this is the main image or sub image
-                            const isMainImage = imageUrl === modalProduct.main_image_url
-                            const isSubImage = imageUrl === modalProduct.sub_image_url
-                            let imageLabel = `صورة ${index + 1}`
-                            if (isMainImage) imageLabel = 'الصورة الرئيسية'
-                            else if (isSubImage) imageLabel = 'الصورة الثانوية'
-                            
-                            return (
-                              <div key={index} className="relative" title={imageLabel}>
-                                <ProductThumbnail
-                                  src={imageUrl}
-                                  alt={imageLabel}
-                                  isSelected={selectedImage === imageUrl}
-                                  onClick={() => setSelectedImage(imageUrl)}
-                                />
-                                {/* Image type indicator */}
-                                {(isMainImage || isSubImage) && (
-                                  <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-xs px-1 py-0.5 text-center rounded-b-md">
-                                    {isMainImage ? 'رئيسية' : 'ثانوية'}
-                                  </div>
-                                )}
-                              </div>
-                            )
-                          })
-                        ) : (
-                          /* Fallback when no images available */
-                          <div className="w-full h-16 bg-[#2B3544] rounded-md border border-gray-600/30 flex items-center justify-center col-span-4">
-                            <span className="text-gray-500 text-xs">لا توجد صور متاحة</span>
+                      {/* Variants Card */}
+                      {modalProduct.variantsData && Object.keys(modalProduct.variantsData).length > 0 && (
+                        <div className="bg-[#374151] rounded-xl p-6 border border-[#4A5568]">
+                          <div className="flex items-center gap-3 mb-4">
+                            <div className="w-8 h-8 bg-purple-600/20 rounded-lg flex items-center justify-center">
+                              <span className="text-purple-400 text-sm">🎨</span>
+                            </div>
+                            <h3 className="text-lg font-semibold text-white">الألوان والأشكال</h3>
                           </div>
-                        )}
+                          <div className="space-y-3">
+                            {Object.entries(modalProduct.variantsData)
+                              .filter(([locationId]) => selectedBranches[locationId])
+                              .map(([locationId, variants]: [string, any]) => {
+                              const branch = branches.find(b => b.id === locationId)
+                              const locationName = branch?.name || `موقع ${locationId.slice(0, 8)}`
+
+                              // Helper functions
+                              const getVariantColor = (variant: any) => {
+                                if (variant.variant_type === 'color') {
+                                  const productColor = modalProduct.productColors?.find((c: any) => c.name === variant.name)
+                                  if (productColor?.color) return productColor.color
+                                  if (variant.value) return variant.value
+                                  if (variant.color_hex) return variant.color_hex
+                                }
+                                return '#6B7280'
+                              }
+
+                              const getTextColor = (bgColor: string) => {
+                                const hex = bgColor.replace('#', '')
+                                const r = parseInt(hex.substr(0, 2), 16)
+                                const g = parseInt(hex.substr(2, 2), 16)
+                                const b = parseInt(hex.substr(4, 2), 16)
+                                const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+                                return luminance > 0.5 ? '#000000' : '#FFFFFF'
+                              }
+
+                              // Calculate unassigned quantity
+                              const totalInventoryQuantity = modalProduct.inventoryData?.[locationId]?.quantity || 0
+                              const assignedQuantity = variants.reduce((sum: number, v: any) => sum + (v.quantity || 0), 0)
+                              const unassignedQuantity = totalInventoryQuantity - assignedQuantity
+
+                              return (
+                                <div key={locationId} className="bg-[#2B3544] rounded-lg p-4">
+                                  <p className="text-white font-medium mb-3">{locationName}</p>
+                                  <div className="flex flex-wrap gap-2">
+                                    {/* Show specified variants (colors, shapes with names) */}
+                                    {variants
+                                      .filter((v: any) => v.name !== 'غير محدد')
+                                      .map((variant: any, index: number) => {
+                                        const bgColor = getVariantColor(variant)
+                                        const textColor = getTextColor(bgColor)
+
+                                        return (
+                                          <span
+                                            key={index}
+                                            className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border"
+                                            style={{
+                                              backgroundColor: bgColor,
+                                              color: textColor,
+                                              borderColor: bgColor === '#6B7280' ? '#6B7280' : bgColor
+                                            }}
+                                          >
+                                            {variant.name} ({variant.quantity})
+                                          </span>
+                                        )
+                                      })}
+
+                                    {/* Show unassigned quantity if any */}
+                                    {unassignedQuantity > 0 && (
+                                      <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium text-white bg-gray-600 border border-gray-600">
+                                        غير محدد ({unassignedQuantity})
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Right Column - Images */}
+                    <div className="space-y-6">
+
+                      {/* Main Image Preview */}
+                      <div className="bg-[#374151] rounded-xl p-6 border border-[#4A5568]">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="w-8 h-8 bg-indigo-600/20 rounded-lg flex items-center justify-center">
+                            <span className="text-indigo-400 text-sm">🖼️</span>
+                          </div>
+                          <h3 className="text-lg font-semibold text-white">صور المنتج</h3>
+                        </div>
+
+                        {/* Large Image Preview - OPTIMIZED */}
+                        <div className="mb-4">
+                          <ProductModalImage
+                            src={selectedImage}
+                            alt={modalProduct.name}
+                            priority={true}
+                          />
+                        </div>
+
+                        {/* Thumbnail Gallery - OPTIMIZED */}
+                        <div className="grid grid-cols-4 gap-2 max-h-48 overflow-y-auto scrollbar-hide">
+                          {modalProduct.allImages && modalProduct.allImages.length > 0 ? (
+                            modalProduct.allImages.map((imageUrl: string, index: number) => {
+                              // Determine if this is the main image or sub image
+                              const isMainImage = imageUrl === modalProduct.main_image_url
+                              const isSubImage = imageUrl === modalProduct.sub_image_url
+                              let imageLabel = `صورة ${index + 1}`
+                              if (isMainImage) imageLabel = 'الصورة الرئيسية'
+                              else if (isSubImage) imageLabel = 'الصورة الثانوية'
+
+                              return (
+                                <div key={index} className="relative" title={imageLabel}>
+                                  <ProductThumbnail
+                                    src={imageUrl}
+                                    alt={imageLabel}
+                                    isSelected={selectedImage === imageUrl}
+                                    onClick={() => setSelectedImage(imageUrl)}
+                                  />
+                                  {/* Image type indicator */}
+                                  {(isMainImage || isSubImage) && (
+                                    <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-xs px-1 py-0.5 text-center rounded-b-md">
+                                      {isMainImage ? 'رئيسية' : 'ثانوية'}
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })
+                          ) : (
+                            /* Fallback when no images available */
+                            <div className="w-full h-16 bg-[#2B3544] rounded-md border border-gray-600/30 flex items-center justify-center col-span-4">
+                              <span className="text-gray-500 text-xs">لا توجد صور متاحة</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
+
                   </div>
-                  
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Mobile Modal */}
+          <div className="block md:hidden">
+            <MobileProductDetailsModal
+              product={modalProduct}
+              onClose={() => setShowProductModal(false)}
+              branches={branches}
+              showPurchasePrice={showPurchasePrice}
+              onTogglePurchasePrice={() => setShowPurchasePrice(!showPurchasePrice)}
+              selectedImage={selectedImage}
+              onSelectImage={(url) => setSelectedImage(url)}
+              selectedBranches={selectedBranches}
+              calculateTotalQuantity={calculateTotalQuantity}
+              showImageLabels={true}
+              mainImageUrl={modalProduct.main_image_url}
+              subImageUrl={modalProduct.sub_image_url}
+            />
           </div>
         </>
       )}

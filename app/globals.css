@@ -42,6 +42,19 @@
   animation: fadeIn 0.2s ease-in-out;
 }
 
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slideUp 0.3s ease-out;
+}
+
 /* Responsive styles for carousel */
 
 /* Tablet specific optimizations */

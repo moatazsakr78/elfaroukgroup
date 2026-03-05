@@ -24,6 +24,7 @@ import { getLastPurchaseInfo, LastPurchaseInfo } from "@/app/lib/utils/purchase-
 import { useActivityLogger } from "@/app/lib/hooks/useActivityLogger";
 const CartModal = dynamic(() => import("@/app/components/CartModal"), { ssr: false });
 const PurchaseHistoryModal = dynamic(() => import("@/app/components/PurchaseHistoryModal"), { ssr: false });
+const MobileProductDetailsModal = dynamic(() => import("@/app/components/pos/MobileProductDetailsModal"), { ssr: false });
 
 // Editable Field Component for inline editing
 interface EditableFieldProps {
@@ -7115,14 +7116,29 @@ function POSPageContent() {
       {/* Product Details Modal */}
       {showProductModal && modalProduct && (
         <>
-          {/* Backdrop */}
+          {/* Mobile Modal */}
+          <div className="block md:hidden">
+            <MobileProductDetailsModal
+              product={modalProduct}
+              onClose={() => setShowProductModal(false)}
+              branches={branches}
+              lastPurchaseInfo={lastPurchaseInfo}
+              showPurchasePrice={showPurchasePrice}
+              onTogglePurchasePrice={() => setShowPurchasePrice(!showPurchasePrice)}
+              selectedImage={selectedImage}
+              onSelectImage={setSelectedImage}
+              onShowPurchaseHistory={() => setShowPurchaseHistoryModal(true)}
+            />
+          </div>
+
+          {/* Desktop Backdrop */}
           <div
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
+            className="hidden md:block fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
             onClick={() => setShowProductModal(false)}
           />
 
-          {/* Modal */}
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Desktop Modal */}
+          <div className="hidden md:flex fixed inset-0 z-50 items-center justify-center p-4">
             <div className="bg-[#2B3544] rounded-2xl shadow-2xl border border-[#4A5568] max-w-6xl w-full max-h-[90vh] overflow-y-auto scrollbar-hide">
               {/* Header */}
               <div className="sticky top-0 bg-[#2B3544] px-8 py-6 border-b border-[#4A5568] flex items-center justify-between rounded-t-2xl">
