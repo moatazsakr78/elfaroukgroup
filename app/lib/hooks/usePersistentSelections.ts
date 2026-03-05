@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../supabase/client'
 
 export interface SelectionData {
@@ -11,14 +11,23 @@ export interface SelectionData {
 
 const STORAGE_KEY = 'pos_selections'
 
+function getInitialSelections(): SelectionData {
+  try {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem(STORAGE_KEY)
+      if (stored) return JSON.parse(stored)
+    }
+  } catch (e) {
+    console.error('Error reading initial selections:', e)
+  }
+  return { record: null, customer: null, branch: null }
+}
+
 export function usePersistentSelections(userProfileBranchId?: string | null) {
-  const [selections, setSelections] = useState<SelectionData>({
-    record: null,
-    customer: null,
-    branch: null
-  })
+  const [selections, setSelections] = useState<SelectionData>(getInitialSelections)
 
   const [isLoaded, setIsLoaded] = useState(false)
+  const initCounterRef = useRef(0)
   const [defaultCustomer, setDefaultCustomer] = useState<any>(null)
   const [defaultBranch, setDefaultBranch] = useState<any>(null)
 
@@ -124,6 +133,9 @@ export function usePersistentSelections(userProfileBranchId?: string | null) {
 
   // Load from localStorage on mount
   useEffect(() => {
+    const currentInit = ++initCounterRef.current
+    setIsLoaded(false) // Prevent save effect during re-init
+
     const initializeSelections = async () => {
       try {
         const stored = localStorage.getItem(STORAGE_KEY)
@@ -144,6 +156,9 @@ export function usePersistentSelections(userProfileBranchId?: string | null) {
           loadedSelections.record?.id ? refreshRecordData(loadedSelections.record.id) : Promise.resolve(null)
         ])
 
+        // Discard if a newer init has started
+        if (currentInit !== initCounterRef.current) return
+
         if (defaultCust) {
           setDefaultCustomer(defaultCust)
           if (!loadedSelections.customer) {
@@ -161,22 +176,35 @@ export function usePersistentSelections(userProfileBranchId?: string | null) {
         if (freshRecordData) {
           loadedSelections.record = freshRecordData
         }
+        // else: record stays as localStorage value (preserved)
 
         setSelections(loadedSelections)
       } catch (error) {
         console.error('Error loading selections from localStorage:', error)
-        // Even if there's an error, try to load the default customer and branch
-        const defaultCustomer = await loadDefaultCustomer()
-        const defaultBranchData = await loadDefaultBranch(userProfileBranchId)
-        if (defaultCustomer || defaultBranchData) {
-          setSelections(prev => ({
-            ...prev,
-            customer: defaultCustomer || prev.customer,
-            branch: defaultBranchData || prev.branch
-          }))
-        }
+        if (currentInit !== initCounterRef.current) return
+
+        // Re-read localStorage as safety net for record
+        let savedRecord = null
+        try {
+          const s = localStorage.getItem(STORAGE_KEY)
+          if (s) savedRecord = JSON.parse(s).record
+        } catch (e) { /* ignore */ }
+
+        const defaultCust = await loadDefaultCustomer().catch(() => null)
+        const defaultBranchData = await loadDefaultBranch(userProfileBranchId).catch(() => null)
+
+        if (currentInit !== initCounterRef.current) return
+
+        setSelections(prev => ({
+          ...prev,
+          record: prev.record || savedRecord,
+          customer: defaultCust || prev.customer,
+          branch: defaultBranchData || prev.branch
+        }))
       } finally {
-        setIsLoaded(true)
+        if (currentInit === initCounterRef.current) {
+          setIsLoaded(true)
+        }
       }
     }
 
