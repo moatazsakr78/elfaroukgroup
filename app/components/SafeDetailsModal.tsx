@@ -20,11 +20,12 @@ interface SafeDetailsModalProps {
   isOpen: boolean
   onClose: () => void
   safe: any
+  additionalSafeIds?: string[]
 }
 
 type ViewMode = 'split' | 'safes-only' | 'details-only'
 
-export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsModalProps) {
+export default function SafeDetailsModal({ isOpen, onClose, safe, additionalSafeIds = [] }: SafeDetailsModalProps) {
   const formatPrice = useFormatPrice();
   const { user } = useAuth();
   const [selectedTransaction, setSelectedTransaction] = useState(0) // First row selected (index 0)
@@ -62,6 +63,21 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
   const [purchaseItemsCache, setPurchaseItemsCache] = useState<{[invoiceId: string]: any[]}>({}) // Cache for purchase items
   const [isLoadingPurchases, setIsLoadingPurchases] = useState(false)
   const [isLoadingPurchaseItems, setIsLoadingPurchaseItems] = useState(false)
+
+  // Child safe IDs for main safe aggregation
+  const [childSafeIds, setChildSafeIds] = useState<string[]>([])
+
+  // Compute all record IDs: safe.id + childSafeIds (drawers) + additionalSafeIds (multi-select)
+  const allRecordIds = useMemo(() => {
+    if (!safe?.id) return []
+    const ids = [safe.id, ...childSafeIds, ...additionalSafeIds]
+    return Array.from(new Set(ids)) // deduplicate
+  }, [safe?.id, childSafeIds, additionalSafeIds])
+
+  // Display name for combined view
+  const displayName = additionalSafeIds.length > 0
+    ? `${safe?.name} + ${additionalSafeIds.length} خزن أخرى`
+    : safe?.name || 'الخزنة'
 
   // Cash drawer balance (actual paid amounts, not invoice totals)
   const [cashDrawerBalance, setCashDrawerBalance] = useState<number>(0)
@@ -105,7 +121,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
     loadMore: loadMoreStatements,
     refresh: refreshStatements
   } = useInfiniteStatements({
-    recordId: safe?.id,
+    recordIds: allRecordIds.length > 0 ? allRecordIds : undefined,
     dateFilter,
     enabled: isOpen && activeTab === 'statement' && !isLoadingPreferences,
     pageSize: 200
@@ -137,7 +153,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
     loadMore: loadMoreTransfers,
     refresh: refreshTransfers
   } = useInfiniteTransactions({
-    recordId: safe?.id,
+    recordIds: allRecordIds.length > 0 ? allRecordIds : undefined,
     dateFilter,
     enabled: isOpen && activeTab === 'payments' && !isLoadingPreferences,
     pageSize: 200,
@@ -174,6 +190,12 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
   const loadDateFilterPreferences = async () => {
     if (!safe?.id) return
 
+    // For combined view, skip loading saved preferences (use default)
+    if (additionalSafeIds.length > 0) {
+      setIsLoadingPreferences(false)
+      return
+    }
+
     try {
       const { data, error } = await (supabase as any)
         .from('user_column_preferences')
@@ -195,7 +217,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
 
   // Save date filter preferences to database
   const saveDateFilterPreferences = async (filter: DateFilter) => {
-    if (!safe?.id) return
+    if (!safe?.id || additionalSafeIds.length > 0) return
 
     try {
       const { error } = await (supabase as any)
@@ -217,10 +239,25 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
     }
   }
 
-  // Load preferences on mount
+  // Fetch child safe IDs for main safe aggregation (only for safes that support drawers)
+  const fetchChildSafeIds = async () => {
+    if (!safe?.id || safe.safe_type === 'sub' || !safe.supports_drawers) {
+      setChildSafeIds([])
+      return
+    }
+    const { data } = await supabase
+      .from('records')
+      .select('id')
+      .eq('parent_id', safe.id)
+      .eq('safe_type', 'sub')
+    setChildSafeIds(data?.map((r: any) => r.id) || [])
+  }
+
+  // Load preferences and child safes on mount
   useEffect(() => {
     if (isOpen && safe?.id) {
       loadDateFilterPreferences()
+      fetchChildSafeIds()
     }
 
     // Cleanup timeout on unmount
@@ -386,7 +423,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
             full_name
           )
         `)
-        .eq('record_id', safe.id)
+        .in('record_id', allRecordIds)
 
       // Apply date filter
       query = applyDateFilter(query)
@@ -408,12 +445,13 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
       if (salesData.length > 0) {
         const saleIds = salesData.map((s: any) => s.id)
 
-        // Fetch paid amounts
-        const { data: transactions } = await supabase
+        // Fetch paid amounts (include child safe transactions)
+        let txQuery = supabase
           .from('cash_drawer_transactions')
           .select('sale_id, amount')
           .in('sale_id', saleIds)
-          .eq('record_id', safe.id)
+        txQuery = txQuery.in('record_id', allRecordIds)
+        const { data: transactions } = await txQuery
 
         if (transactions) {
           const amounts: Record<string, number> = {}
@@ -453,46 +491,58 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
     }
   }
 
-  // Fetch cash drawer balance (actual paid amounts)
+  // Fetch cash drawer balance (actual paid amounts, aggregated across children)
   const fetchCashDrawerBalance = async () => {
     if (!safe?.id) return
 
     try {
-      // Try to get the cash drawer for this safe/record
-      const { data: drawer, error } = await supabase
+      // For safes with drawers, only sum children balances (not the parent's own balance)
+      const balanceIds = (safe.supports_drawers && childSafeIds.length > 0)
+        ? [...childSafeIds, ...additionalSafeIds]
+        : allRecordIds
+      const { data: drawers, error } = await supabase
         .from('cash_drawers')
         .select('current_balance')
-        .eq('record_id', safe.id)
-        .single()
+        .in('record_id', balanceIds)
 
-      if (error && error.code !== 'PGRST116') {
+      if (error) {
         console.error('Error fetching cash drawer balance:', error)
         setCashDrawerBalance(0)
         return
       }
 
-      setCashDrawerBalance(drawer?.current_balance || 0)
+      const total = (drawers || []).reduce((sum: number, d: any) => sum + (d.current_balance || 0), 0)
+      setCashDrawerBalance(total)
     } catch (error) {
       console.error('Error fetching cash drawer balance:', error)
       setCashDrawerBalance(0)
     }
   }
 
-  // Fetch payment method breakdown via RPC
+  // Fetch payment method breakdown via RPC (aggregated across children)
   const fetchPaymentBreakdown = async () => {
     if (!safe?.id) return
     try {
-      const { data, error } = await (supabase as any)
-        .rpc('get_safe_payment_breakdown', { p_record_id: safe.id })
-      if (error) {
-        console.error('Error fetching payment breakdown:', error)
-        setPaymentBreakdown([])
-        return
+      const aggregated: Record<string, number> = {}
+
+      // Call RPC for each safe and aggregate
+      for (const id of allRecordIds) {
+        const { data, error } = await (supabase as any)
+          .rpc('get_safe_payment_breakdown', { p_record_id: id })
+        if (error) {
+          console.error('Error fetching payment breakdown for', id, error)
+          continue
+        }
+        (data || []).forEach((row: any) => {
+          const method = row.payment_method
+          aggregated[method] = (aggregated[method] || 0) + Number(row.total_amount)
+        })
       }
+
       setPaymentBreakdown(
-        (data || [])
-          .map((row: any) => ({ method: row.payment_method, amount: Number(row.total_amount) }))
-          .filter((item: any) => item.amount !== 0)
+        Object.entries(aggregated)
+          .map(([method, amount]) => ({ method, amount }))
+          .filter(item => item.amount !== 0)
       )
     } catch (error) {
       console.error('Error fetching payment breakdown:', error)
@@ -720,7 +770,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
             full_name
           )
         `)
-        .eq('record_id', safe.id)
+        .in('record_id', allRecordIds)
 
       // Apply date filter
       query = applyDateFilter(query)
@@ -743,11 +793,12 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
         const purchaseIds = purchasesData.map((p: any) => p.id)
 
         // Fetch paid amounts
-        const { data: transactions } = await supabase
+        let purchaseTxQuery = supabase
           .from('cash_drawer_transactions')
           .select('purchase_invoice_id, amount')
           .in('purchase_invoice_id', purchaseIds)
-          .eq('record_id', safe.id)
+        purchaseTxQuery = purchaseTxQuery.in('record_id', allRecordIds)
+        const { data: transactions } = await purchaseTxQuery
 
         if (transactions) {
           const amounts: Record<string, number> = {}
@@ -1309,7 +1360,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
         supabase.removeChannel(cashTransactionsChannel)
       }
     }
-  }, [isOpen, safe?.id, dateFilter, isLoadingPreferences])
+  }, [isOpen, safe?.id, dateFilter, isLoadingPreferences, childSafeIds, additionalSafeIds])
 
   // Client-side search for product in loaded invoices
   const searchProductInInvoices = (query: string) => {
@@ -2639,7 +2690,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
                   >
                     <XMarkIcon className="h-5 w-5" />
                   </button>
-                  <h1 className="text-white font-medium text-base truncate max-w-[60%]">{safe?.name || 'الخزنة'}</h1>
+                  <h1 className="text-white font-medium text-base truncate max-w-[60%]">{displayName}</h1>
                   <div className="w-9" />
                 </div>
 
@@ -2690,7 +2741,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
                         <h3 className="text-white font-medium mb-2 text-sm">معلومات الخزنة</h3>
                         <div className="space-y-2 text-sm">
                           <div className="flex justify-between">
-                            <span className="text-white">{safe?.name || 'الخزنة الرئيسي'}</span>
+                            <span className="text-white">{displayName}</span>
                             <span className="text-gray-400">اسم الخزنة</span>
                           </div>
                           <div className="flex justify-between">
@@ -3205,7 +3256,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
 
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
-                    <span className="text-white">{safe?.name || 'الخزنة الرئيسي'}</span>
+                    <span className="text-white">{displayName}</span>
                     <span className="text-gray-400 text-sm">اسم الخزنة</span>
                   </div>
 
@@ -3464,7 +3515,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe }: SafeDetailsM
                               </span>
                             </div>
                             <div className="text-white font-medium">
-                              {safe?.name || '---'}
+                              {displayName}
                             </div>
                           </div>
                         </div>

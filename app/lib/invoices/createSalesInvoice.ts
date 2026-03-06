@@ -28,6 +28,7 @@ export interface InvoiceSelections {
   customer: any
   branch: any
   record: any
+  subSafe?: any
 }
 
 export interface PaymentEntry {
@@ -299,7 +300,8 @@ export async function createSalesInvoice({
       invoice_type: (isReturn ? 'Sale Return' : 'Sale Invoice'),
       sale_type: saleType,
       shipping_amount: shippingAmount || 0,
-      order_id: orderId || ''
+      order_id: orderId || '',
+      cashier_id: userId || null
     }
 
     // Prepare sale items for atomic insertion (negative quantities for returns)
@@ -540,46 +542,77 @@ export async function createSalesInvoice({
     }
 
     // Create transaction records in cash_drawer_transactions - one per payment method
-    // ALL payment methods update the drawer balance
+    // Physical payments → sub-safe (drawer), Digital payments → main safe
     try {
-      let drawer: any = null
-      let currentBalance: number = 0
-
-      // Only get/create drawer if there's a safe selected
-      if (!hasNoSafe) {
+      // Helper: get or create a cash_drawer for a given record_id
+      const getOrCreateDrawer = async (recordId: string) => {
         const { data: existingDrawer, error: drawerError } = await supabase
           .from('cash_drawers')
           .select('*')
-          .eq('record_id', selections.record.id)
+          .eq('record_id', recordId)
           .single()
 
         if (drawerError && drawerError.code === 'PGRST116') {
           const { data: newDrawer, error: createError } = await supabase
             .from('cash_drawers')
-            .insert({ record_id: selections.record.id, current_balance: 0 })
+            .insert({ record_id: recordId, current_balance: 0 })
             .select()
             .single()
-
-          if (!createError) {
-            drawer = newDrawer
-          }
-        } else {
-          drawer = existingDrawer
+          return createError ? null : newDrawer
         }
-
-        if (drawer) {
-          currentBalance = drawer.current_balance || 0
-        }
+        return existingDrawer
       }
+
+      // Determine target safes
+      const mainSafeId = hasNoSafe ? null : selections.record.id
+      const subSafeId = selections.subSafe?.id || null
+
+      // Fetch is_physical flag for all payment methods used in this invoice
+      let physicalMap = new Map<string, boolean>()
+      if (paymentMethodIds.length > 0) {
+        const { data: pmData } = await supabase
+          .from('payment_methods')
+          .select('id, is_physical')
+          .in('id', paymentMethodIds)
+        pmData?.forEach((pm: any) => {
+          physicalMap.set(pm.id, pm.is_physical !== false)
+        })
+      }
+
+      // Track drawers and their balances (may need both main and sub drawers)
+      const drawerCache: Record<string, { drawer: any, balance: number }> = {}
+
+      const ensureDrawer = async (recordId: string) => {
+        if (drawerCache[recordId]) return drawerCache[recordId]
+        const drawer = await getOrCreateDrawer(recordId)
+        if (drawer) {
+          drawerCache[recordId] = { drawer, balance: drawer.current_balance || 0 }
+        }
+        return drawerCache[recordId] || null
+      }
+
+      // Pre-load drawers we'll need
+      if (mainSafeId) await ensureDrawer(mainSafeId)
+      if (subSafeId) await ensureDrawer(subSafeId)
 
       // Build per-payment-method transactions
       const transactionsToInsert: any[] = []
 
       if (validPayments.length > 0) {
-        // Split payment mode - create one transaction per payment method
         for (const payment of validPayments) {
           const methodName = methodMap.get(payment.paymentMethodId) || 'cash'
+          const isPhysical = physicalMap.get(payment.paymentMethodId) !== false
           let amount = isReturn ? -payment.amount : payment.amount
+
+          // Determine target: physical → subSafe (if exists), digital → mainSafe
+          let targetRecordId: string | null = null
+          if (!hasNoSafe) {
+            if (isPhysical && subSafeId) {
+              targetRecordId = subSafeId
+            } else {
+              targetRecordId = mainSafeId
+            }
+          }
 
           const txData: any = {
             transaction_type: isReturn ? 'return' : 'sale',
@@ -592,19 +625,23 @@ export async function createSalesInvoice({
             performed_by: userName || 'system'
           }
 
-          if (!hasNoSafe && drawer) {
-            txData.drawer_id = drawer.id
-            txData.record_id = selections.record.id
-            // ALL payment methods update drawer balance
-            currentBalance = roundMoney(currentBalance + amount)
-            txData.balance_after = currentBalance
+          if (targetRecordId) {
+            const drawerInfo = drawerCache[targetRecordId]
+            if (drawerInfo) {
+              txData.drawer_id = drawerInfo.drawer.id
+              txData.record_id = targetRecordId
+              drawerInfo.balance = roundMoney(drawerInfo.balance + amount)
+              txData.balance_after = drawerInfo.balance
+            }
           }
 
           transactionsToInsert.push(txData)
         }
       } else {
-        // Single payment (no split) - single transaction
+        // Single payment (no split) - route to sub-safe if exists
         const amount = totalToDrawer
+        let targetRecordId = hasNoSafe ? null : (subSafeId || mainSafeId)
+
         const txData: any = {
           transaction_type: isReturn ? 'return' : 'sale',
           amount: amount,
@@ -616,27 +653,30 @@ export async function createSalesInvoice({
           performed_by: userName || 'system'
         }
 
-        if (!hasNoSafe && drawer) {
-          txData.drawer_id = drawer.id
-          txData.record_id = selections.record.id
-          currentBalance = roundMoney(currentBalance + amount)
-          txData.balance_after = currentBalance
+        if (targetRecordId) {
+          const drawerInfo = drawerCache[targetRecordId]
+          if (drawerInfo) {
+            txData.drawer_id = drawerInfo.drawer.id
+            txData.record_id = targetRecordId
+            drawerInfo.balance = roundMoney(drawerInfo.balance + amount)
+            txData.balance_after = drawerInfo.balance
+          }
         }
 
         transactionsToInsert.push(txData)
       }
 
-      // Update drawer balance with ALL payment methods
-      if (!hasNoSafe && drawer) {
+      // Update all affected drawers
+      for (const [recordId, info] of Object.entries(drawerCache)) {
         await supabase
           .from('cash_drawers')
           .update({
-            current_balance: currentBalance,
+            current_balance: info.balance,
             updated_at: new Date().toISOString()
           })
-          .eq('id', drawer.id)
+          .eq('id', info.drawer.id)
 
-        console.log(`✅ Cash drawer updated: new balance: ${currentBalance}`)
+        console.log(`✅ Cash drawer ${recordId} updated: new balance: ${info.balance}`)
       }
 
       // Insert all transaction records
@@ -653,7 +693,6 @@ export async function createSalesInvoice({
       }
     } catch (drawerError) {
       console.warn('Failed to create cash drawer transaction:', drawerError)
-      // Don't throw error here as the sale was created successfully
     }
 
     return {

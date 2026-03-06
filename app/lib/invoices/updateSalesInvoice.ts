@@ -49,59 +49,63 @@ export async function updateSalesInvoice({
       return { success: false, message: 'لم يتم العثور على الفاتورة' }
     }
 
-    // 2. جلب سجل المعاملة الحالية
-    const { data: transaction, error: txError } = await supabase
+    // 2. جلب كل سجلات المعاملات الحالية (قد يكون هناك أكثر من معاملة لنفس الفاتورة - split payment / hierarchical safes)
+    const { data: allTransactions, error: txError } = await supabase
       .from('cash_drawer_transactions')
       .select('*')
       .eq('sale_id', saleId)
-      .single()
 
-    if (txError && txError.code !== 'PGRST116') {
-      console.warn('Error fetching transaction:', txError)
+    if (txError) {
+      console.warn('Error fetching transactions:', txError)
     }
 
-    const transactionAmount = transaction?.amount || sale.total_amount || 0
+    const transactions = allTransactions || []
+    // For backward compat: use first transaction as "the transaction" for single-transaction logic
+    const transaction = transactions.length === 1 ? transactions[0] : null
+    const transactionAmount = transactions.reduce((sum: number, tx: any) => sum + (tx.amount || 0), 0) || sale.total_amount || 0
 
     // تتبع التغييرات
     const changes: UpdateSalesInvoiceResult['changes'] = {}
     const updateHistory: any[] = Array.isArray(sale.update_history) ? sale.update_history : []
 
-    // استخدام record_id من الـ transaction كمصدر الحقيقة (لأنه قد يختلف عن sales.record_id)
-    // هذا يحل مشكلة عدم تطابق البيانات بين الجدولين
+    // استخدام record_id من المعاملات كمصدر الحقيقة
+    // في النظام الهرمي قد تكون المعاملات مقسمة على عدة خزن (main + sub)
+    const uniqueOldRecordIds = [...new Set(transactions.map((tx: any) => tx.record_id).filter(Boolean))]
     const actualCurrentRecordId = transaction?.record_id ?? sale.record_id
 
     // 3. تعديل الخزنة (إذا تم تغييرها)
     if (newRecordId !== undefined && newRecordId !== actualCurrentRecordId) {
       const oldRecordId = actualCurrentRecordId
 
-      // إذا كانت الخزنة القديمة موجودة (ليست null) - خصم المبلغ
-      if (oldRecordId) {
-        const { data: oldDrawer } = await supabase
-          .from('cash_drawers')
-          .select('*')
-          .eq('record_id', oldRecordId)
-          .single()
-
-        if (oldDrawer) {
-          const newOldBalance = roundMoney((oldDrawer.current_balance || 0) - transactionAmount)
-          await supabase
+      // Reverse each transaction from its current drawer
+      for (const tx of transactions) {
+        if (tx.record_id) {
+          const { data: oldDrawer } = await supabase
             .from('cash_drawers')
-            .update({
-              current_balance: newOldBalance,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', oldDrawer.id)
+            .select('*')
+            .eq('record_id', tx.record_id)
+            .single()
 
-          console.log(`✅ خصم ${transactionAmount} من الخزنة القديمة، الرصيد الجديد: ${newOldBalance}`)
+          if (oldDrawer) {
+            const newOldBalance = roundMoney((oldDrawer.current_balance || 0) - (tx.amount || 0))
+            await supabase
+              .from('cash_drawers')
+              .update({
+                current_balance: newOldBalance,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', oldDrawer.id)
+
+            console.log(`✅ خصم ${tx.amount} من الخزنة ${tx.record_id}، الرصيد الجديد: ${newOldBalance}`)
+          }
         }
       }
 
-      // إذا كانت الخزنة الجديدة موجودة (ليست null) - إضافة المبلغ
+      // إذا كانت الخزنة الجديدة موجودة - إضافة المبلغ الإجمالي
       let newDrawer: any = null
       let newBalance: number | null = null
 
       if (newRecordId) {
-        // جلب أو إنشاء درج للخزنة الجديدة
         const { data: existingDrawer, error: drawerError } = await supabase
           .from('cash_drawers')
           .select('*')
@@ -109,7 +113,6 @@ export async function updateSalesInvoice({
           .single()
 
         if (drawerError && drawerError.code === 'PGRST116') {
-          // إنشاء درج جديد
           const { data: createdDrawer } = await supabase
             .from('cash_drawers')
             .insert({ record_id: newRecordId, current_balance: 0 })
@@ -134,18 +137,15 @@ export async function updateSalesInvoice({
         }
       }
 
-      // تحديث سجل المعاملة
-      if (transaction) {
-        // عند التغيير إلى "لا يوجد" (null) يجب تعيين القيم إلى null وليس undefined
+      // تحديث كل سجلات المعاملات
+      for (const tx of transactions) {
         const txUpdate: any = {}
 
         if (newRecordId === null) {
-          // التغيير إلى "لا يوجد" - تعيين كل القيم إلى null
           txUpdate.record_id = null
           txUpdate.drawer_id = null
           txUpdate.balance_after = null
         } else if (newRecordId) {
-          // التغيير إلى خزنة محددة
           txUpdate.record_id = newRecordId
           txUpdate.drawer_id = newDrawer?.id || null
           txUpdate.balance_after = newBalance
@@ -155,7 +155,7 @@ export async function updateSalesInvoice({
           await supabase
             .from('cash_drawer_transactions')
             .update(txUpdate)
-            .eq('id', transaction.id)
+            .eq('id', tx.id)
         }
       }
 
@@ -164,7 +164,6 @@ export async function updateSalesInvoice({
         new: newRecordId
       }
 
-      // تسجيل في سجل التعديلات
       updateHistory.push({
         timestamp: new Date().toISOString(),
         user_id: userId,

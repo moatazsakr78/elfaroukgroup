@@ -13,6 +13,7 @@ export interface POSTab {
     customer: any;
     branch: any;
     record: any;
+    subSafe?: any;
     priceType?: 'price' | 'wholesale_price' | 'price1' | 'price2' | 'price3' | 'price4';
   };
   isPurchaseMode?: boolean;

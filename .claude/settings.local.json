@@ -360,7 +360,8 @@
       "Bash(git -C /c/Users/pc/Desktop/ringo log --all --full-history -p -- \"*backup*\")",
       "Bash(python3:*)",
       "mcp__supabase__search_docs",
-      "mcp__supabase__get_organization"
+      "mcp__supabase__get_organization",
+      "Bash(wc -l \"C:\\\\Users\\\\pc\\\\Desktop\\\\elfaroukgroup\\\\app\\\\\\(dashboard\\)\\\\safes\\\\page.tsx\")"
     ],
     "deny": [],
     "additionalDirectories": [

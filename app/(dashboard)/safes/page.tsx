@@ -10,9 +10,10 @@ import {
   DocumentTextIcon,
   CalendarDaysIcon,
   CloudIcon,
-  ExclamationTriangleIcon
+  ExclamationTriangleIcon,
+  ChevronDownIcon
 } from '@heroicons/react/24/outline'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../../lib/supabase/client'
 import Sidebar from '../../components/layout/Sidebar'
 import TopHeader from '../../components/layout/TopHeader'
@@ -43,6 +44,9 @@ interface Safe {
   branch_id: string | null
   created_at: string | null
   updated_at: string | null
+  parent_id: string | null
+  safe_type: string | null
+  supports_drawers: boolean | null
 }
 
 // CashDrawerTransaction is now imported from useInfiniteTransactions hook
@@ -52,6 +56,7 @@ interface PaymentMethod {
   name: string
   is_default: boolean | null
   is_active: boolean | null
+  is_physical: boolean | null
   created_at: string | null
   updated_at: string | null
 }
@@ -80,22 +85,33 @@ export default function SafesPage() {
   const [selectedSafe, setSelectedSafe] = useState<Safe | null>(null)
   const [safeToEdit, setSafeToEdit] = useState<Safe | null>(null)
   const [safes, setSafes] = useState<Safe[]>([])
+  const [safeBalances, setSafeBalances] = useState<Record<string, number>>({})
   const [activeSafesCount, setActiveSafesCount] = useState(0)
   const [totalBalance, setTotalBalance] = useState(0)
   const [safesSearchTerm, setSafesSearchTerm] = useState('')
+  const [addSubSafeParent, setAddSubSafeParent] = useState<Safe | null>(null)
 
   // Records Tab State - Filter configurations
   const [transactionFilters, setTransactionFilters] = useState<{
-    safeId: string
+    safeIds: string[]
     transactionType: TransactionType
     paymentMethod: string
     dateFilter: DateFilter
   }>({
-    safeId: 'all',
+    safeIds: [],
     transactionType: 'all',
     paymentMethod: 'all',
     dateFilter: { type: 'all' }
   })
+
+  // Multi-select dropdown state
+  const [isSafeFilterOpen, setIsSafeFilterOpen] = useState(false)
+  const safeFilterRef = useRef<HTMLDivElement>(null)
+
+  // Combined safes picker state (for multi-safe view in SafeDetailsModal)
+  const [combinedSafeIds, setCombinedSafeIds] = useState<string[]>([])
+  const [isCombinedPickerOpen, setIsCombinedPickerOpen] = useState(false)
+  const combinedPickerRef = useRef<HTMLDivElement>(null)
 
   // Payment method breakdown for safes tab
   const [paymentMethodBreakdown, setPaymentMethodBreakdown] = useState<Record<string, number>>({})
@@ -111,7 +127,7 @@ export default function SafesPage() {
     loadMore: loadMoreTransactions,
     refresh: refreshTransactions
   } = useInfiniteTransactions({
-    recordId: transactionFilters.safeId,
+    recordIds: transactionFilters.safeIds.length > 0 ? transactionFilters.safeIds : undefined,
     transactionType: transactionFilters.transactionType,
     paymentMethod: transactionFilters.paymentMethod,
     dateFilter: transactionFilters.dateFilter,
@@ -162,6 +178,7 @@ export default function SafesPage() {
   const closeSafeDetails = () => {
     setIsSafeDetailsModalOpen(false)
     setSelectedSafe(null)
+    setCombinedSafeIds([])
   }
 
   const openAddSafeModal = () => {
@@ -188,6 +205,15 @@ export default function SafesPage() {
       return
     }
 
+    // Check for child safes (sub-safes/drawers)
+    if (safe.safe_type === 'main') {
+      const childSafes = safes.filter(s => s.parent_id === safe.id)
+      if (childSafes.length > 0) {
+        alert(`لا يمكن حذف الخزنة "${safe.name}" لأنها تحتوي على ${childSafes.length} درج\n\nيجب حذف الأدراج أولاً`)
+        return
+      }
+    }
+
     try {
       const { data: drawer, error: drawerError } = await supabase
         .from('cash_drawers')
@@ -207,7 +233,7 @@ export default function SafesPage() {
         return
       }
 
-      if (window.confirm(`هل أنت متأكد من حذف الخزنة "${safe.name}"؟`)) {
+      if (window.confirm(`هل أنت متأكد من حذف ${safe.safe_type === 'sub' ? 'الدرج' : 'الخزنة'} "${safe.name}"؟`)) {
         const { error } = await supabase
           .from('records')
           .delete()
@@ -242,13 +268,28 @@ export default function SafesPage() {
       setSafes(data || [])
       setActiveSafesCount(data?.filter((safe: Safe) => safe.is_active).length || 0)
 
-      // Fetch total balance from cash_drawers
+      // Fetch per-safe balances from cash_drawers
       const { data: drawers, error: drawersError } = await supabase
         .from('cash_drawers')
-        .select('current_balance')
+        .select('record_id, current_balance')
 
       if (!drawersError && drawers) {
-        const total = drawers.reduce((sum, d) => sum + (d.current_balance || 0), 0)
+        const balanceMap: Record<string, number> = {}
+        // Identify parent safes with drawers - exclude them from total to avoid double-counting
+        const parentWithDrawersIds = new Set(
+          (data || []).filter((s: Safe) => s.supports_drawers && s.safe_type === 'main').map((s: Safe) => s.id)
+        )
+        let total = 0
+        drawers.forEach((d: any) => {
+          if (d.record_id) {
+            balanceMap[d.record_id] = d.current_balance || 0
+            // Only count in total if not a parent safe with drawers
+            if (!parentWithDrawersIds.has(d.record_id)) {
+              total += d.current_balance || 0
+            }
+          }
+        })
+        setSafeBalances(balanceMap)
         setTotalBalance(total)
       }
 
@@ -484,6 +525,32 @@ export default function SafesPage() {
   )
 
   // ==================== Effects ====================
+  // Click-outside handler for safe filter dropdown
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (safeFilterRef.current && !safeFilterRef.current.contains(e.target as Node)) {
+        setIsSafeFilterOpen(false)
+      }
+    }
+    if (isSafeFilterOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [isSafeFilterOpen])
+
+  // Click-outside handler for combined safes picker dropdown
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (combinedPickerRef.current && !combinedPickerRef.current.contains(e.target as Node)) {
+        setIsCombinedPickerOpen(false)
+      }
+    }
+    if (isCombinedPickerOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [isCombinedPickerOpen])
+
   // Initial data fetch
   useEffect(() => {
     fetchSafes()
@@ -554,7 +621,10 @@ export default function SafesPage() {
           is_active: true,
           branch_id: r.branch_id,
           created_at: null,
-          updated_at: null
+          updated_at: null,
+          parent_id: (r as any).parent_id || null,
+          safe_type: (r as any).safe_type || 'main',
+          supports_drawers: (r as any).supports_drawers || false
         }))
         setSafes(offlineSafes)
         setActiveSafesCount(offlineSafes.length)
@@ -566,6 +636,7 @@ export default function SafesPage() {
           name: m.name,
           is_default: null,
           is_active: m.is_active,
+          is_physical: (m as any).is_physical ?? true,
           created_at: null,
           updated_at: null
         }))
@@ -675,17 +746,105 @@ export default function SafesPage() {
             {/* Records Tab Filters */}
             {activeTab === 'records' && (
               <div className="flex flex-wrap items-center gap-2">
-                <select
-                  value={transactionFilters.safeId}
-                  onChange={(e) => setTransactionFilters(prev => ({ ...prev, safeId: e.target.value }))}
-                  className="bg-gray-700 text-white px-3 py-2 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                >
-                  <option value="all">جميع الخزن</option>
-                  <option value="no_safe">لا يوجد</option>
-                  {safes.map(safe => (
-                    <option key={safe.id} value={safe.id}>{safe.name}</option>
-                  ))}
-                </select>
+                {/* Multi-select safe filter */}
+                <div className="relative" ref={safeFilterRef}>
+                  <button
+                    onClick={() => setIsSafeFilterOpen(!isSafeFilterOpen)}
+                    className="bg-gray-700 text-white px-3 py-2 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm flex items-center gap-2 min-w-[160px]"
+                  >
+                    <BanknotesIcon className="h-4 w-4 text-gray-400" />
+                    {transactionFilters.safeIds.length === 0
+                      ? 'جميع الخزن'
+                      : `${transactionFilters.safeIds.length} خزن محددة`}
+                    <ChevronDownIcon className="h-3 w-3 text-gray-400 mr-auto" />
+                  </button>
+                  {isSafeFilterOpen && (
+                    <div className="absolute top-full right-0 mt-1 bg-pos-darker border border-gray-600 rounded-lg shadow-xl z-50 w-72 max-h-80 overflow-y-auto scrollbar-hide">
+                      {/* Select All / Clear All */}
+                      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700 sticky top-0 bg-pos-darker z-10">
+                        <button
+                          onClick={() => {
+                            const allIds: string[] = ['no_safe']
+                            safes.forEach(s => allIds.push(s.id))
+                            setTransactionFilters(prev => ({ ...prev, safeIds: allIds }))
+                          }}
+                          className="text-xs text-blue-400 hover:text-blue-300"
+                        >
+                          تحديد الكل
+                        </button>
+                        <button
+                          onClick={() => setTransactionFilters(prev => ({ ...prev, safeIds: [] }))}
+                          className="text-xs text-gray-400 hover:text-gray-300"
+                        >
+                          إلغاء الكل
+                        </button>
+                      </div>
+                      {/* "No Safe" option */}
+                      <label className="flex items-center gap-3 px-3 py-2 hover:bg-gray-700/50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={transactionFilters.safeIds.includes('no_safe')}
+                          onChange={(e) => {
+                            setTransactionFilters(prev => ({
+                              ...prev,
+                              safeIds: e.target.checked
+                                ? [...prev.safeIds, 'no_safe']
+                                : prev.safeIds.filter(id => id !== 'no_safe')
+                            }))
+                          }}
+                          className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-gray-300 text-sm">لا يوجد</span>
+                      </label>
+                      {/* Safes list */}
+                      {safes.filter(s => s.safe_type !== 'sub').map(mainSafe => {
+                        const children = safes.filter(s => s.parent_id === mainSafe.id && s.safe_type === 'sub')
+                        const hasDrawers = mainSafe.supports_drawers && children.length > 0
+                        return (
+                          <div key={mainSafe.id}>
+                            <label className="flex items-center gap-3 px-3 py-2 hover:bg-gray-700/50 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={transactionFilters.safeIds.includes(mainSafe.id)}
+                                onChange={(e) => {
+                                  setTransactionFilters(prev => ({
+                                    ...prev,
+                                    safeIds: e.target.checked
+                                      ? [...prev.safeIds, mainSafe.id]
+                                      : prev.safeIds.filter(id => id !== mainSafe.id)
+                                  }))
+                                }}
+                                className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500"
+                              />
+                              <span className="text-white text-sm font-medium">{mainSafe.name}</span>
+                              <span className="text-gray-500 text-xs mr-auto">{formatPrice(safeBalances[mainSafe.id] || 0)}</span>
+                            </label>
+                            {/* Drawer children (indented) */}
+                            {hasDrawers && children.map(child => (
+                              <label key={child.id} className="flex items-center gap-3 px-3 py-1.5 pr-9 hover:bg-gray-700/50 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={transactionFilters.safeIds.includes(child.id)}
+                                  onChange={(e) => {
+                                    setTransactionFilters(prev => ({
+                                      ...prev,
+                                      safeIds: e.target.checked
+                                        ? [...prev.safeIds, child.id]
+                                        : prev.safeIds.filter(id => id !== child.id)
+                                    }))
+                                  }}
+                                  className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-cyan-600 focus:ring-cyan-500"
+                                />
+                                <span className="text-cyan-300 text-xs">{child.name}</span>
+                                <span className="text-gray-500 text-xs mr-auto">{formatPrice(safeBalances[child.id] || 0)}</span>
+                              </label>
+                            ))}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
                 <select
                   value={transactionFilters.transactionType}
                   onChange={(e) => setTransactionFilters(prev => ({ ...prev, transactionType: e.target.value as TransactionType }))}
@@ -746,7 +905,7 @@ export default function SafesPage() {
         {activeTab === 'safes' && (
           <>
             {/* Statistics Cards */}
-            <div className="p-3 sm:p-6 grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
+            <div className="p-3 sm:p-6 grid grid-cols-1 md:grid-cols-4 gap-4 sm:gap-6">
               {/* Total Balance */}
               <div className="bg-pos-darker rounded-lg p-4 sm:p-6 border border-gray-700">
                 <div className="flex items-center justify-between">
@@ -760,28 +919,41 @@ export default function SafesPage() {
                 </div>
               </div>
 
-              {/* Active Safes */}
+              {/* Main Safes */}
               <div className="bg-pos-darker rounded-lg p-4 sm:p-6 border border-gray-700">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-gray-400 text-sm">الخزن النشطة</p>
-                    <p className="text-2xl font-bold text-white mt-1">{activeSafesCount}</p>
+                    <p className="text-gray-400 text-sm">الخزن الرئيسية</p>
+                    <p className="text-2xl font-bold text-white mt-1">{safes.filter(s => s.safe_type !== 'sub').length}</p>
                   </div>
-                  <div className="bg-green-600/20 p-3 rounded-lg">
-                    <span className="text-green-400 text-2xl">✓</span>
+                  <div className="bg-purple-600/20 p-3 rounded-lg">
+                    <BanknotesIcon className="h-6 w-6 text-purple-400" />
                   </div>
                 </div>
               </div>
 
-              {/* Total Safes */}
+              {/* Sub Safes / Drawers */}
               <div className="bg-pos-darker rounded-lg p-4 sm:p-6 border border-gray-700">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-gray-400 text-sm">إجمالي الخزن</p>
-                    <p className="text-2xl font-bold text-white mt-1">{safes.length}</p>
+                    <p className="text-gray-400 text-sm">الأدراج</p>
+                    <p className="text-2xl font-bold text-white mt-1">{safes.filter(s => s.safe_type === 'sub').length}</p>
                   </div>
-                  <div className="bg-purple-600/20 p-3 rounded-lg">
-                    <BanknotesIcon className="h-6 w-6 text-purple-400" />
+                  <div className="bg-cyan-600/20 p-3 rounded-lg">
+                    <span className="text-cyan-400 text-2xl">#</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Active Safes */}
+              <div className="bg-pos-darker rounded-lg p-4 sm:p-6 border border-gray-700">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-gray-400 text-sm">النشطة</p>
+                    <p className="text-2xl font-bold text-white mt-1">{activeSafesCount}</p>
+                  </div>
+                  <div className="bg-green-600/20 p-3 rounded-lg">
+                    <span className="text-green-400 text-2xl">✓</span>
                   </div>
                 </div>
               </div>
@@ -817,100 +989,245 @@ export default function SafesPage() {
                   </button>
                 </div>
 
-                <div className="relative w-full sm:w-auto">
-                  <input
-                    type="text"
-                    placeholder="البحث في الخزن..."
-                    value={safesSearchTerm}
-                    onChange={(e) => setSafesSearchTerm(e.target.value)}
-                    className="bg-gray-700 text-white placeholder-gray-400 pl-10 pr-4 py-2 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-64 md:w-80"
-                  />
-                  <MagnifyingGlassIcon className="h-5 w-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                <div className="flex items-center gap-3">
+                  {/* Combined Safes Picker */}
+                  <div className="relative" ref={combinedPickerRef}>
+                    <button
+                      onClick={() => setIsCombinedPickerOpen(!isCombinedPickerOpen)}
+                      className="bg-gray-700 text-white px-4 py-2 rounded-lg border border-gray-600 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm flex items-center gap-2 transition-colors"
+                    >
+                      <BanknotesIcon className="h-4 w-4 text-gray-400" />
+                      {combinedSafeIds.length === 0
+                        ? 'عرض خزن مجمعة'
+                        : `${combinedSafeIds.length} خزن محددة`}
+                      <ChevronDownIcon className="h-3 w-3 text-gray-400 mr-auto" />
+                    </button>
+                    {isCombinedPickerOpen && (
+                      <div className="absolute top-full right-0 mt-1 bg-pos-darker border border-gray-600 rounded-lg shadow-xl z-50 w-72 max-h-80 overflow-y-auto scrollbar-hide">
+                        {/* Select All / Clear All */}
+                        <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700 sticky top-0 bg-pos-darker z-10">
+                          <button
+                            onClick={() => {
+                              const allIds: string[] = []
+                              safes.forEach(s => allIds.push(s.id))
+                              setCombinedSafeIds(allIds)
+                            }}
+                            className="text-xs text-blue-400 hover:text-blue-300"
+                          >
+                            تحديد الكل
+                          </button>
+                          <button
+                            onClick={() => setCombinedSafeIds([])}
+                            className="text-xs text-gray-400 hover:text-gray-300"
+                          >
+                            إلغاء الكل
+                          </button>
+                        </div>
+                        {/* Safes list */}
+                        {safes.filter(s => s.safe_type !== 'sub').map(mainSafe => {
+                          const children = safes.filter(s => s.parent_id === mainSafe.id && s.safe_type === 'sub')
+                          const hasDrawers = mainSafe.supports_drawers && children.length > 0
+                          return (
+                            <div key={mainSafe.id}>
+                              <label className="flex items-center gap-3 px-3 py-2 hover:bg-gray-700/50 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={combinedSafeIds.includes(mainSafe.id)}
+                                  onChange={(e) => {
+                                    setCombinedSafeIds(prev =>
+                                      e.target.checked
+                                        ? [...prev, mainSafe.id]
+                                        : prev.filter(id => id !== mainSafe.id)
+                                    )
+                                  }}
+                                  className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500"
+                                />
+                                <span className="text-white text-sm font-medium">{mainSafe.name}</span>
+                                <span className="text-gray-500 text-xs mr-auto">{formatPrice(safeBalances[mainSafe.id] || 0)}</span>
+                              </label>
+                              {/* Drawer children (indented) */}
+                              {hasDrawers && children.map(child => (
+                                <label key={child.id} className="flex items-center gap-3 px-3 py-1.5 pr-9 hover:bg-gray-700/50 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={combinedSafeIds.includes(child.id)}
+                                    onChange={(e) => {
+                                      setCombinedSafeIds(prev =>
+                                        e.target.checked
+                                          ? [...prev, child.id]
+                                          : prev.filter(id => id !== child.id)
+                                      )
+                                    }}
+                                    className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500"
+                                  />
+                                  <span className="text-gray-300 text-sm">{child.name}</span>
+                                  <span className="text-gray-500 text-xs mr-auto">{formatPrice(safeBalances[child.id] || 0)}</span>
+                                </label>
+                              ))}
+                            </div>
+                          )
+                        })}
+                        {/* Go button */}
+                        <div className="sticky bottom-0 bg-pos-darker border-t border-gray-700 p-2">
+                          <button
+                            disabled={combinedSafeIds.length < 2}
+                            onClick={() => {
+                              if (combinedSafeIds.length < 2) return
+                              const primarySafe = safes.find(s => s.id === combinedSafeIds[0])
+                              if (!primarySafe) return
+                              const additionalIds = combinedSafeIds.slice(1)
+                              setSelectedSafe(primarySafe)
+                              setCombinedSafeIds(additionalIds)
+                              setIsSafeDetailsModalOpen(true)
+                              setIsCombinedPickerOpen(false)
+                            }}
+                            className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            الذهاب ({combinedSafeIds.length} خزن)
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Search */}
+                  <div className="relative w-full sm:w-auto">
+                    <input
+                      type="text"
+                      placeholder="البحث في الخزن..."
+                      value={safesSearchTerm}
+                      onChange={(e) => setSafesSearchTerm(e.target.value)}
+                      className="bg-gray-700 text-white placeholder-gray-400 pl-10 pr-4 py-2 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-64 md:w-80"
+                    />
+                    <MagnifyingGlassIcon className="h-5 w-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Safes Table */}
-            <div className="mx-3 sm:mx-6 bg-pos-darker rounded-lg overflow-hidden border border-gray-700">
-              <div className="overflow-x-auto">
-              <table className="w-full text-sm text-right min-w-[600px]">
-                <thead className="bg-gray-700 text-gray-300">
-                  <tr>
-                    <th className="p-3 text-right font-medium">#</th>
-                    <th className="p-3 text-right font-medium">اسم الخزنة</th>
-                    <th className="p-3 text-right font-medium">الحالة</th>
-                    <th className="p-3 text-right font-medium">تاريخ الإنشاء</th>
-                    <th className="p-3 text-right font-medium">الإجراءات</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-pos-darker divide-y divide-gray-700">
-                  {filteredSafes.length > 0 ? (
-                    filteredSafes.map((safe, index) => (
-                      <tr
-                        key={safe.id}
-                        className="hover:bg-gray-700 transition-colors cursor-pointer"
-                        onDoubleClick={() => openSafeDetails(safe)}
-                      >
-                        <td className="p-3 text-white font-medium">{index + 1}</td>
-                        <td className="p-3">
-                          <div className="flex items-center gap-2">
-                            <div className={`w-8 h-8 ${
-                              safe.is_primary
-                                ? 'bg-purple-600'
-                                : 'bg-blue-600'
-                            } rounded flex items-center justify-center`}>
-                              <BanknotesIcon className="h-5 w-5 text-white" />
+            {/* Safes Card Grid */}
+            <div className="mx-3 sm:mx-6">
+              {(() => {
+                const mainSafes = filteredSafes.filter(s => s.safe_type !== 'sub')
+                if (mainSafes.length === 0) {
+                  return (
+                    <div className="bg-pos-darker rounded-xl p-8 text-center text-gray-400 border border-gray-700">
+                      لا توجد خزن متاحة
+                    </div>
+                  )
+                }
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {mainSafes.map((mainSafe) => {
+                      const children = mainSafe.supports_drawers ? safes.filter(s => s.parent_id === mainSafe.id && s.safe_type === 'sub') : []
+                      const ownBalance = safeBalances[mainSafe.id] || 0
+                      const childrenBalance = children.reduce((sum, child) => sum + (safeBalances[child.id] || 0), 0)
+                      const totalMainBalance = ownBalance + childrenBalance
+
+                      return (
+                        <div
+                          key={mainSafe.id}
+                          className="bg-pos-darker rounded-xl border border-gray-700 hover:border-blue-500/50 transition-colors cursor-pointer group flex flex-col"
+                          onDoubleClick={() => openSafeDetails(mainSafe)}
+                        >
+                          {/* Card Header */}
+                          <div className="p-4 pb-3">
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="flex items-center gap-3">
+                                <div className={`w-10 h-10 ${mainSafe.is_primary ? 'bg-purple-600' : 'bg-blue-600'} rounded-lg flex items-center justify-center shrink-0`}>
+                                  <BanknotesIcon className="h-5 w-5 text-white" />
+                                </div>
+                                <div>
+                                  <h3 className="text-white font-bold text-base">{mainSafe.name}</h3>
+                                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] bg-blue-900/50 text-blue-300">رئيسية</span>
+                                    {mainSafe.is_primary && (
+                                      <span className="px-2 py-0.5 rounded-full text-[10px] bg-purple-900 text-purple-300">أساسية</span>
+                                    )}
+                                    {mainSafe.supports_drawers && (
+                                      <span className="px-2 py-0.5 rounded-full text-[10px] bg-cyan-900/50 text-cyan-300">أدراج</span>
+                                    )}
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] ${mainSafe.is_active ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'}`}>
+                                      {mainSafe.is_active ? 'نشطة' : 'غير نشطة'}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
                             </div>
-                            <span className="text-white font-medium">{safe.name}</span>
-                            {safe.is_primary && (
-                              <span className="px-2 py-1 rounded-full text-xs mr-2 bg-purple-900 text-purple-300">
-                                رئيسية
-                              </span>
-                            )}
+
+                            {/* Balance Display */}
+                            <div className="bg-gray-800/50 rounded-lg p-3 mb-3">
+                              {children.length > 0 ? (
+                                <div className="flex items-center justify-between">
+                                  <span className="text-gray-400 text-xs">الرصيد</span>
+                                  <span className="text-white font-bold text-lg">{formatPrice(childrenBalance)}</span>
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-between">
+                                  <span className="text-gray-400 text-xs">الرصيد</span>
+                                  <span className="text-white font-bold text-lg">{formatPrice(ownBalance)}</span>
+                                </div>
+                              )}
+                            </div>
                           </div>
-                        </td>
-                        <td className="p-3">
-                          <span className={`px-2 py-1 rounded-full text-xs ${
-                            safe.is_active
-                              ? 'bg-green-900 text-green-300'
-                              : 'bg-red-900 text-red-300'
-                          }`}>
-                            {safe.is_active ? 'نشطة' : 'غير نشطة'}
-                          </span>
-                        </td>
-                        <td className="p-3 text-gray-400">{formatDate(safe.created_at)}</td>
-                        <td className="p-3">
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => openEditSafeModal(safe)}
-                              className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center gap-1"
-                            >
-                              <PencilIcon className="h-3 w-3" />
-                              تعديل
-                            </button>
-                            {!safe.is_primary && (
+
+                          {/* Drawers Section - only for safes that support drawers */}
+                          {mainSafe.supports_drawers && (
+                            <div className="px-4 pb-3 flex-1">
+                              {children.length > 0 ? (
+                                <div className="flex flex-wrap gap-2">
+                                  {children.map((child) => (
+                                    <div
+                                      key={child.id}
+                                      className="bg-cyan-600/10 border border-cyan-600/30 rounded-lg px-3 py-2 cursor-pointer hover:bg-cyan-600/20 hover:border-cyan-500/50 transition-colors"
+                                      onDoubleClick={(e) => { e.stopPropagation(); openSafeDetails(child) }}
+                                    >
+                                      <p className="text-cyan-300 text-xs font-medium">{child.name}</p>
+                                      <p className="text-white text-sm font-bold mt-0.5">{formatPrice(safeBalances[child.id] || 0)}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-xs text-gray-600 italic">بدون أدراج</p>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Actions Row */}
+                          <div className="px-4 py-3 border-t border-gray-700/50 flex items-center gap-2 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                            {mainSafe.supports_drawers && (
                               <button
-                                onClick={() => handleDeleteSafe(safe)}
-                                className="px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 transition-colors flex items-center gap-1"
+                                onClick={(e) => { e.stopPropagation(); setAddSubSafeParent(mainSafe); setIsAddSafeModalOpen(true) }}
+                                className="px-2.5 py-1.5 text-xs bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors flex items-center gap-1"
+                                title="إضافة درج"
                               >
-                                <TrashIcon className="h-3 w-3" />
-                                حذف
+                                <PlusIcon className="h-3.5 w-3.5" />
+                                درج
+                              </button>
+                            )}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); openEditSafeModal(mainSafe) }}
+                              className="px-2.5 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                              title="تعديل"
+                            >
+                              <PencilIcon className="h-3.5 w-3.5" />
+                            </button>
+                            {!mainSafe.is_primary && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleDeleteSafe(mainSafe) }}
+                                className="px-2.5 py-1.5 text-xs bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                                title="حذف"
+                              >
+                                <TrashIcon className="h-3.5 w-3.5" />
                               </button>
                             )}
                           </div>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={5} className="p-8 text-center text-gray-400">
-                        لا توجد خزن متاحة
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-              </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
             </div>
           </>
         )}
@@ -1137,6 +1454,13 @@ export default function SafesPage() {
                                 أساسية
                               </span>
                             )}
+                            <span className={`px-2 py-1 rounded-full text-xs mr-2 ${
+                              (method as any).is_physical !== false
+                                ? 'bg-green-900/50 text-green-400'
+                                : 'bg-blue-900/50 text-blue-400'
+                            }`}>
+                              {(method as any).is_physical !== false ? 'فعلي' : 'رقمي'}
+                            </span>
                           </div>
                         </td>
                         <td className="p-3">
@@ -1204,13 +1528,15 @@ export default function SafesPage() {
         isOpen={isSafeDetailsModalOpen}
         onClose={closeSafeDetails}
         safe={selectedSafe}
+        additionalSafeIds={combinedSafeIds}
       />
 
       {/* Add Safe Modal */}
       <AddSafeModal
         isOpen={isAddSafeModalOpen}
-        onClose={closeAddSafeModal}
+        onClose={() => { closeAddSafeModal(); setAddSubSafeParent(null) }}
         onSafeAdded={handleSafeAdded}
+        parentSafe={addSubSafeParent}
       />
 
       {/* Edit Safe Modal */}

@@ -35,6 +35,7 @@ export default function AddPaymentMethodModal({
   const [name, setName] = useState('')
   const [isDefault, setIsDefault] = useState(false)
   const [isActive, setIsActive] = useState(true)
+  const [isPhysical, setIsPhysical] = useState(true)
   const [isLoading, setIsLoading] = useState(false)
   const [showSuggestions, setShowSuggestions] = useState(false)
 
@@ -55,7 +56,8 @@ export default function AddPaymentMethodModal({
           {
             name: name.trim(),
             is_default: isDefault,
-            is_active: isActive
+            is_active: isActive,
+            is_physical: isPhysical
           }
         ])
 
@@ -69,6 +71,7 @@ export default function AddPaymentMethodModal({
       setName('')
       setIsDefault(false)
       setIsActive(true)
+      setIsPhysical(true)
       
       // Close modal and refresh data
       onClose()
@@ -165,6 +168,23 @@ export default function AddPaymentMethodModal({
               />
               <span className="text-sm text-gray-300">جعل افتراضية</span>
             </label>
+
+            <div className="pt-2 border-t border-gray-600">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={isPhysical}
+                  onChange={(e) => setIsPhysical(e.target.checked)}
+                  className="w-4 h-4 text-green-600 bg-gray-700 border-gray-600 rounded focus:ring-green-500"
+                />
+                <span className="text-sm text-gray-300">طريقة دفع فعلية</span>
+              </label>
+              <p className="text-xs text-gray-500 mt-1 mr-6">
+                {isPhysical
+                  ? 'المدفوعات الفعلية (نقد، فيزا) تذهب للدرج المحدد'
+                  : 'المدفوعات الرقمية (تحويل، إنستاباي) تذهب للخزنة الرئيسية مباشرة'}
+              </p>
+            </div>
           </div>
 
           {/* Buttons */}

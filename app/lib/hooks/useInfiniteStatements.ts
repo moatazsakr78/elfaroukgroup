@@ -31,7 +31,7 @@ interface Cursor {
 
 // Options for the hook
 export interface UseInfiniteStatementsOptions {
-  recordId?: string | null // Safe/record ID
+  recordIds?: string[] // Safe/record IDs (array for multi-safe support)
   dateFilter?: DateFilter // Date range filter
   enabled?: boolean // Enable/disable fetching
   pageSize?: number // Number of records per page (default 200)
@@ -53,7 +53,7 @@ export function useInfiniteStatements(
   options: UseInfiniteStatementsOptions
 ): UseInfiniteStatementsReturn {
   const {
-    recordId,
+    recordIds,
     dateFilter = { type: 'today' },
     enabled = true,
     pageSize = 200
@@ -175,19 +175,25 @@ export function useInfiniteStatements(
 
   // Fetch a page of transactions
   const fetchPage = useCallback(async (cursorData: Cursor | null, isLoadMore: boolean = false) => {
-    const currentRecordId = optionsRef.current.recordId
+    const currentRecordIds = optionsRef.current.recordIds
     const currentDateFilter = optionsRef.current.dateFilter || { type: 'today' }
 
-    if (!currentRecordId) return { data: [], hasMore: false }
+    if (!currentRecordIds || currentRecordIds.length === 0) return { data: [], hasMore: false }
 
     const { startDate, endDate } = getDateRangeFromFilter(currentDateFilter)
 
     let query = supabase
       .from('cash_drawer_transactions')
       .select('id, sale_id, amount, balance_after, transaction_type, notes, created_at, performed_by, payment_method')
-      .eq('record_id', currentRecordId)
 
-    // Apply date filter at database level - THIS IS THE KEY FIX!
+    // Apply safe filter
+    if (currentRecordIds.length === 1) {
+      query = query.eq('record_id', currentRecordIds[0])
+    } else {
+      query = query.in('record_id', currentRecordIds)
+    }
+
+    // Apply date filter at database level
     if (startDate) {
       query = query.gte('created_at', startDate.toISOString())
     }
@@ -217,7 +223,7 @@ export function useInfiniteStatements(
 
   // Fetch the first page
   const fetchFirstPage = useCallback(async () => {
-    if (!enabled || !optionsRef.current.recordId) return
+    if (!enabled || !optionsRef.current.recordIds || optionsRef.current.recordIds.length === 0) return
 
     setIsLoading(true)
     setError(null)
@@ -329,12 +335,13 @@ export function useInfiniteStatements(
 
   // Effect to fetch first page when options change
   useEffect(() => {
-    if (enabled && optionsRef.current.recordId) {
+    if (enabled && optionsRef.current.recordIds && optionsRef.current.recordIds.length > 0) {
       fetchFirstPage()
     }
   }, [
     enabled,
-    recordId,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    recordIds?.join(','),
     dateFilter?.type,
     dateFilter?.startDate?.toString(),
     dateFilter?.endDate?.toString()

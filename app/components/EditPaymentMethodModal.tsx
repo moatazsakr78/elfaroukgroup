@@ -9,6 +9,7 @@ interface PaymentMethod {
   name: string
   is_default: boolean | null
   is_active: boolean | null
+  is_physical: boolean | null
   created_at: string | null
   updated_at: string | null
 }
@@ -46,6 +47,7 @@ export default function EditPaymentMethodModal({
   const [name, setName] = useState('')
   const [isDefault, setIsDefault] = useState(false)
   const [isActive, setIsActive] = useState(true)
+  const [isPhysical, setIsPhysical] = useState(true)
   const [isLoading, setIsLoading] = useState(false)
   const [showSuggestions, setShowSuggestions] = useState(false)
 
@@ -54,6 +56,7 @@ export default function EditPaymentMethodModal({
       setName(paymentMethod.name)
       setIsDefault(paymentMethod.is_default === true)
       setIsActive(paymentMethod.is_active === true)
+      setIsPhysical(paymentMethod.is_physical !== false)
     }
   }, [paymentMethod])
 
@@ -76,6 +79,7 @@ export default function EditPaymentMethodModal({
           name: name.trim(),
           is_default: isDefault,
           is_active: isActive,
+          is_physical: isPhysical,
           updated_at: new Date().toISOString()
         })
         .eq('id', paymentMethod.id)
@@ -181,6 +185,23 @@ export default function EditPaymentMethodModal({
               />
               <span className="text-sm text-gray-300">جعل افتراضية</span>
             </label>
+
+            <div className="pt-2 border-t border-gray-600">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={isPhysical}
+                  onChange={(e) => setIsPhysical(e.target.checked)}
+                  className="w-4 h-4 text-green-600 bg-gray-700 border-gray-600 rounded focus:ring-green-500"
+                />
+                <span className="text-sm text-gray-300">طريقة دفع فعلية</span>
+              </label>
+              <p className="text-xs text-gray-500 mt-1 mr-6">
+                {isPhysical
+                  ? 'المدفوعات الفعلية (نقد، فيزا) تذهب للدرج المحدد'
+                  : 'المدفوعات الرقمية (تحويل، إنستاباي) تذهب للخزنة الرئيسية مباشرة'}
+              </p>
+            </div>
           </div>
 
           {/* Payment Method Info */}

@@ -30,7 +30,7 @@ interface Cursor {
 
 // Options for the hook
 export interface UseInfiniteTransactionsOptions {
-  recordId?: string | null // Filter by safe/record ID
+  recordIds?: string[] // Filter by safe/record IDs (empty/undefined = all)
   transactionType?: string // Transaction type filter
   paymentMethod?: string // Payment method filter (e.g. 'cash', 'InstaPay')
   dateFilter?: DateFilter // Date range filter
@@ -59,7 +59,7 @@ export function useInfiniteTransactions(
   options: UseInfiniteTransactionsOptions
 ): UseInfiniteTransactionsReturn {
   const {
-    recordId,
+    recordIds,
     transactionType = 'all',
     paymentMethod: paymentMethodFilter,
     dateFilter = { type: 'all' },
@@ -83,6 +83,28 @@ export function useInfiniteTransactions(
   const optionsRef = useRef(options)
   optionsRef.current = options
 
+  // Apply safe filter to a query
+  const applySafeFilter = useCallback((query: any, ids?: string[]) => {
+    if (!ids || ids.length === 0) return query
+
+    const hasNoSafe = ids.includes('no_safe')
+    const regularIds = ids.filter(id => id !== 'no_safe')
+
+    if (hasNoSafe && regularIds.length > 0) {
+      // Both "no safe" and specific safes
+      query = query.or(`record_id.is.null,record_id.eq.${NO_SAFE_RECORD_ID},record_id.in.(${regularIds.join(',')})`)
+    } else if (hasNoSafe) {
+      // Only "no safe"
+      query = query.or(`record_id.is.null,record_id.eq.${NO_SAFE_RECORD_ID}`)
+    } else if (regularIds.length === 1) {
+      query = query.eq('record_id', regularIds[0])
+    } else {
+      query = query.in('record_id', regularIds)
+    }
+
+    return query
+  }, [])
+
   // Build the base query
   const buildQuery = useCallback(() => {
     let query = supabase
@@ -93,12 +115,7 @@ export function useInfiniteTransactions(
     const { startDate, endDate } = getDateRangeFromFilter(currentOptions.dateFilter || { type: 'all' })
 
     // Apply safe filter
-    if (currentOptions.recordId === 'no_safe') {
-      // Support both null (new) and NO_SAFE_RECORD_ID (old data) for backward compatibility
-      query = query.or(`record_id.is.null,record_id.eq.${NO_SAFE_RECORD_ID}`)
-    } else if (currentOptions.recordId && currentOptions.recordId !== 'all') {
-      query = query.eq('record_id', currentOptions.recordId)
-    }
+    query = applySafeFilter(query, currentOptions.recordIds)
 
     // Apply transaction type filter
     if (currentOptions.transactionType && currentOptions.transactionType !== 'all') {
@@ -130,7 +147,7 @@ export function useInfiniteTransactions(
     }
 
     return query
-  }, [])
+  }, [applySafeFilter])
 
   // Fetch customer names for transactions with sale_ids
   const fetchCustomerNames = useCallback(async (txs: CashDrawerTransaction[]): Promise<Record<string, string>> => {
@@ -233,7 +250,6 @@ export function useInfiniteTransactions(
 
     try {
       // Build the query with cursor-based pagination
-      // Use composite cursor: (created_at, id) < (cursor_created_at, cursor_id)
       const { startDate, endDate } = getDateRangeFromFilter(optionsRef.current.dateFilter || { type: 'all' })
 
       let query = supabase
@@ -241,11 +257,7 @@ export function useInfiniteTransactions(
         .select('*')
 
       // Apply safe filter
-      if (optionsRef.current.recordId === 'no_safe') {
-        query = query.or(`record_id.is.null,record_id.eq.${NO_SAFE_RECORD_ID}`)
-      } else if (optionsRef.current.recordId && optionsRef.current.recordId !== 'all') {
-        query = query.eq('record_id', optionsRef.current.recordId)
-      }
+      query = applySafeFilter(query, optionsRef.current.recordIds)
 
       // Apply transaction type filter
       if (optionsRef.current.transactionType && optionsRef.current.transactionType !== 'all') {
@@ -318,7 +330,7 @@ export function useInfiniteTransactions(
     } finally {
       setIsLoadingMore(false)
     }
-  }, [enabled, hasMore, isLoadingMore, cursor, pageSize, fetchCustomerNames, mapSafeNames, safes])
+  }, [enabled, hasMore, isLoadingMore, cursor, pageSize, fetchCustomerNames, mapSafeNames, safes, applySafeFilter])
 
   // Refresh - reset and fetch first page again
   const refresh = useCallback(async () => {
@@ -334,7 +346,8 @@ export function useInfiniteTransactions(
     }
   }, [
     enabled,
-    recordId,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    recordIds?.join(','),
     transactionType,
     paymentMethodFilter,
     excludeSales,

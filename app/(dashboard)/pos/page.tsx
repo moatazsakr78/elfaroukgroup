@@ -1267,10 +1267,18 @@ function POSPageContent() {
     setIsHistoryModalOpen(!isHistoryModalOpen);
   };
 
-  const handleRecordSelect = (record: any) => {
-    setRecord(record);
+  const handleRecordSelect = (record: any, subSafe?: any) => {
+    if (subSafe) {
+      // Selected a sub-safe (drawer) - store main safe as record, sub-safe separately
+      setRecord(record);
+      updateActiveTabSelections({ subSafe });
+    } else {
+      // Selected a main safe directly (no drawers) - clear subSafe
+      setRecord(record);
+      updateActiveTabSelections({ subSafe: null });
+    }
     setIsRecordsModalOpen(false);
-    console.log("Selected record:", record);
+    console.log("Selected record:", record, "subSafe:", subSafe);
   };
 
   const handleCustomerSelect = (customer: any) => {
@@ -1754,6 +1762,20 @@ function POSPageContent() {
       }
     };
 
+    // Helper for product codes: strips hyphens and indexes all suffixes for substring matching
+    // e.g. "AR-578" → stripped "ar578" → suffixes "ar578","r578","578","78","8" → each gets all prefixes indexed
+    const addToCodeIndex = (index: Map<string, Set<string>>, term: string, productId: string) => {
+      if (!term) return;
+      const stripped = term.toLowerCase().replace(/-/g, '');
+      for (let start = 0; start < stripped.length; start++) {
+        for (let end = start + 1; end <= stripped.length; end++) {
+          const key = stripped.slice(start, end);
+          if (!index.has(key)) index.set(key, new Set());
+          index.get(key)!.add(productId);
+        }
+      }
+    };
+
     products.forEach((product) => {
       // Index name words (each word separately for partial matching)
       const nameWords = product.name.toLowerCase().split(/\s+/);
@@ -1763,9 +1785,9 @@ function POSPageContent() {
       // Also index full name for exact substring matching
       addToIndex(nameIndex, product.name, product.id);
 
-      // Index product code
+      // Index product code (substring matching, hyphens ignored)
       if (product.product_code) {
-        addToIndex(codeIndex, product.product_code, product.id);
+        addToCodeIndex(codeIndex, product.product_code, product.id);
       }
 
       // Index barcode
@@ -1798,13 +1820,15 @@ function POSPageContent() {
       matchingIds = new Set(products.map(p => p.id));
     } else {
       const query = debouncedSearchQuery.toLowerCase();
+      const codeQuery = query.replace(/-/g, ''); // Strip hyphens for code lookups
       matchingIds = new Set<string>();
 
       // Use search index for fast lookup based on search mode
       // Supports multi-word search: finds products containing ALL words (in any order)
-      const getMatchesFromIndex = (index: Map<string, Set<string>>) => {
+      const getMatchesFromIndex = (index: Map<string, Set<string>>, queryOverride?: string) => {
         // Split query into words
-        const words = query.split(/\s+/).filter(w => w.length > 0);
+        const q = queryOverride ?? query;
+        const words = q.split(/\s+/).filter(w => w.length > 0);
 
         if (words.length === 0) return new Set<string>();
 
@@ -1843,7 +1867,7 @@ function POSPageContent() {
         case 'all':
           // Combine matches from all indexes
           const nameMatches = getMatchesFromIndex(searchIndex.nameIndex);
-          const codeMatches = getMatchesFromIndex(searchIndex.codeIndex);
+          const codeMatches = getMatchesFromIndex(searchIndex.codeIndex, codeQuery);
           const barcodeMatches = getMatchesFromIndex(searchIndex.barcodeIndex);
           nameMatches.forEach(id => matchingIds.add(id));
           codeMatches.forEach(id => matchingIds.add(id));
@@ -1853,7 +1877,7 @@ function POSPageContent() {
           getMatchesFromIndex(searchIndex.nameIndex).forEach(id => matchingIds.add(id));
           break;
         case 'code':
-          getMatchesFromIndex(searchIndex.codeIndex).forEach(id => matchingIds.add(id));
+          getMatchesFromIndex(searchIndex.codeIndex, codeQuery).forEach(id => matchingIds.add(id));
           break;
         case 'barcode':
           getMatchesFromIndex(searchIndex.barcodeIndex).forEach(id => matchingIds.add(id));
@@ -5501,7 +5525,7 @@ function POSPageContent() {
                 className="flex items-center gap-1 px-2 py-1.5 bg-[#374151] border border-gray-600 rounded text-gray-300 hover:text-white hover:bg-[#4B5563] text-xs whitespace-nowrap flex-shrink-0"
               >
                 <BanknotesIcon className="h-3.5 w-3.5" />
-                <span>{selections.record?.name || 'الخزنة'}</span>
+                <span>{selections.record?.name ? (selections.subSafe?.name ? `${selections.record.name} > ${selections.subSafe.name}` : selections.record.name) : 'الخزنة'}</span>
               </button>
 
               {/* زرار السعر */}
