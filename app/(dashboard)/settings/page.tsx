@@ -17,6 +17,7 @@ import {
   ExclamationTriangleIcon,
   ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline';
+import { revalidateAll } from '../../../lib/utils/revalidate';
 import BackupSettings from '@/app/components/settings/BackupSettings';
 import TopHeader from '@/app/components/layout/TopHeader';
 import Sidebar from '@/app/components/layout/Sidebar';
@@ -261,6 +262,7 @@ export default function SettingsPage() {
   const [customWebsiteCurrency, setCustomWebsiteCurrency] = useState('');
   const [customUnifiedCurrency, setCustomUnifiedCurrency] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [isRebuilding, setIsRebuilding] = useState(false);
 
   // Ratings settings using hook
   const { showRatings, updateRatingSettings, isLoading: isRatingsLoading } = useRatingsDisplay();
@@ -672,6 +674,23 @@ export default function SettingsPage() {
         </div>
       </div>
     );
+  };
+
+  const handleRebuildStore = async () => {
+    setIsRebuilding(true);
+    try {
+      const result = await revalidateAll();
+      if (result.success) {
+        alert('تم تحديث المتجر بنجاح!');
+      } else {
+        alert('حدث خطأ أثناء تحديث المتجر');
+      }
+    } catch (error) {
+      console.error('Failed to rebuild store:', error);
+      alert('حدث خطأ أثناء تحديث المتجر');
+    } finally {
+      setIsRebuilding(false);
+    }
   };
 
   const handleSaveSettings = async () => {
@@ -1250,6 +1269,36 @@ export default function SettingsPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
               إضافة لون جديد
+            </button>
+          </div>
+
+          {/* Rebuild Store Section */}
+          <div className="bg-[#1F2937] rounded-lg p-4 border border-gray-600">
+            <h4 className="text-white text-sm font-medium mb-3">تحديث المتجر</h4>
+            <p className="text-gray-400 text-xs mb-3">
+              اضغط لتحديث صفحات المتجر فوراً بعد إضافة منتجات أو تعديل الإعدادات
+            </p>
+            <button
+              onClick={handleRebuildStore}
+              disabled={isRebuilding}
+              className="w-full px-4 py-3 bg-green-600 hover:bg-green-700 disabled:bg-green-800 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+            >
+              {isRebuilding ? (
+                <>
+                  <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  جاري تحديث المتجر...
+                </>
+              ) : (
+                <>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  تحديث المتجر الآن
+                </>
+              )}
             </button>
           </div>
 
