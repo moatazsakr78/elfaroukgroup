@@ -784,6 +784,22 @@ export default function SettingsPage() {
       // Clear the product display settings cache so the store reflects changes immediately
       clearSettingsCache();
 
+      // Trigger homepage revalidation when display settings change
+      if (selectedCategory === 'theme' || selectedCategory === 'store') {
+        try {
+          await fetch('/api/revalidate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              secret: 'client-revalidate-request',
+              revalidateHome: true
+            })
+          });
+        } catch (revalidateError) {
+          console.error('Failed to revalidate homepage:', revalidateError);
+        }
+      }
+
       alert('تم حفظ الإعدادات بنجاح!');
       activityLog({ entityType: 'setting', actionType: 'update', description: `عدّل إعدادات ${selectedCategory === 'theme' ? 'المظهر' : selectedCategory === 'company' ? 'الشركة' : selectedCategory === 'store' ? 'المتجر' : 'النظام'}` });
     } catch (error) {
