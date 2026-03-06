@@ -145,7 +145,7 @@ export default function PrepareOrderModal({ isOpen, onClose, orderId }: PrepareO
         'postgres_changes',
         {
           event: 'UPDATE',
-          schema: 'public',
+          schema: 'elfaroukgroup',
           table: 'order_items'
         },
         async (payload) => {

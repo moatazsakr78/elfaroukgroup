@@ -632,7 +632,7 @@ export function usePOSTabs(): UsePOSTabsReturn {
         'postgres_changes',
         {
           event: '*',
-          schema: 'public',
+          schema: 'elfaroukgroup',
           table: 'pos_tabs_state',
           filter: `user_id=eq.${userId}`
         },

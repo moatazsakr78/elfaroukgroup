@@ -2936,6 +2936,7 @@ function POSPageContent() {
             supplier: selectedSupplier,
             branch: selections.branch,
             record: selections.record,
+            subSafe: selections.subSafe,
           },
           paymentMethod: "cash",
           notes: isReturnMode

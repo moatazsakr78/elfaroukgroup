@@ -123,7 +123,7 @@ export function useSupplierGroups() {
     const subscription = supabase
       .channel('supplier_groups')
       .on('postgres_changes', 
-        { event: '*', schema: 'public', table: 'supplier_groups' },
+        { event: '*', schema: 'elfaroukgroup', table: 'supplier_groups' },
         handleGroupChange
       )
       .subscribe()

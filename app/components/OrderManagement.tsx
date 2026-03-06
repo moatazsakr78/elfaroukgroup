@@ -160,7 +160,7 @@ export default function OrderManagement({ className = "" }: OrderManagementProps
     const ordersChannel = supabase
       .channel('orders_changes')
       .on('postgres_changes', 
-        { event: '*', schema: 'public', table: 'orders' },
+        { event: '*', schema: 'elfaroukgroup', table: 'orders' },
         (payload: any) => {
           console.log('Orders real-time update:', payload)
           fetchOrders()
@@ -172,7 +172,7 @@ export default function OrderManagement({ className = "" }: OrderManagementProps
     const orderItemsChannel = supabase
       .channel('order_items_changes')
       .on('postgres_changes', 
-        { event: '*', schema: 'public', table: 'order_items' },
+        { event: '*', schema: 'elfaroukgroup', table: 'order_items' },
         (payload: any) => {
           console.log('Order items real-time update:', payload)
           if (selectedOrder) {

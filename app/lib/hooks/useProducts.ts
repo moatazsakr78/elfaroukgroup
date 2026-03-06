@@ -888,7 +888,7 @@ export function useProducts() {
     const productsChannel = supabase
       .channel('products_changes')
       .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'products' },
+        { event: '*', schema: 'elfaroukgroup', table: 'products' },
         async (payload) => {
           if (payload.eventType === 'INSERT') {
             // Fetch the new product with category data
@@ -1099,7 +1099,7 @@ export function useProducts() {
     const inventoryChannel = supabase
       .channel('inventory_changes')
       .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'inventory' },
+        { event: '*', schema: 'elfaroukgroup', table: 'inventory' },
         (payload: any) => {
           if (payload.new && payload.new.product_id) {
             const productId = payload.new.product_id
@@ -1137,7 +1137,7 @@ export function useProducts() {
     const variantDefinitionsChannel = supabase
       .channel('variant_definitions_changes')
       .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'product_color_shape_definitions' },
+        { event: '*', schema: 'elfaroukgroup', table: 'product_color_shape_definitions' },
         async (payload: any) => {
           if (payload.new && payload.new.product_id) {
             // When definitions change, refetch all products to update colors list
@@ -1151,7 +1151,7 @@ export function useProducts() {
     const variantQuantitiesChannel = supabase
       .channel('variant_quantities_changes')
       .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'product_variant_quantities' },
+        { event: '*', schema: 'elfaroukgroup', table: 'product_variant_quantities' },
         async (payload: any) => {
           if (payload.new && payload.new.variant_definition_id) {
             // When quantities change, refetch products to update variant data
@@ -1165,7 +1165,7 @@ export function useProducts() {
     const settingsChannel = supabase
       .channel('product_display_settings_changes')
       .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'product_display_settings' },
+        { event: '*', schema: 'elfaroukgroup', table: 'product_display_settings' },
         async () => {
           // Reload all products when settings change
           await fetchProducts()

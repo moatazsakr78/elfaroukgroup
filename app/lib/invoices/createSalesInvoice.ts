@@ -294,7 +294,7 @@ export async function createSalesInvoice({
       branch_id: selections.branch.id,
       customer_id: customerId,
       supplier_id: effectiveSupplierId || '',
-      record_id: hasNoSafe ? '' : selections.record.id,
+      record_id: hasNoSafe ? '' : (selections.subSafe?.id || selections.record.id),
       notes: finalNotes || '',
       time: timeString,
       invoice_type: (isReturn ? 'Sale Return' : 'Sale Invoice'),
@@ -755,6 +755,10 @@ export async function createSalesInvoice({
           record: selections.record ? {
             id: selections.record.id,
             name: selections.record.name
+          } : null,
+          subSafe: selections.subSafe ? {
+            id: selections.subSafe.id,
+            name: selections.subSafe.name
           } : null
         }
 

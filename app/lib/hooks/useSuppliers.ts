@@ -114,7 +114,7 @@ export function useSuppliers() {
     const subscription = supabase
       .channel('suppliers_changes_optimized')
       .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'suppliers' },
+        { event: '*', schema: 'elfaroukgroup', table: 'suppliers' },
         handleSupplierChange
       )
       .subscribe()

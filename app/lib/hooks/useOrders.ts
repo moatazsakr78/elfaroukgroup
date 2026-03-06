@@ -24,6 +24,7 @@ export interface Order {
   customerAddress?: string;
   created_at?: string;
   updated_at?: string;
+  trackingToken?: string;
   items: OrderItem[];
   preparationProgress?: number;
 }
@@ -82,6 +83,7 @@ export function useOrders() {
             notes,
             created_at,
             updated_at,
+            tracking_token,
             order_items (
               id,
               quantity,
@@ -164,6 +166,7 @@ export function useOrders() {
           return {
             id: order.order_number,
             orderId: order.id,
+            trackingToken: order.tracking_token,
             date: order.created_at.split('T')[0],
             total: calculatedTotal,
             subtotal: shipping !== null ? calculatedSubtotal : null,
@@ -223,7 +226,7 @@ export function useOrders() {
     const ordersChannel = supabase
       .channel('orders_changes_optimized')
       .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'orders' },
+        { event: '*', schema: 'elfaroukgroup', table: 'orders' },
         handleOrderChange
       )
       .subscribe()
@@ -232,7 +235,7 @@ export function useOrders() {
     const orderItemsChannel = supabase
       .channel('order_items_changes_optimized')
       .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'order_items' },
+        { event: '*', schema: 'elfaroukgroup', table: 'order_items' },
         handleOrderItemChange
       )
       .subscribe()

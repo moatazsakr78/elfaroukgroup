@@ -559,6 +559,15 @@ export default function SafesPage() {
 
   // Real-time subscriptions
   useEffect(() => {
+    const debounceRef = { timer: null as NodeJS.Timeout | null }
+    const debouncedFetchSafes = () => {
+      if (debounceRef.timer) clearTimeout(debounceRef.timer)
+      debounceRef.timer = setTimeout(() => {
+        fetchSafes()
+        refreshTransactions()
+      }, 500)
+    }
+
     const safesChannel = supabase
       .channel('safes_changes')
       .on('postgres_changes',
@@ -579,11 +588,34 @@ export default function SafesPage() {
       )
       .subscribe()
 
+    const cashDrawersChannel = supabase
+      .channel('cash_drawers_changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'elfaroukgroup', table: 'cash_drawers' },
+        () => {
+          debouncedFetchSafes()
+        }
+      )
+      .subscribe()
+
+    const cashDrawerTransactionsChannel = supabase
+      .channel('cash_drawer_transactions_changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'elfaroukgroup', table: 'cash_drawer_transactions' },
+        () => {
+          debouncedFetchSafes()
+        }
+      )
+      .subscribe()
+
     return () => {
+      if (debounceRef.timer) clearTimeout(debounceRef.timer)
       supabase.removeChannel(safesChannel)
       supabase.removeChannel(paymentMethodsChannel)
+      supabase.removeChannel(cashDrawersChannel)
+      supabase.removeChannel(cashDrawerTransactionsChannel)
     }
-  }, [fetchSafes, fetchPaymentMethods])
+  }, [fetchSafes, fetchPaymentMethods, refreshTransactions])
 
   // Transaction fetching and filter handling is now managed by useInfiniteTransactions hook
   // The hook automatically:

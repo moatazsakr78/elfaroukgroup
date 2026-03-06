@@ -157,7 +157,7 @@ export default function CategoriesTreeView({
     const subscription = supabase
       .channel('categories_tree')
       .on('postgres_changes', 
-        { event: '*', schema: 'public', table: 'categories' },
+        { event: '*', schema: 'elfaroukgroup', table: 'categories' },
         handleCategoryChange
       )
       .subscribe()

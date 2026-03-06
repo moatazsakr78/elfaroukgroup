@@ -124,7 +124,7 @@ export default function ManagementModal({ isOpen, onClose, onEditBranch, onEditW
       .channel(`branches-realtime-${channelId}`)
       .on('postgres_changes', {
         event: '*',
-        schema: 'public',
+        schema: 'elfaroukgroup',
         table: 'branches'
       }, (payload) => {
         console.log('Branch realtime update:', payload)
@@ -146,7 +146,7 @@ export default function ManagementModal({ isOpen, onClose, onEditBranch, onEditW
       .channel(`warehouses-realtime-${channelId}`)
       .on('postgres_changes', {
         event: '*',
-        schema: 'public',
+        schema: 'elfaroukgroup',
         table: 'warehouses'
       }, (payload) => {
         console.log('Warehouse realtime update:', payload)

@@ -318,7 +318,7 @@ export const SystemSettingsProvider: React.FC<SystemSettingsProviderProps> = ({ 
         'postgres_changes',
         {
           event: '*',
-          schema: 'public',
+          schema: 'elfaroukgroup',
           table: 'system_settings'
         },
         () => {

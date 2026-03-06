@@ -131,7 +131,7 @@ export function useProductVoting(productId: string) {
       .on('postgres_changes',
         {
           event: '*',
-          schema: 'public',
+          schema: 'elfaroukgroup',
           table: 'product_votes',
           filter: `product_id=eq.${productId}`
         },

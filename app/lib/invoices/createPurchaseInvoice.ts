@@ -9,6 +9,7 @@ export interface PurchaseInvoiceSelections {
   supplier: any
   branch: any
   record: any
+  subSafe?: any
 }
 
 export interface CreatePurchaseInvoiceParams {
@@ -142,7 +143,7 @@ export async function createPurchaseInvoice({
       notes: hasNoSafe ? `${notes || ''} [بدون خزنة]`.trim() : (notes || null),
       branch_id: branchId,
       warehouse_id: warehouseId,
-      record_id: hasNoSafe ? null : selections.record.id,
+      record_id: hasNoSafe ? null : (selections.subSafe?.id || selections.record.id),
       time: timeString,
       invoice_type: isReturn ? 'Purchase Return' : 'Purchase Invoice',
       is_active: true

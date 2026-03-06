@@ -176,7 +176,7 @@ export function useBranches() {
     const subscription = supabase
       .channel('branches')
       .on('postgres_changes', 
-        { event: '*', schema: 'public', table: 'branches' },
+        { event: '*', schema: 'elfaroukgroup', table: 'branches' },
         handleBranchChange
       )
       .subscribe()

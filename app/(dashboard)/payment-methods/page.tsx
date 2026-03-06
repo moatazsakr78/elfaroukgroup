@@ -116,7 +116,7 @@ export default function PaymentMethodsPage() {
     const channel = supabase
       .channel('payment_methods_changes')
       .on('postgres_changes', 
-        { event: '*', schema: 'public', table: 'payment_methods' },
+        { event: '*', schema: 'elfaroukgroup', table: 'payment_methods' },
         (payload: any) => {
           console.log('Real-time update:', payload)
           fetchPaymentMethods()

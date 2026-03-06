@@ -50,6 +50,10 @@ export interface OfflineInvoiceSelections {
     id: string
     name: string
   } | null
+  subSafe?: {
+    id: string
+    name: string
+  } | null
 }
 
 export interface CreateOfflineSaleParams {
@@ -182,7 +186,7 @@ export async function createOfflineSalesInvoice({
       branch_name: selections.branch.name,
       customer_id: customerId,
       customer_name: customerName,
-      record_id: selections.record?.id || null,
+      record_id: selections.subSafe?.id || selections.record?.id || null,
       record_name: selections.record?.name || null,
       notes: notes || null,
       items: saleItems,

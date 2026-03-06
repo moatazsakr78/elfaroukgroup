@@ -128,7 +128,7 @@ export function useCustomerGroups() {
     const subscription = supabase
       .channel('customer_groups_realtime')
       .on('postgres_changes', 
-        { event: '*', schema: 'public', table: 'customer_groups' },
+        { event: '*', schema: 'elfaroukgroup', table: 'customer_groups' },
         handleGroupChange
       )
       .subscribe((status) => {

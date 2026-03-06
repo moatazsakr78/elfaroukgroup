@@ -1276,7 +1276,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe, additionalSafe
       const salesChannel = supabase
         .channel('record_modal_sales_changes')
         .on('postgres_changes', 
-          { event: '*', schema: 'public', table: 'sales' },
+          { event: '*', schema: 'elfaroukgroup', table: 'sales' },
           (payload: any) => {
             console.log('Sales real-time update:', payload)
             fetchSales()
@@ -1288,7 +1288,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe, additionalSafe
       const saleItemsChannel = supabase
         .channel('record_modal_sale_items_changes')
         .on('postgres_changes', 
-          { event: '*', schema: 'public', table: 'sale_items' },
+          { event: '*', schema: 'elfaroukgroup', table: 'sale_items' },
           (payload: any) => {
             console.log('Sale items real-time update:', payload)
             if (sales.length > 0 && selectedTransaction < sales.length) {
@@ -1302,7 +1302,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe, additionalSafe
       const purchaseInvoicesChannel = supabase
         .channel('record_modal_purchase_invoices_changes')
         .on('postgres_changes', 
-          { event: '*', schema: 'public', table: 'purchase_invoices' },
+          { event: '*', schema: 'elfaroukgroup', table: 'purchase_invoices' },
           (payload: any) => {
             console.log('Purchase invoices real-time update:', payload)
             fetchPurchaseInvoices()
@@ -1314,7 +1314,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe, additionalSafe
       const purchaseInvoiceItemsChannel = supabase
         .channel('record_modal_purchase_invoice_items_changes')
         .on('postgres_changes',
-          { event: '*', schema: 'public', table: 'purchase_invoice_items' },
+          { event: '*', schema: 'elfaroukgroup', table: 'purchase_invoice_items' },
           (payload: any) => {
             console.log('Purchase invoice items real-time update:', payload)
             if (purchaseInvoices.length > 0 && selectedTransaction < purchaseInvoices.length) {
@@ -1328,7 +1328,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe, additionalSafe
       const cashDrawersChannel = supabase
         .channel('record_modal_cash_drawers_changes')
         .on('postgres_changes',
-          { event: '*', schema: 'public', table: 'cash_drawers' },
+          { event: '*', schema: 'elfaroukgroup', table: 'cash_drawers' },
           (payload: any) => {
             console.log('Cash drawer real-time update:', payload)
             fetchCashDrawerBalance()
@@ -1341,7 +1341,7 @@ export default function SafeDetailsModal({ isOpen, onClose, safe, additionalSafe
       const cashTransactionsChannel = supabase
         .channel('record_modal_cash_transactions_changes')
         .on('postgres_changes',
-          { event: '*', schema: 'public', table: 'cash_drawer_transactions' },
+          { event: '*', schema: 'elfaroukgroup', table: 'cash_drawer_transactions' },
           (payload: any) => {
             console.log('Cash drawer transactions real-time update:', payload)
             refreshTransfers() // Refresh transfers via infinite scroll hook
