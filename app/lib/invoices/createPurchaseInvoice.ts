@@ -7,7 +7,7 @@ import { roundMoney } from '../utils/money'
 
 export interface PurchaseInvoiceSelections {
   supplier: any
-  warehouse: any
+  branch: any
   record: any
 }
 
@@ -60,8 +60,8 @@ export async function createPurchaseInvoice({
   paidAmount = 0,
   userId
 }: CreatePurchaseInvoiceParams) {
-  if (!selections.supplier || !selections.warehouse) {
-    throw new Error('يجب تحديد المورد والمخزن قبل إنشاء فاتورة الشراء')
+  if (!selections.supplier || !selections.branch) {
+    throw new Error('يجب تحديد المورد والفرع قبل إنشاء فاتورة الشراء')
   }
 
   // Check if "no safe" option was selected (record.id is null)
@@ -125,9 +125,9 @@ export async function createPurchaseInvoice({
     const now = new Date()
     const timeString = now.toTimeString().split(' ')[0] // HH:MM:SS format
 
-    // Determine location IDs based on warehouse selection
-    const branchId = selections.warehouse.locationType === 'branch' ? selections.warehouse.id : null
-    const warehouseId = selections.warehouse.locationType === 'warehouse' ? selections.warehouse.id : null
+    // Use branch from header selection (same as sell mode)
+    const branchId = selections.branch.id
+    const warehouseId = null
 
     // Build invoice data for atomic RPC
     const invoiceData = {

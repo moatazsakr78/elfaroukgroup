@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../supabase/client'
 
 // Order status type
-export type OrderStatus = 'pending' | 'processing' | 'ready_for_pickup' | 'ready_for_shipping' | 'shipped' | 'delivered' | 'cancelled' | 'issue';
+export type OrderStatus = 'pending' | 'processing' | 'ready_for_pickup' | 'ready_for_shipping' | 'shipped' | 'delivered' | 'cancelled' | 'issue' | 'postponed';
 
 // Order delivery type
 export type DeliveryType = 'pickup' | 'delivery';
@@ -157,13 +157,17 @@ export function useOrders() {
           const totalItems = items.length;
           const preparationProgress = totalItems > 0 ? (preparedItems / totalItems) * 100 : 0;
 
+          const shipping = order.shipping_amount ? parseFloat(order.shipping_amount) : null;
+          const calculatedSubtotal = items.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0);
+          const calculatedTotal = calculatedSubtotal + (shipping || 0);
+
           return {
             id: order.order_number,
             orderId: order.id,
             date: order.created_at.split('T')[0],
-            total: parseFloat(order.total_amount),
-            subtotal: order.subtotal_amount ? parseFloat(order.subtotal_amount) : null,
-            shipping: order.shipping_amount ? parseFloat(order.shipping_amount) : null,
+            total: calculatedTotal,
+            subtotal: shipping !== null ? calculatedSubtotal : null,
+            shipping: shipping,
             status: order.status,
             deliveryType: order.delivery_type || 'pickup',
             customerName: order.customer_name || 'عميل غير محدد',

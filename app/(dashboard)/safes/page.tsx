@@ -1175,15 +1175,33 @@ export default function SafesPage() {
                           {mainSafe.supports_drawers && (
                             <div className="px-4 pb-3 flex-1">
                               {children.length > 0 ? (
-                                <div className="flex flex-wrap gap-2">
+                                <div className="space-y-2">
                                   {children.map((child) => (
                                     <div
                                       key={child.id}
-                                      className="bg-cyan-600/10 border border-cyan-600/30 rounded-lg px-3 py-2 cursor-pointer hover:bg-cyan-600/20 hover:border-cyan-500/50 transition-colors"
+                                      className="bg-cyan-600/10 border border-cyan-600/30 rounded-lg px-4 py-3 cursor-pointer hover:bg-cyan-600/20 hover:border-cyan-500/50 transition-colors flex items-center justify-between"
                                       onDoubleClick={(e) => { e.stopPropagation(); openSafeDetails(child) }}
                                     >
-                                      <p className="text-cyan-300 text-xs font-medium">{child.name}</p>
-                                      <p className="text-white text-sm font-bold mt-0.5">{formatPrice(safeBalances[child.id] || 0)}</p>
+                                      <div>
+                                        <p className="text-cyan-300 text-sm font-bold">{child.name}</p>
+                                        <p className="text-white text-base font-bold mt-0.5">{formatPrice(safeBalances[child.id] || 0)}</p>
+                                      </div>
+                                      <div className="flex items-center gap-1.5">
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); openEditSafeModal(child) }}
+                                          className="p-1.5 text-blue-400 hover:bg-blue-600/20 rounded-lg transition-colors"
+                                          title="تعديل الدرج"
+                                        >
+                                          <PencilIcon className="h-4 w-4" />
+                                        </button>
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); handleDeleteSafe(child) }}
+                                          className="p-1.5 text-red-400 hover:bg-red-600/20 rounded-lg transition-colors"
+                                          title="حذف الدرج"
+                                        >
+                                          <TrashIcon className="h-4 w-4" />
+                                        </button>
+                                      </div>
                                     </div>
                                   ))}
                                 </div>
@@ -1545,6 +1563,7 @@ export default function SafesPage() {
         onClose={closeEditSafeModal}
         onSafeUpdated={handleSafeUpdated}
         safe={safeToEdit}
+        currentBalance={safeToEdit ? safeBalances[safeToEdit.id] || 0 : 0}
       />
 
       {/* Add Payment Method Modal */}

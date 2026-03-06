@@ -57,10 +57,34 @@ export default function AddSafeModal({ isOpen, onClose, onSafeAdded, parentSafe 
           .from('cash_drawers')
           .insert({
             record_id: newRecord.id,
-            current_balance: balance
+            current_balance: supportsDrawers ? 0 : balance
           })
         if (drawerError) {
           console.error('Error creating cash drawer:', drawerError)
+        }
+
+        // Auto-create first drawer when supports_drawers is enabled
+        if (supportsDrawers) {
+          const { data: drawerRecord } = await supabase
+            .from('records')
+            .insert({
+              name: 'درج 1',
+              is_primary: false,
+              is_active: true,
+              initial_balance: balance,
+              parent_id: newRecord.id,
+              safe_type: 'sub',
+              supports_drawers: false
+            })
+            .select('id')
+            .single()
+
+          if (drawerRecord?.id) {
+            await supabase.from('cash_drawers').insert({
+              record_id: drawerRecord.id,
+              current_balance: balance
+            })
+          }
         }
       }
 

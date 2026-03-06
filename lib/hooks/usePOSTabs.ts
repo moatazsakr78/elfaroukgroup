@@ -21,7 +21,6 @@ export interface POSTab {
   isReturnMode?: boolean;
   selectedSupplier?: any;
   selectedCustomerForPurchase?: any;
-  selectedWarehouse?: any;
   transferFromLocation?: any;
   transferToLocation?: any;
   isPostponed?: boolean;

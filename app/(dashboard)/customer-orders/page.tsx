@@ -19,7 +19,8 @@ const statusTranslations: Record<OrderStatus, string> = {
   shipped: 'تم الشحن',
   delivered: 'تم التسليم',
   cancelled: 'ملغي',
-  issue: 'مشكله'
+  issue: 'مشكله',
+  postponed: 'مؤجل'
 };
 
 const statusColors: Record<OrderStatus, string> = {
@@ -30,7 +31,8 @@ const statusColors: Record<OrderStatus, string> = {
   shipped: '#3B82F6', // Blue
   delivered: '#059669', // Dark Green
   cancelled: '#6B7280', // Gray
-  issue: '#8B5CF6' // Purple
+  issue: '#8B5CF6', // Purple
+  postponed: '#EC4899' // Pink
 };
 
 const statusIcons: Record<OrderStatus, string> = {
@@ -41,7 +43,8 @@ const statusIcons: Record<OrderStatus, string> = {
   shipped: '🚛',
   delivered: '✅',
   cancelled: '❌',
-  issue: '⚠️'
+  issue: '⚠️',
+  postponed: '⏸️'
 };
 
 export default function CustomerOrdersPage() {
@@ -56,7 +59,7 @@ export default function CustomerOrdersPage() {
   const activityLog = useActivityLogger();
   const loading = isLoading; // Alias for compatibility
 
-  const [activeTab, setActiveTab] = useState<'all' | 'preparation' | 'followup' | 'completed' | 'issues'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'preparation' | 'followup' | 'completed' | 'issues' | 'postponed'>('all');
   const [filteredOrders, setFilteredOrders] = useState<Order[]>([]);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -331,6 +334,10 @@ export default function CustomerOrdersPage() {
         // Show orders with issues (ملغي، مشكله)
         filtered = orders.filter(order => ['cancelled', 'issue'].includes(order.status));
         break;
+      case 'postponed':
+        // Show postponed orders (مؤجل)
+        filtered = orders.filter(order => order.status === 'postponed');
+        break;
     }
 
     // Filter by date range for both tabs
@@ -406,7 +413,8 @@ export default function CustomerOrdersPage() {
       // Auto-expand orders in preparation, followup, and issues tabs
       if ((activeTab === 'preparation' && ['pending', 'processing'].includes(order.status)) ||
           (activeTab === 'followup' && ['ready_for_pickup', 'ready_for_shipping', 'shipped'].includes(order.status)) ||
-          (activeTab === 'issues' && ['cancelled', 'issue'].includes(order.status))) {
+          (activeTab === 'issues' && ['cancelled', 'issue'].includes(order.status)) ||
+          (activeTab === 'postponed' && order.status === 'postponed')) {
         newExpandedOrders.add(order.id);
       }
     });
@@ -900,6 +908,39 @@ export default function CustomerOrdersPage() {
     }
   };
 
+  // Handle marking order as postponed
+  const handleMarkAsPostponed = async (orderId: string) => {
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({
+          status: 'postponed',
+          updated_at: new Date().toISOString()
+        })
+        .eq('order_number', orderId);
+
+      if (error) {
+        console.error('Error marking order as postponed:', error);
+        alert('خطأ في تحديث حالة الطلب');
+        return;
+      }
+
+      setOrders(prevOrders =>
+        prevOrders.map(order =>
+          order.id === orderId
+            ? { ...order, status: 'postponed' as OrderStatus }
+            : order
+        )
+      );
+
+      alert('تم تحديث حالة الطلب إلى مؤجل');
+      activityLog({ entityType: 'order', actionType: 'update', entityId: orderId, entityName: orderId, description: 'غيّر حالة الطلب إلى مؤجل' });
+    } catch (error) {
+      console.error('Error marking order as postponed:', error);
+      alert('خطأ في تحديث حالة الطلب');
+    }
+  };
+
   // Handle right-click on status tag
   const handleStatusRightClick = (e: React.MouseEvent, orderId: string) => {
     e.preventDefault();
@@ -919,7 +960,7 @@ export default function CustomerOrdersPage() {
   };
 
   // Handle context menu option selection
-  const handleContextMenuAction = async (action: 'cancelled' | 'issue') => {
+  const handleContextMenuAction = async (action: 'cancelled' | 'issue' | 'postponed') => {
     if (!contextMenu.orderId) return;
 
     try {
@@ -930,6 +971,10 @@ export default function CustomerOrdersPage() {
       } else if (action === 'issue') {
         if (confirm('هل أنت متأكد من وضع علامة مشكله على هذا الطلب؟')) {
           await handleMarkAsIssue(contextMenu.orderId);
+        }
+      } else if (action === 'postponed') {
+        if (confirm('هل أنت متأكد من تأجيل هذا الطلب؟')) {
+          await handleMarkAsPostponed(contextMenu.orderId);
         }
       }
     } catch (error) {
@@ -981,11 +1026,13 @@ export default function CustomerOrdersPage() {
       item.id === itemId ? { ...item, quantity: newQuantity } : item
     );
     
-    const newTotal = updatedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    
+    const newSubtotal = updatedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const newTotal = newSubtotal + (selectedOrderForEdit.shipping || 0);
+
     setSelectedOrderForEdit({
       ...selectedOrderForEdit,
       items: updatedItems,
+      subtotal: newSubtotal,
       total: newTotal
     });
   };
@@ -1009,11 +1056,13 @@ export default function CustomerOrdersPage() {
     if (!selectedOrderForEdit) return;
 
     const updatedItems = selectedOrderForEdit.items.filter(item => item.id !== itemId);
-    const newTotal = updatedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const newSubtotal = updatedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const newTotal = newSubtotal + (selectedOrderForEdit.shipping || 0);
 
     setSelectedOrderForEdit({
       ...selectedOrderForEdit,
       items: updatedItems,
+      subtotal: newSubtotal,
       total: newTotal
     });
   };
@@ -1075,11 +1124,13 @@ export default function CustomerOrdersPage() {
       };
 
       const updatedItems = [...selectedOrderForEdit.items, newItem];
-      const newTotal = updatedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+      const newSubtotal = updatedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+      const newTotal = newSubtotal + (selectedOrderForEdit.shipping || 0);
 
       setSelectedOrderForEdit({
         ...selectedOrderForEdit,
         items: updatedItems,
+        subtotal: newSubtotal,
         total: newTotal
       });
     }
@@ -1114,6 +1165,7 @@ export default function CustomerOrdersPage() {
         .from('orders')
         .update({
           total_amount: selectedOrderForEdit.total,
+          subtotal_amount: selectedOrderForEdit.subtotal,
           updated_at: new Date().toISOString()
         })
         .eq('order_number', selectedOrderForEdit.id);
@@ -1198,17 +1250,22 @@ export default function CustomerOrdersPage() {
       }
 
       // Update local state with refetched data
+      const refetchedItems = updatedItems?.map((item: any) => ({
+        id: item.id,
+        product_id: item.product_id,
+        name: item.products?.name || 'منتج غير معروف',
+        price: parseFloat(item.unit_price),
+        quantity: item.quantity,
+        image: item.products?.main_image_url || null,
+        notes: item.notes
+      })) || selectedOrderForEdit.items;
+      const newSubtotal = refetchedItems.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0);
+      const newTotal = newSubtotal + (selectedOrderForEdit.shipping || 0);
       const updatedOrder = {
         ...selectedOrderForEdit,
-        items: updatedItems?.map((item: any) => ({
-          id: item.id,
-          productId: item.product_id,
-          name: item.products?.name || 'منتج غير معروف',
-          price: item.unit_price,
-          quantity: item.quantity,
-          image: item.products?.main_image_url || null,
-          notes: item.notes
-        })) || selectedOrderForEdit.items
+        items: refetchedItems,
+        subtotal: newSubtotal,
+        total: newTotal
       };
 
       setOrders(prevOrders =>
@@ -1370,6 +1427,19 @@ export default function CustomerOrdersPage() {
           >
             مشكله
           </button>
+          <button
+            onClick={() => setActiveTab('postponed')}
+            className={`flex-1 min-w-0 py-2 md:py-4 px-2 md:px-6 text-sm md:text-base font-semibold transition-colors ${
+              activeTab === 'postponed'
+                ? 'text-white'
+                : 'text-gray-600 hover:text-gray-800'
+            }`}
+            style={{
+              backgroundColor: activeTab === 'postponed' ? 'var(--primary-color)' : 'transparent'
+            }}
+          >
+            تأجيل
+          </button>
         </div>
 
         {/* Date Filter (for both tabs) */}
@@ -1421,6 +1491,7 @@ export default function CustomerOrdersPage() {
                 {activeTab === 'followup' && 'لا توجد طلبات في المتابعة'}
                 {activeTab === 'completed' && 'لا توجد طلبات مكتملة'}
                 {activeTab === 'issues' && 'لا توجد طلبات بها مشاكل'}
+                {activeTab === 'postponed' && 'لا توجد طلبات مؤجلة'}
               </h3>
               <p className="text-sm md:text-base text-gray-500">
                 {activeTab === 'all' && 'لا توجد طلبات في قاعدة البيانات'}
@@ -1428,6 +1499,7 @@ export default function CustomerOrdersPage() {
                 {activeTab === 'followup' && 'لا توجد طلبات تحتاج متابعة'}
                 {activeTab === 'completed' && 'لم يتم تسليم أي طلبات بعد'}
                 {activeTab === 'issues' && 'جميع الطلبات تسير بسلاسة'}
+                {activeTab === 'postponed' && 'لا توجد طلبات مؤجلة حالياً'}
               </p>
             </div>
           ) : (
@@ -1704,6 +1776,32 @@ export default function CustomerOrdersPage() {
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
                             </svg>
                             صفحة التحضير
+                          </button>
+                        )}
+
+                        {/* Resume Order Button - For postponed orders */}
+                        {order.status === 'postponed' && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (confirm('هل أنت متأكد من استئناف هذا الطلب؟')) {
+                                updateOrderStatus(order.id, 'pending');
+                              }
+                            }}
+                            className="inline-flex items-center gap-2 px-4 py-2 text-white text-sm font-medium rounded-lg transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105"
+                            style={{ backgroundColor: '#EC4899' }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = '#DB2777';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = '#EC4899';
+                            }}
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            استئناف الطلب
                           </button>
                         )}
 
@@ -2235,10 +2333,27 @@ export default function CustomerOrdersPage() {
 
                 {/* Order Total */}
                 <div className="bg-gray-100 p-4 rounded-lg">
-                  <div className="flex justify-between items-center">
-                    <span className="font-semibold text-gray-700">إجمالي الطلب:</span>
-                    <span className="font-bold text-xl text-gray-800">{formatPrice(selectedOrderForEdit.total)}</span>
-                  </div>
+                  {selectedOrderForEdit.subtotal !== null && selectedOrderForEdit.subtotal !== undefined && selectedOrderForEdit.shipping !== null && selectedOrderForEdit.shipping !== undefined ? (
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-600">مبلغ الفاتورة:</span>
+                        <span className="font-medium text-gray-800">{formatPrice(selectedOrderForEdit.subtotal!)}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-600">الشحن:</span>
+                        <span className="font-medium text-gray-800">{formatPrice(selectedOrderForEdit.shipping!)}</span>
+                      </div>
+                      <div className="border-t border-gray-300 pt-2 flex justify-between items-center">
+                        <span className="font-semibold text-gray-700">إجمالي الطلب:</span>
+                        <span className="font-bold text-xl text-gray-800">{formatPrice(selectedOrderForEdit.total)}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex justify-between items-center">
+                      <span className="font-semibold text-gray-700">إجمالي الطلب:</span>
+                      <span className="font-bold text-xl text-gray-800">{formatPrice(selectedOrderForEdit.total)}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -2296,6 +2411,13 @@ export default function CustomerOrdersPage() {
           >
             <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#8B5CF6' }}></span>
             <span>مشكله</span>
+          </button>
+          <button
+            onClick={() => handleContextMenuAction('postponed')}
+            className="w-full px-4 py-2 text-right hover:bg-gray-100 transition-colors flex items-center gap-2"
+          >
+            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#EC4899' }}></span>
+            <span>مؤجل</span>
           </button>
         </div>
       )}

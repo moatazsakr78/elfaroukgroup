@@ -117,7 +117,6 @@ const HistoryModal = dynamic(() => import("../../components/HistoryModal"), { ss
 const AddToCartModal = dynamic(() => import("../../components/AddToCartModal"), { ssr: false });
 const ColorSelectionModal = dynamic(() => import("../../components/ColorSelectionModal"), { ssr: false });
 const SupplierSelectionModal = dynamic(() => import("../../components/SupplierSelectionModal"), { ssr: false });
-const WarehouseSelectionModal = dynamic(() => import("../../components/WarehouseSelectionModal"), { ssr: false });
 const TransferLocationModal = dynamic(() => import("../../components/TransferLocationModal"), { ssr: false });
 const QuickAddProductModal = dynamic(() => import("../../components/QuickAddProductModal"), { ssr: false });
 const ColumnsControlModal = dynamic(() => import("../../components/ColumnsControlModal"), { ssr: false });
@@ -265,7 +264,6 @@ function POSPageContent() {
   const [showClearCartConfirm, setShowClearCartConfirm] = useState(false);
   const [isSupplierModalOpen, setIsSupplierModalOpen] = useState(false);
   const [isSupplierModalForNewPurchase, setIsSupplierModalForNewPurchase] = useState(false); // لتمييز إذا كان لبدء شراء جديد
-  const [isWarehouseModalOpen, setIsWarehouseModalOpen] = useState(false);
   const [showQuickAddProductModal, setShowQuickAddProductModal] =
     useState(false);
   const [editingCartItem, setEditingCartItem] = useState<any>(null);
@@ -276,7 +274,6 @@ function POSPageContent() {
   const posVisibilityLoadedRef = useRef(false);
   const [selectedSupplier, setSelectedSupplier] = useState<any>(null);
   const [selectedCustomerForPurchase, setSelectedCustomerForPurchase] = useState<any>(null);
-  const [selectedWarehouse, setSelectedWarehouse] = useState<any>(null);
 
   // Returns State - simple toggle
   const [isReturnMode, setIsReturnMode] = useState(false);
@@ -368,6 +365,7 @@ function POSPageContent() {
     resetToDefaultCustomer,
     hasRequiredForCart: globalHasRequiredForCart,
     hasRequiredForSale: globalHasRequiredForSale,
+    setSubSafe: setGlobalSubSafe,
     defaultCustomer, // Default customer for new tabs
     defaultBranch,   // Default branch for the user
   } = usePersistentSelections(contextBranch?.id);
@@ -389,7 +387,7 @@ function POSPageContent() {
       return globalSelections;
     }
     // For other tabs, use tab-specific selections
-    return activePOSTab?.selections || { customer: null, branch: null, record: null };
+    return activePOSTab?.selections || { customer: null, branch: null, record: null, subSafe: null };
   }, [activeTabId, activePOSTab?.selections, globalSelections]);
 
   // Ensure main tab always shows default customer
@@ -440,7 +438,7 @@ function POSPageContent() {
     if (activeTabId === 'main') {
       clearGlobalSelections();
     } else {
-      updateActiveTabSelections({ customer: null, branch: null, record: null });
+      updateActiveTabSelections({ customer: null, branch: null, record: null, subSafe: null });
     }
   }, [activeTabId, clearGlobalSelections, updateActiveTabSelections]);
 
@@ -1268,17 +1266,13 @@ function POSPageContent() {
   };
 
   const handleRecordSelect = (record: any, subSafe?: any) => {
-    if (subSafe) {
-      // Selected a sub-safe (drawer) - store main safe as record, sub-safe separately
-      setRecord(record);
-      updateActiveTabSelections({ subSafe });
+    setRecord(record);
+    if (activeTabId === 'main') {
+      setGlobalSubSafe(subSafe || null);
     } else {
-      // Selected a main safe directly (no drawers) - clear subSafe
-      setRecord(record);
-      updateActiveTabSelections({ subSafe: null });
+      updateActiveTabSelections({ subSafe: subSafe || null });
     }
     setIsRecordsModalOpen(false);
-    console.log("Selected record:", record, "subSafe:", subSafe);
   };
 
   const handleCustomerSelect = (customer: any) => {
@@ -1683,9 +1677,6 @@ function POSPageContent() {
     if (activePOSTab.selectedCustomerForPurchase !== undefined) {
       setSelectedCustomerForPurchase(activePOSTab.selectedCustomerForPurchase);
     }
-    if (activePOSTab.selectedWarehouse !== undefined) {
-      setSelectedWarehouse(activePOSTab.selectedWarehouse);
-    }
     if (activePOSTab.transferFromLocation !== undefined) {
       setTransferFromLocation(activePOSTab.transferFromLocation);
     }
@@ -1723,7 +1714,6 @@ function POSPageContent() {
       JSON.stringify(activePOSTab.editInvoiceData) !== JSON.stringify(editInvoiceData) ||
       JSON.stringify(activePOSTab.selectedSupplier) !== JSON.stringify(selectedSupplier) ||
       JSON.stringify(activePOSTab.selectedCustomerForPurchase) !== JSON.stringify(selectedCustomerForPurchase) ||
-      JSON.stringify(activePOSTab.selectedWarehouse) !== JSON.stringify(selectedWarehouse) ||
       JSON.stringify(activePOSTab.transferFromLocation) !== JSON.stringify(transferFromLocation) ||
       JSON.stringify(activePOSTab.transferToLocation) !== JSON.stringify(transferToLocation);
 
@@ -1736,12 +1726,11 @@ function POSPageContent() {
         editInvoiceData,
         selectedSupplier,
         selectedCustomerForPurchase,
-        selectedWarehouse,
         transferFromLocation,
         transferToLocation,
       });
     }
-  }, [isPurchaseMode, isTransferMode, isReturnMode, isEditMode, editInvoiceData, selectedSupplier, selectedCustomerForPurchase, selectedWarehouse, transferFromLocation, transferToLocation, isLoadingTabs, activePOSTab, updateActiveTabMode]);
+  }, [isPurchaseMode, isTransferMode, isReturnMode, isEditMode, editInvoiceData, selectedSupplier, selectedCustomerForPurchase, transferFromLocation, transferToLocation, isLoadingTabs, activePOSTab, updateActiveTabMode]);
 
   // OPTIMIZED: Pre-built search index for O(1) lookups instead of O(n) filtering
   // Index structure: Map<string, Set<string>> where key is search term and value is Set of product IDs
@@ -2399,7 +2388,7 @@ function POSPageContent() {
 
       // التحقق من المتطلبات قبل الإضافة
       if (isPurchaseMode) {
-        if (!selectedSupplier || !selectedWarehouse || !selections.record) {
+        if (!selectedSupplier || !selections.branch || !selections.record) {
           return; // لا تضيف - المتطلبات غير مكتملة
         }
       } else if (isTransferMode) {
@@ -2446,7 +2435,7 @@ function POSPageContent() {
         searchInputRef.current?.focus();
       }, 100);
     }
-  }, [debouncedSearchQuery, searchMode, barcodeMap, isPurchaseMode, isTransferMode, selectedSupplier, selectedWarehouse, selections.record, transferFromLocation, transferToLocation, hasRequiredForCart, getProductPriceByType, playBeep]);
+  }, [debouncedSearchQuery, searchMode, barcodeMap, isPurchaseMode, isTransferMode, selectedSupplier, selections.branch, selections.record, transferFromLocation, transferToLocation, hasRequiredForCart, getProductPriceByType, playBeep]);
 
   const handleColorSelection = async (
     selections: { [key: string]: number },
@@ -2587,8 +2576,8 @@ function POSPageContent() {
   const handleProductClick = (product: any) => {
     // Check if required selections are made before allowing cart operations
     if (isPurchaseMode) {
-      if (!selectedSupplier || !selectedWarehouse || !selections.record) {
-        alert("يجب تحديد المورد والمخزن والخزنة أولاً قبل إضافة المنتجات للسلة");
+      if (!selectedSupplier || !selections.branch || !selections.record) {
+        alert("يجب تحديد المورد والفرع والخزنة أولاً قبل إضافة المنتجات للسلة");
         return;
       }
     } else if (isTransferMode) {
@@ -2945,7 +2934,7 @@ function POSPageContent() {
           cartItems: purchaseCartItems,
           selections: {
             supplier: selectedSupplier,
-            warehouse: selectedWarehouse,
+            branch: selections.branch,
             record: selections.record,
           },
           paymentMethod: "cash",
@@ -2971,7 +2960,7 @@ function POSPageContent() {
           isPurchaseMode: true,
           date: new Date(),
           supplier: selectedSupplier,
-          warehouse: selectedWarehouse,
+          branch: selections.branch,
           record: selections.record,
           cashTendered: parseFloat(paidAmount) || 0,
           primaryPaymentMethod: 'كاش',
@@ -3017,6 +3006,7 @@ function POSPageContent() {
             customer: selections.customer,
             branch: selections.branch,
             record: selections.record,
+            subSafe: selections.subSafe,
           },
           notes: isReturnMode
             ? `مرتجع بيع - ${cartItems.length} منتج`
@@ -3293,10 +3283,6 @@ function POSPageContent() {
     setIsSupplierModalOpen(!isSupplierModalOpen);
   };
 
-  const toggleWarehouseModal = () => {
-    setIsWarehouseModalOpen(!isWarehouseModalOpen);
-  };
-
   const handleQuickAddProduct = (product: any) => {
     setSelectedProduct(product);
     setShowQuickAddProductModal(true);
@@ -3333,7 +3319,7 @@ function POSPageContent() {
 
   // Check if all required selections are made for purchase mode
   const hasRequiredForPurchase = () => {
-    return selectedSupplier && selectedWarehouse && selections.record;
+    return selectedSupplier && selections.branch && selections.record;
   };
 
   // Check if all required selections are made (works for both modes)
@@ -4682,12 +4668,10 @@ function POSPageContent() {
           isTransferMode={isTransferMode}
           isReturnMode={isReturnMode}
           selectedSupplier={selectedSupplier}
-          selectedWarehouse={selectedWarehouse}
           setIsRecordsModalOpen={setIsRecordsModalOpen}
           setIsCustomerModalOpen={setIsCustomerModalOpen}
           setIsHistoryModalOpen={setIsHistoryModalOpen}
           setIsSupplierModalOpen={setIsSupplierModalOpen}
-          setIsWarehouseModalOpen={setIsWarehouseModalOpen}
           setShowQuickAddProductModal={setShowQuickAddProductModal}
           setShowColumnsModal={setShowColumnsModal}
           handleProductClick={handleProductClick}
@@ -4755,13 +4739,6 @@ function POSPageContent() {
           onSelect={isSupplierModalForNewPurchase ? handleSupplierSelectForPurchase : handleSupplierChange}
           selectedSupplier={selectedSupplier}
           isPurchaseMode={isSupplierModalForNewPurchase}
-        />
-
-        <WarehouseSelectionModal
-          isOpen={isWarehouseModalOpen}
-          onClose={() => setIsWarehouseModalOpen(false)}
-          onSelect={setSelectedWarehouse}
-          selectedWarehouse={selectedWarehouse}
         />
 
         <TransferLocationModal
@@ -4899,7 +4876,6 @@ function POSPageContent() {
                         setIsPurchaseMode(!isPurchaseMode);
                         if (isPurchaseMode) {
                           setSelectedSupplier(null);
-                          setSelectedWarehouse(null);
                         }
                         setShowPurchaseModeConfirm(false);
                       }}
@@ -5031,20 +5007,6 @@ function POSPageContent() {
                     <div className="w-1 h-1 bg-red-400 rounded-full mt-1"></div>
                   )}
                 </button>
-
-                {/* Warehouse Button - Purchase Mode Only */}
-                {isPurchaseMode && (
-                  <button
-                    onClick={toggleWarehouseModal}
-                    className="flex flex-col items-center p-2 text-gray-300 hover:text-white cursor-pointer min-w-[80px] transition-all relative"
-                  >
-                    <BuildingOfficeIcon className="h-5 w-5 mb-1" />
-                    <span className="text-sm">فرع / مخزن</span>
-                    {!selectedWarehouse && (
-                      <div className="w-1 h-1 bg-red-400 rounded-full mt-1"></div>
-                    )}
-                  </button>
-                )}
 
                 {/* Party Selection Button (Customer/Supplier) - Hidden in Purchase Mode */}
                 {!isPurchaseMode && (
@@ -5298,20 +5260,6 @@ function POSPageContent() {
           {/* Action Buttons Bar - Mobile Version (shown only on mobile) */}
           <div className="block md:hidden bg-[#374151] border-b border-gray-600 px-2 py-2 w-full mt-12">
             <div className="flex items-center justify-start gap-1 overflow-x-auto scrollbar-hide">
-              {/* Warehouse Button - Purchase Mode Only (Mobile) */}
-              {isPurchaseMode && (
-                <button
-                  onClick={toggleWarehouseModal}
-                  className="flex items-center gap-2 px-3 py-2 bg-[#2B3544] border border-gray-600 rounded text-gray-300 hover:text-white hover:bg-[#374151] cursor-pointer whitespace-nowrap flex-shrink-0 transition-colors relative"
-                >
-                  <BuildingOfficeIcon className="h-4 w-4" />
-                  <span className="text-xs">فرع / مخزن</span>
-                  {!selectedWarehouse && (
-                    <div className="w-1 h-1 bg-red-400 rounded-full absolute -top-1 -right-1"></div>
-                  )}
-                </button>
-              )}
-
               {/* Action Buttons */}
               {/* زر الأعمدة مخفي مؤقتاً لتوفير المساحة
               <button
@@ -5525,7 +5473,17 @@ function POSPageContent() {
                 className="flex items-center gap-1 px-2 py-1.5 bg-[#374151] border border-gray-600 rounded text-gray-300 hover:text-white hover:bg-[#4B5563] text-xs whitespace-nowrap flex-shrink-0"
               >
                 <BanknotesIcon className="h-3.5 w-3.5" />
-                <span>{selections.record?.name ? (selections.subSafe?.name ? `${selections.record.name} > ${selections.subSafe.name}` : selections.record.name) : 'الخزنة'}</span>
+                <span>
+                  {selections.record?.name ? (
+                    selections.subSafe?.name ? (
+                      <>
+                        <span className="text-white">{selections.record.name}</span>
+                        {' '}
+                        <span className="text-yellow-400">{selections.subSafe.name}</span>
+                      </>
+                    ) : selections.record.name
+                  ) : 'الخزنة'}
+                </span>
               </button>
 
               {/* زرار السعر */}
@@ -5572,24 +5530,13 @@ function POSPageContent() {
                 </span>
               </span>
 
-              {/* Branch/Warehouse */}
+              {/* Branch */}
               <span className="text-gray-300 whitespace-nowrap">
-                {isPurchaseMode
-                  ? selectedWarehouse
-                    ? selectedWarehouse.locationType === "branch"
-                      ? "الفرع"
-                      : "المخزن"
-                    : "فرع / مخزن"
-                  : "الفرع"}
-                :{" "}
+                الفرع:{" "}
                 <span className="text-white font-medium">
-                  {isPurchaseMode
-                    ? selectedWarehouse
-                      ? selectedWarehouse.name
-                      : "غير محدد"
-                    : selections.branch
-                      ? selections.branch.name
-                      : "غير محدد"}
+                  {selections.branch
+                    ? selections.branch.name
+                    : "غير محدد"}
                 </span>
               </span>
 
@@ -5599,6 +5546,14 @@ function POSPageContent() {
                 <span className="text-white font-medium">
                   {selections.record ? selections.record.name : "غير محدد"}
                 </span>
+                {selections.subSafe?.name && (
+                  <>
+                    {" "}
+                    <span className="text-yellow-400 font-medium">
+                      {selections.subSafe.name}
+                    </span>
+                  </>
+                )}
               </span>
 
               {/* Price Type Display */}
@@ -5615,14 +5570,12 @@ function POSPageContent() {
               {(selections.customer ||
                 selections.branch ||
                 selections.record ||
-                selectedSupplier ||
-                selectedWarehouse) && (
+                selectedSupplier) && (
                 <button
                   onClick={() => {
                     clearSelections();
                     if (isPurchaseMode) {
                       setSelectedSupplier(null);
-                      setSelectedWarehouse(null);
                     }
                   }}
                   className="text-xs text-gray-400 hover:text-red-400 transition-colors px-2 py-1 rounded whitespace-nowrap"
@@ -7071,14 +7024,6 @@ function POSPageContent() {
         onSelect={isSupplierModalForNewPurchase ? handleSupplierSelectForPurchase : handleSupplierChange}
         selectedSupplier={selectedSupplier}
         isPurchaseMode={isSupplierModalForNewPurchase}
-      />
-
-      {/* Warehouse Selection Modal */}
-      <WarehouseSelectionModal
-        isOpen={isWarehouseModalOpen}
-        onClose={() => setIsWarehouseModalOpen(false)}
-        onSelect={setSelectedWarehouse}
-        selectedWarehouse={selectedWarehouse}
       />
 
       {/* Transfer Location Selection Modal */}

@@ -12,7 +12,7 @@ import { paymentService, PaymentReceipt } from '@/lib/services/paymentService';
 import { CreditCardIcon } from '@heroicons/react/24/outline';
 
 // Order status type
-type OrderStatus = 'pending' | 'processing' | 'ready_for_pickup' | 'ready_for_shipping' | 'shipped' | 'delivered' | 'cancelled' | 'issue';
+type OrderStatus = 'pending' | 'processing' | 'ready_for_pickup' | 'ready_for_shipping' | 'shipped' | 'delivered' | 'cancelled' | 'issue' | 'postponed';
 
 // Order delivery type
 type DeliveryType = 'pickup' | 'delivery';
@@ -49,7 +49,8 @@ const statusTranslations: Record<OrderStatus, string> = {
   shipped: 'مع شركة الشحن',
   delivered: 'تم التسليم',
   cancelled: 'ملغي',
-  issue: 'مشكله'
+  issue: 'مشكله',
+  postponed: 'مؤجل'
 };
 
 const statusColors: Record<OrderStatus, string> = {
@@ -60,7 +61,8 @@ const statusColors: Record<OrderStatus, string> = {
   shipped: '#3B82F6', // Blue
   delivered: '#059669', // Dark Green
   cancelled: '#6B7280', // Gray
-  issue: '#8B5CF6' // Purple
+  issue: '#8B5CF6', // Purple
+  postponed: '#EC4899' // Pink
 };
 
 export default function OrdersPage() {

@@ -59,14 +59,12 @@ interface POSTabletViewProps {
   isTransferMode: boolean
   isReturnMode: boolean
   selectedSupplier: any
-  selectedWarehouse: any
 
   // Modals
   setIsRecordsModalOpen: (open: boolean) => void
   setIsCustomerModalOpen: (open: boolean) => void
   setIsHistoryModalOpen: (open: boolean) => void
   setIsSupplierModalOpen: (open: boolean) => void
-  setIsWarehouseModalOpen: (open: boolean) => void
   setShowQuickAddProductModal: (open: boolean) => void
   setShowColumnsModal: (open: boolean) => void
 
@@ -137,12 +135,10 @@ export default function POSTabletView({
   isTransferMode,
   isReturnMode,
   selectedSupplier,
-  selectedWarehouse,
   setIsRecordsModalOpen,
   setIsCustomerModalOpen,
   setIsHistoryModalOpen,
   setIsSupplierModalOpen,
-  setIsWarehouseModalOpen,
   setShowQuickAddProductModal,
   setShowColumnsModal,
   handleProductClick,
@@ -275,24 +271,13 @@ export default function POSTabletView({
               </span>
             </span>
 
-            {/* Branch/Warehouse */}
+            {/* Branch */}
             <span className="text-gray-300 whitespace-nowrap">
-              {isPurchaseMode
-                ? selectedWarehouse
-                  ? selectedWarehouse.locationType === 'branch'
-                    ? 'الفرع'
-                    : 'المخزن'
-                  : 'فرع / مخزن'
-                : 'الفرع'}
-              :{' '}
+              الفرع:{' '}
               <span className="text-white font-medium">
-                {isPurchaseMode
-                  ? selectedWarehouse
-                    ? selectedWarehouse.name
-                    : 'غير محدد'
-                  : selections.branch
-                    ? selections.branch.name
-                    : 'غير محدد'}
+                {selections.branch
+                  ? selections.branch.name
+                  : 'غير محدد'}
               </span>
             </span>
 
@@ -308,8 +293,7 @@ export default function POSTabletView({
             {(selections.customer ||
               selections.branch ||
               selections.record ||
-              selectedSupplier ||
-              selectedWarehouse) && (
+              selectedSupplier) && (
               <button
                 onClick={() => {
                   clearSelections()
@@ -395,18 +379,6 @@ export default function POSTabletView({
                 !selections.customer && <div className="w-1.5 h-1.5 bg-red-400 rounded-full absolute top-1 right-1"></div>
               )}
             </button>
-
-            {/* Warehouse Button - Purchase Mode Only */}
-            {isPurchaseMode && (
-              <button
-                onClick={() => setIsWarehouseModalOpen(true)}
-                className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-300 hover:text-white hover:bg-gray-600/30 rounded-md transition-all relative"
-              >
-                <BuildingOfficeIcon className="h-4 w-4" />
-                <span>المخزن</span>
-                {!selectedWarehouse && <div className="w-1.5 h-1.5 bg-red-400 rounded-full absolute top-1 right-1"></div>}
-              </button>
-            )}
 
             {/* Vertical Divider */}
             <div className="h-6 w-px bg-gray-600"></div>

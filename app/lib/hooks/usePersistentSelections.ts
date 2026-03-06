@@ -7,6 +7,7 @@ export interface SelectionData {
   record: any | null
   customer: any | null
   branch: any | null
+  subSafe: any | null
 }
 
 const STORAGE_KEY = 'pos_selections'
@@ -20,7 +21,7 @@ function getInitialSelections(): SelectionData {
   } catch (e) {
     console.error('Error reading initial selections:', e)
   }
-  return { record: null, customer: null, branch: null }
+  return { record: null, customer: null, branch: null, subSafe: null }
 }
 
 export function usePersistentSelections(userProfileBranchId?: string | null) {
@@ -142,7 +143,8 @@ export function usePersistentSelections(userProfileBranchId?: string | null) {
         let loadedSelections: SelectionData = {
           record: null,
           customer: null,
-          branch: null
+          branch: null,
+          subSafe: null
         }
 
         if (stored) {
@@ -234,11 +236,16 @@ export function usePersistentSelections(userProfileBranchId?: string | null) {
     setSelections(prev => ({ ...prev, branch }))
   }
 
+  const setSubSafe = (subSafe: any) => {
+    setSelections(prev => ({ ...prev, subSafe }))
+  }
+
   const clearSelections = () => {
     setSelections({
       record: null,
       customer: null,
-      branch: null
+      branch: null,
+      subSafe: null
     })
   }
 
@@ -270,6 +277,7 @@ export function usePersistentSelections(userProfileBranchId?: string | null) {
     setRecord,
     setCustomer,
     setBranch,
+    setSubSafe,
     clearSelections,
     resetToDefaultCustomer,
     isComplete,
